@@ -31,7 +31,8 @@ FetchContent_MakeAvailable(SDL_ttf)
 # Core game logic library (everything except the entry point)
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
      "src/core/*.c" "src/ecs/*.c" "src/graphics/*.c"
-     "src/world/*.c" "src/systems/*.c" "src/ui/*.c" "src/items/*.c")
+     "src/world/*.c" "src/systems/*.c" "src/ui/*.c" "src/items/*.c"
+     "src/events/*.c" "src/ai/*.c")
 add_library(zombie_core STATIC ${CORE_SOURCES})
 target_include_directories(zombie_core PUBLIC src)
 target_link_libraries(zombie_core PUBLIC SDL3::SDL3 SDL3_ttf::SDL3_ttf)

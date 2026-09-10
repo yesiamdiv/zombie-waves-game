@@ -5,6 +5,7 @@
 #include "core/input.h"
 #include "world/world.h"
 #include "world/camera.h"
+#include "world/waves.h"
 #include <SDL3/SDL.h>
 
 /* Movement system - applies velocity to positions, respects world bounds */
@@ -31,7 +32,9 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam);
 /* Animation system */
 void system_animation(World *ecs, float dt);
 
-/* Cleanup dead entities */
-void system_cleanup(World *ecs);
+/* Cleanup dead entities (health <= 0). Emits kill events and notifies
+ * the wave system of zombie deaths so the kill counter and wave
+ * completion logic stay in sync. */
+void system_cleanup(World *ecs, WaveSystem *waves);
 
 #endif

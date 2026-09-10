@@ -1,5 +1,8 @@
 #include "systems/systems.h"
+#include "events/event_bus.h"
 #include "core/log.h"
+
+#define ZOMBIE_ATTACK_DAMAGE 10.0f
 
 void system_zombie_ai(World *ecs, float dt) {
     /* Find player position */
@@ -62,9 +65,18 @@ void system_zombie_ai(World *ecs, float dt) {
                         if (!ecs->alive[j]) continue;
                         if (ecs->component_masks[j] & (1u << COMP_PLAYER_TAG)) {
                             if (ecs_has_component(ecs, j, COMP_HEALTH)) {
-                                ecs_get_health(ecs, j)->current -= 10.0f;
+                                CHealth *hp = ecs_get_health(ecs, j);
+                                float prev = hp->current;
+                                hp->current = prev - ZOMBIE_ATTACK_DAMAGE;
                                 LOG_DEBUG("Zombie hit player! Health: %.0f",
-                                         ecs_get_health(ecs, j)->current);
+                                         hp->current);
+                                event_emit(g_events, GE_PLAYER_HEALTH, j, GEK_PLAYER,
+                                           ecs->positions[j].pos.x, ecs->positions[j].pos.y,
+                                           hp->current, hp->max, (int)prev, 0);
+                                event_emit(g_events, GE_DAMAGE, j, GEK_PLAYER,
+                                           ecs->positions[j].pos.x, ecs->positions[j].pos.y,
+                                           ZOMBIE_ATTACK_DAMAGE, hp->current > 0 ? hp->current : 0,
+                                           (int)prev, i);
                             }
                             break;
                         }

@@ -90,7 +90,7 @@ static void draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
 }
 
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
-              int screen_w, int screen_h, TTF_Font *font) {
+              InputState *input, int screen_w, int screen_h, TTF_Font *font) {
     char buf[128];
 
     /* Find player */
@@ -154,9 +154,9 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     snprintf(buf, sizeof(buf), "Score: %d", score);
     draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 45.0f, wave_color);
 
-    /* Crosshair */
-    float cx = (float)screen_w * 0.5f;
-    float cy = (float)screen_h * 0.5f;
+    /* Crosshair at the actual mouse position (tracks the cursor exactly). */
+    float cx = input ? input->mouse_x : (float)screen_w * 0.5f;
+    float cy = input ? input->mouse_y : (float)screen_h * 0.5f;
     SDL_SetRenderDrawColorFloat(renderer, 1.0f, 1.0f, 1.0f, 0.6f);
     SDL_RenderLine(renderer, cx - 10, cy, cx + 10, cy);
     SDL_RenderLine(renderer, cx, cy - 10, cx, cy + 10);

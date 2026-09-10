@@ -1,4 +1,5 @@
 #include "systems/systems.h"
+#include "events/event_bus.h"
 #include <stdlib.h>
 
 void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
@@ -89,45 +90,61 @@ void system_animation(World *ecs, float dt) {
     }
 }
 
-void system_cleanup(World *ecs) {
+void system_cleanup(World *ecs, WaveSystem *waves) {
     /* Check for dead entities (health <= 0) and destroy them */
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
         if (!ecs->alive[i]) continue;
         if (!(ecs->component_masks[i] & (1u << COMP_HEALTH))) continue;
 
         CHealth *hp = &ecs->healths[i];
-        if (hp->current <= 0) {
-            LOG_DEBUG("Entity %u died (health depleted)", i);
+        if (hp->current > 0) continue;
 
-            /* If zombie, spawn particles */
-            if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
-                CPosition *pos = &ecs->positions[i];
-                CSprite *spr = &ecs->sprites[i];
-                for (int p = 0; p < 8; p++) {
-                    Entity particle = ecs_create_entity(ecs);
-                    if (particle == ECS_NULL_ENTITY) continue;
+        CPosition *pos = &ecs->positions[i];
 
-                    ecs_add_component(ecs, particle, COMP_POSITION);
-                    ecs_add_component(ecs, particle, COMP_SPRITE);
-                    ecs_add_component(ecs, particle, COMP_PARTICLE);
-
-                    float angle = (float)p / 8.0f * 2.0f * M_PI;
-                    *ecs_get_position(ecs, particle) = (CPosition){{pos->pos.x, pos->pos.y}};
-                    *ecs_get_particle(ecs, particle) = (CParticle){
-                        .lifetime = 0.5f + (float)(rand() % 5) * 0.1f,
-                        .max_lifetime = 1.0f,
-                        .vel = vec2_from_angle(angle, 80.0f + (float)(rand() % 60)),
-                        .size_decay = 1.0f
-                    };
-                    *ecs_get_sprite(ecs, particle) = (CSprite){
-                        .sprite = sprite_circle(3.0f + (float)(rand() % 3), COLOR_DARK_RED),
-                        .scale = 1.0f,
-                        .base_alpha = 1.0f
-                    };
-                }
+        /* Classify the dead entity */
+        if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
+            LOG_DEBUG("Zombie %u killed", i);
+            event_emit(g_events, GE_KILL, i, GEK_ZOMBIE, pos->pos.x, pos->pos.y,
+                       0, 0, 0, 0);
+            if (waves) {
+                waves_on_zombie_killed(waves);
             }
 
-            ecs_destroy_entity(ecs, i);
+            /* Death particles */
+            CSprite *spr = &ecs->sprites[i];
+            for (int p = 0; p < 8; p++) {
+                Entity particle = ecs_create_entity(ecs);
+                if (particle == ECS_NULL_ENTITY) continue;
+
+                ecs_add_component(ecs, particle, COMP_POSITION);
+                ecs_add_component(ecs, particle, COMP_SPRITE);
+                ecs_add_component(ecs, particle, COMP_PARTICLE);
+
+                float angle = (float)p / 8.0f * 2.0f * M_PI;
+                *ecs_get_position(ecs, particle) = (CPosition){{pos->pos.x, pos->pos.y}};
+                *ecs_get_particle(ecs, particle) = (CParticle){
+                    .lifetime = 0.5f + (float)(rand() % 5) * 0.1f,
+                    .max_lifetime = 1.0f,
+                    .vel = vec2_from_angle(angle, 80.0f + (float)(rand() % 60)),
+                    .size_decay = 1.0f
+                };
+                *ecs_get_sprite(ecs, particle) = (CSprite){
+                    .sprite = sprite_circle(3.0f + (float)(rand() % 3), COLOR_DARK_RED),
+                    .scale = 1.0f,
+                    .base_alpha = 1.0f
+                };
+                event_emit(g_events, GE_ENTITY_SPAWN, particle, GEK_PARTICLE,
+                           pos->pos.x, pos->pos.y, 0, 0, 0, 0);
+            }
+        } else if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) {
+            LOG_INFO("Player %u died", i);
+            event_emit(g_events, GE_KILL, i, GEK_PLAYER, pos->pos.x, pos->pos.y,
+                       0, 0, 0, 0);
+        } else {
+            event_emit(g_events, GE_ENTITY_DEATH, i, GEK_NONE,
+                       pos->pos.x, pos->pos.y, 0, 0, 0, 0);
         }
+
+        ecs_destroy_entity(ecs, i);
     }
 }

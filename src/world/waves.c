@@ -1,6 +1,10 @@
 #include "world/waves.h"
+#include "events/event_bus.h"
 #include "core/log.h"
 #include <stdlib.h>
+
+#define SPAWN_RING_MIN 400.0f
+#define SPAWN_RING_MAX 600.0f
 
 void waves_init(WaveSystem *ws, GameWorld *world) {
     memset(ws, 0, sizeof(WaveSystem));
@@ -47,12 +51,49 @@ void waves_start_next_wave(WaveSystem *ws) {
 
     LOG_INFO("=== WAVE %d STARTED === (%d zombies, interval: %.2fs, difficulty: %.2f)",
              ws->wave_number, ws->zombies_to_spawn, ws->spawn_interval, ws->difficulty_multiplier);
+    event_emit(g_events, GE_WAVE_START, ECS_NULL_ENTITY, GEK_NONE,
+               0, 0, (float)ws->wave_number, (float)ws->zombies_to_spawn, 0, 0);
 }
 
 void waves_on_zombie_killed(WaveSystem *ws) {
+    if (!ws) return;
     ws->zombies_alive--;
     ws->total_kills++;
     LOG_DEBUG("Zombie killed (alive: %d, total kills: %d)", ws->zombies_alive, ws->total_kills);
+}
+
+/* Find a walkable spawn point in an annulus around the player so the fight
+ * comes toward the player instead of at the far map edges. Falls back to a
+ * fixed edge point after too many attempts. */
+static bool spawn_point_near_player(World *ecs, GameWorld *world, Vec2 *out) {
+    Vec2 player_pos = {0, 0};
+    bool player_found = false;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs->alive[i]) continue;
+        if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) {
+            player_pos = ecs->positions[i].pos;
+            player_found = true;
+            break;
+        }
+    }
+
+    if (!player_found) return false;
+
+    for (int attempt = 0; attempt < 10; attempt++) {
+        float angle = (float)(rand() % 360) * M_PI / 180.0f;
+        float radius = SPAWN_RING_MIN +
+                       (float)(rand() % (int)(SPAWN_RING_MAX - SPAWN_RING_MIN));
+        Vec2 candidate = vec2_add(player_pos, vec2_from_angle(angle, radius));
+
+        candidate.x = clampf(candidate.x, 32.0f, world->world_pixel_w - 32.0f);
+        candidate.y = clampf(candidate.y, 32.0f, world->world_pixel_h - 32.0f);
+
+        if (world_is_walkable(world, candidate.x, candidate.y)) {
+            *out = candidate;
+            return true;
+        }
+    }
+    return false;
 }
 
 Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
@@ -117,28 +158,29 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world, float dt) {
         if (ws->spawn_timer >= ws->spawn_interval) {
             ws->spawn_timer = 0;
 
-            /* Pick random spawn point */
-            int idx = rand() % ws->spawn_point_count;
-            Vec2 spawn_pos = ws->spawn_points[idx];
-            spawn_pos.x += (float)(rand() % 100 - 50);
-            spawn_pos.y += (float)(rand() % 100 - 50);
+            /* Spawn in a ring around the player when possible */
+            Vec2 spawn_pos;
+            if (!spawn_point_near_player(ecs, world, &spawn_pos)) {
+                /* fallback: fixed edge point */
+                int idx = rand() % ws->spawn_point_count;
+                spawn_pos = ws->spawn_points[idx];
+                spawn_pos.x += (float)(rand() % 100 - 50);
+                spawn_pos.y += (float)(rand() % 100 - 50);
+            }
 
-            /* Make sure spawn is walkable */
-            if (world_is_walkable(world, spawn_pos.x, spawn_pos.y)) {
-                Entity z = waves_spawn_zombie(ecs, spawn_pos);
-                if (z != ECS_NULL_ENTITY) {
-                    /* Scale health with difficulty */
-                    CHealth *h = ecs_get_health(ecs, z);
-                    h->max *= ws->difficulty_multiplier;
-                    h->current = h->max;
+            Entity z = waves_spawn_zombie(ecs, spawn_pos);
+            if (z != ECS_NULL_ENTITY) {
+                /* Scale health and speed with difficulty */
+                CHealth *h = ecs_get_health(ecs, z);
+                h->max *= ws->difficulty_multiplier;
+                h->current = h->max;
+                CVelocity *v = ecs_get_velocity(ecs, z);
+                v->max_speed *= ws->difficulty_multiplier;
 
-                    /* Scale speed */
-                    CVelocity *v = ecs_get_velocity(ecs, z);
-                    v->max_speed *= ws->difficulty_multiplier;
-
-                    ws->zombies_spawned++;
-                    ws->zombies_alive++;
-                }
+                ws->zombies_spawned++;
+                ws->zombies_alive++;
+                event_emit(g_events, GE_ENTITY_SPAWN, z, GEK_ZOMBIE,
+                           spawn_pos.x, spawn_pos.y, 0, 0, 0, 0);
             }
         }
     }
@@ -149,5 +191,7 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world, float dt) {
         ws->between_waves = true;
         ws->wave_cooldown_timer = 0;
         LOG_INFO("=== WAVE %d COMPLETE === (total kills: %d)", ws->wave_number, ws->total_kills);
+        event_emit(g_events, GE_WAVE_END, ECS_NULL_ENTITY, GEK_NONE,
+                   0, 0, (float)ws->wave_number, (float)ws->total_kills, 0, 0);
     }
 }

@@ -1,4 +1,5 @@
 #include "items/items.h"
+#include "events/event_bus.h"
 #include "core/log.h"
 #include <stdlib.h>
 
@@ -48,6 +49,8 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
     };
 
     LOG_DEBUG("Item spawned: %s at (%.0f, %.0f)", name, pos.x, pos.y);
+    event_emit(g_events, GE_ENTITY_SPAWN, e, GEK_ITEM, pos.x, pos.y,
+               (float)type, value, 0, 0);
     return e;
 }
 
@@ -95,6 +98,8 @@ void items_check_pickup(World *ecs, Entity player) {
             }
 
             LOG_DEBUG("Player picked up item type %d", item->type);
+            event_emit(g_events, GE_ITEM_PICKUP, i, GEK_ITEM,
+                       item_pos.x, item_pos.y, (float)item->type, item->value, 0, 0);
             ecs_destroy_entity(ecs, i);
         }
     }

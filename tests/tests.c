@@ -9,6 +9,7 @@
 #include "world/waves.h"
 #include "systems/systems.h"
 #include "items/items.h"
+#include "events/event_bus.h"
 
 static int tests_passed = 0;
 static int tests_failed = 0;
@@ -133,7 +134,7 @@ static void test_wave_system(void) {
         system_zombie_ai(&ecs, dt);
         system_movement(&ecs, &world, dt);
         system_collision(&ecs, &world);
-        system_cleanup(&ecs);
+        system_cleanup(&ecs, &waves);
     }
 
     CHECK(waves.wave_number >= 1);
@@ -159,7 +160,7 @@ static void test_wave_system(void) {
         Entity b = spawn_test_bullet(&ecs, ecs_get_position(&ecs, zombie)->pos, player);
         CHECK(b != ECS_NULL_ENTITY);
         system_collision(&ecs, &world);
-        system_cleanup(&ecs);
+        system_cleanup(&ecs, &waves);
         safety++;
     }
     CHECK(!ecs_is_alive(&ecs, zombie));
@@ -206,6 +207,179 @@ static void test_entity_limit(void) {
     CHECK(e == 0 || e == 1);
 }
 
+static void test_wave_completion(void) {
+    LOG_INFO("--- Test: Wave completion ---");
+    World ecs;
+    GameWorld world;
+    WaveSystem waves;
+
+    ecs_init(&ecs);
+    world_init(&world);
+    waves_init(&waves, &world);
+
+    Entity player = spawn_player(&ecs, vec2(world.world_pixel_w * 0.5f,
+                                            world.world_pixel_h * 0.5f));
+    CHECK(player != ECS_NULL_ENTITY);
+
+    /* Force a small, fast wave so the test is quick and deterministic. */
+    waves_start_next_wave(&waves);
+    waves.zombies_to_spawn = 4;
+    waves.spawn_interval = 0.05f;
+
+    float dt = 1.0f / 120.0f;
+    int guard = 0;
+    while (guard < 3000 && waves.wave_number == 1 && !waves.between_waves) {
+        guard++;
+
+        waves_update(&waves, &ecs, &world, dt);
+
+        /* Shoot every alive zombie every frame until it dies. */
+        for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+            if (!ecs.alive[i]) continue;
+            if (!(ecs.component_masks[i] & (1u << COMP_ZOMBIE_TAG))) continue;
+            Entity b = spawn_test_bullet(&ecs, ecs_get_position(&ecs, i)->pos, player);
+            if (b != ECS_NULL_ENTITY) {
+                system_collision(&ecs, &world);
+            }
+        }
+
+        system_cleanup(&ecs, &waves);
+    }
+
+    CHECK(guard < 3000);          /* wave completed in time */
+    CHECK(waves.between_waves);   /* moved to inter-wave state */
+    CHECK(waves.zombies_spawned == 4);
+    CHECK(waves.total_kills >= 4);
+    CHECK(waves.wave_active == false);
+}
+
+static void test_event_stream(void) {
+    LOG_INFO("--- Test: Gameplay event stream ---");
+    const char *path = "/tmp/opencode/test_events.log";
+    remove(path);
+
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+    CHECK(g_events == bus);
+
+    World ecs;
+    GameWorld world;
+    WaveSystem waves;
+    ecs_init(&ecs);
+    world_init(&world);
+    waves_init(&waves, &world);
+
+    Entity player = spawn_player(&ecs, vec2(world.world_pixel_w * 0.5f,
+                                            world.world_pixel_h * 0.5f));
+    CHECK(player != ECS_NULL_ENTITY);
+
+    waves_start_next_wave(&waves);
+    waves.zombies_to_spawn = 4;
+    waves.spawn_interval = 0.05f;
+
+    float dt = 1.0f / 120.0f;
+    int guard = 0;
+    while (guard < 3000 && waves.wave_number == 1 && !waves.between_waves) {
+        guard++;
+        event_bus_tick(bus, dt);
+
+        waves_update(&waves, &ecs, &world, dt);
+
+        for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+            if (!ecs.alive[i]) continue;
+            if (!(ecs.component_masks[i] & (1u << COMP_ZOMBIE_TAG))) continue;
+            Entity b = spawn_test_bullet(&ecs, ecs_get_position(&ecs, i)->pos, player);
+            if (b != ECS_NULL_ENTITY) {
+                system_collision(&ecs, &world);
+            }
+        }
+
+        system_cleanup(&ecs, &waves);
+        event_bus_flush(bus);
+    }
+
+    CHECK(guard < 3000);
+    CHECK(waves.between_waves);
+    CHECK(waves.total_kills >= 4);
+
+    event_bus_shutdown(bus);
+    CHECK(g_events == NULL);
+
+    /* Verify the log file contains the expected event stream. */
+    FILE *f = fopen(path, "r");
+    CHECK(f != NULL);
+    bool saw_wave_start = false, saw_spawn = false, saw_kill = false, saw_wave_end = false;
+    size_t total = 0;
+    if (f) {
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            total += strlen(line);
+            if (strstr(line, "EVT=WAVE_START")) saw_wave_start = true;
+            if (strstr(line, "EVT=ENTITY_SPAWN")) saw_spawn = true;
+            if (strstr(line, "EVT=KILL")) saw_kill = true;
+            if (strstr(line, "EVT=WAVE_END")) saw_wave_end = true;
+        }
+        fclose(f);
+    }
+    CHECK(total > 0);
+    CHECK(saw_wave_start);
+    CHECK(saw_spawn);
+    CHECK(saw_kill);
+    CHECK(saw_wave_end);
+
+    remove(path);
+}
+
+#define DET_MAX_SPAWNS 64
+
+static int run_spawn_sim(Vec2 *out, int max_out) {
+    srand(2026);
+    World ecs;
+    GameWorld world;
+    WaveSystem waves;
+    ecs_init(&ecs);
+    world_init(&world);
+    waves_init(&waves, &world);
+
+    Entity player = spawn_player(&ecs, vec2(world.world_pixel_w * 0.5f,
+                                            world.world_pixel_h * 0.5f));
+    if (player == ECS_NULL_ENTITY) return -1;
+
+    waves_start_next_wave(&waves);
+    waves.zombies_to_spawn = DET_MAX_SPAWNS;
+    waves.spawn_interval = 0.01f;
+
+    float dt = 1.0f / 120.0f;
+    int n = 0;
+    for (int i = 0; i < 2000 && n < max_out; i++) {
+        waves_update(&waves, &ecs, &world, dt);
+        for (uint32_t e = 0; e < ECS_MAX_ENTITIES && n < max_out; e++) {
+            if (!ecs.alive[e]) continue;
+            if (!(ecs.component_masks[e] & (1u << COMP_ZOMBIE_TAG))) continue;
+            out[n++] = ecs.positions[e].pos;
+            ecs_destroy_entity(&ecs, e);
+        }
+    }
+    return n;
+}
+
+static void test_deterministic_seed(void) {
+    LOG_INFO("--- Test: Deterministic seed ---");
+    Vec2 a[DET_MAX_SPAWNS];
+    Vec2 b[DET_MAX_SPAWNS];
+    int na = run_spawn_sim(a, DET_MAX_SPAWNS);
+    int nb = run_spawn_sim(b, DET_MAX_SPAWNS);
+
+    CHECK(na > 0);
+    CHECK(na == nb);
+
+    bool same = true;
+    for (int i = 0; i < na; i++) {
+        if (a[i].x != b[i].x || a[i].y != b[i].y) same = false;
+    }
+    CHECK(same);
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -219,6 +393,9 @@ int tests_run_all(void) {
     test_wave_system();
     test_items();
     test_entity_limit();
+    test_wave_completion();
+    test_event_stream();
+    test_deterministic_seed();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

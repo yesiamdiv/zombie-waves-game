@@ -1,5 +1,8 @@
 #include "systems/systems.h"
+#include "events/event_bus.h"
 #include "core/log.h"
+
+#define BULLET_DAMAGE 25.0f
 
 void system_collision(World *ecs, GameWorld *world) {
     /* Collect all entities with colliders */
@@ -36,7 +39,16 @@ void system_collision(World *ecs, GameWorld *world) {
                 /* Damage the target */
                 if (ecs_has_component(ecs, b, COMP_HEALTH)) {
                     CHealth *hp = ecs_get_health(ecs, b);
-                    hp->current -= 25.0f;  /* bullet damage */
+                    float dmg = BULLET_DAMAGE;
+                    float prev = hp->current;
+                    hp->current = prev - dmg;
+
+                    EventKind kind = GEK_NONE;
+                    if (ecs_has_component(ecs, b, COMP_ZOMBIE_TAG)) kind = GEK_ZOMBIE;
+                    else if (ecs_has_component(ecs, b, COMP_PLAYER_TAG)) kind = GEK_PLAYER;
+                    event_emit(g_events, GE_DAMAGE, b, kind,
+                               pos_b.x, pos_b.y, dmg, hp->current > 0 ? hp->current : 0,
+                               (int)prev, 0);
 
                     /* Knockback */
                     if (ecs_has_component(ecs, b, COMP_VELOCITY)) {

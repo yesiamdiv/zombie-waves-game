@@ -1,5 +1,6 @@
 #include "systems/systems.h"
 #include "world/waves.h"
+#include "events/event_bus.h"
 #include "core/log.h"
 
 #define PLAYER_SPEED 200.0f
@@ -47,9 +48,10 @@ void system_player_input(World *ecs, InputState *input, Camera *cam, float dt) {
     input->mouse_world_x = mouse_world.x;
     input->mouse_world_y = mouse_world.y;
 
-    /* Shooting */
+    /* Shooting: fire while the button is held (human hold-to-fire and
+     * AI-driven) at the fire-rate cooldown. */
     shoot_timer -= dt;
-    if (input_mouse_pressed(input, 0) && shoot_timer <= 0) {
+    if (input->mouse_buttons[0] && shoot_timer <= 0) {
         shoot_timer = SHOOT_COOLDOWN;
 
         Vec2 dir = vec2_normalize(vec2_sub(mouse_world, pos->pos));
@@ -82,6 +84,9 @@ void system_player_input(World *ecs, InputState *input, Camera *cam, float dt) {
                 .scale = 1.0f,
                 .base_alpha = 1.0f
             };
+
+            event_emit(g_events, GE_PLAYER_SHOT, bullet, GEK_BULLET,
+                       spawn.x, spawn.y, dir.x, dir.y, 0, 0);
         }
     }
 }
