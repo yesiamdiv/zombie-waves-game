@@ -10,6 +10,8 @@
 #include "systems/systems.h"
 #include "items/items.h"
 #include "events/event_bus.h"
+#include "ai/ai_driver.h"
+#include "ai/ai_types.h"
 
 static int tests_passed = 0;
 static int tests_failed = 0;
@@ -253,6 +255,56 @@ static void test_wave_completion(void) {
     CHECK(waves.wave_active == false);
 }
 
+static void test_script_aim_shot(void) {
+    LOG_INFO("--- Test: Scripted AI aim/shoot ---");
+    const char *path = "/tmp/opencode/script_test_shoot.script";
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        LOG_ERROR("Cannot create temp script file");
+        CHECK(0);
+        return;
+    }
+    fprintf(f, "@0.0 aim 500 400\n");
+    fprintf(f, "@0.1 click 1 down\n");
+    fprintf(f, "@0.5 click 1 up\n");
+    fclose(f);
+
+    AIDriver drv;
+    ai_driver_init(&drv);
+    CHECK(ai_driver_load_script(&drv, path) == 0);
+    CHECK(drv.mode == AI_MODE_SCRIPT);
+
+    GameView view;
+    AIControls c;
+    bool got_aim = false;
+    bool got_shoot = false;
+    for (int i = 0; i < 200 && !drv.done; i++) {
+        ai_driver_update(&drv, 0.05, &view, &c);
+        if (!got_aim && c.has_aim && c.aim_x == 500.0f && c.aim_y == 400.0f) got_aim = true;
+        if (!got_shoot && c.shoot) got_shoot = true;
+    }
+
+    CHECK(got_aim);
+    CHECK(got_shoot);
+    CHECK(drv.done);
+
+    /* Quit action propagates through the driver. */
+    const char *quit_path = "/tmp/opencode/script_test_quit.script";
+    f = fopen(quit_path, "w");
+    if (f) {
+        fprintf(f, "@0.0 quit\n");
+        fclose(f);
+    }
+    ai_driver_init(&drv);
+    CHECK(ai_driver_load_script(&drv, quit_path) == 0);
+    ai_driver_update(&drv, 0.1, &view, &c);
+    CHECK(drv.quit_requested);
+    CHECK(c.shoot == false);
+
+    remove(path);
+    remove(quit_path);
+}
+
 static void test_event_stream(void) {
     LOG_INFO("--- Test: Gameplay event stream ---");
     const char *path = "/tmp/opencode/test_events.log";
@@ -394,6 +446,7 @@ int tests_run_all(void) {
     test_items();
     test_entity_limit();
     test_wave_completion();
+    test_script_aim_shot();
     test_event_stream();
     test_deterministic_seed();
 

@@ -18,6 +18,7 @@
 #include "ui/hud.h"
 #include "items/items.h"
 #include "events/event_bus.h"
+#include "ai/ai_driver.h"
 
 #define WINDOW_W 1280
 #define WINDOW_H 720
@@ -44,6 +45,11 @@ typedef struct {
     PauseMenu pause_menu;
     GameOverScreen gameover_screen;
     HUD hud;
+
+    /* AI driver */
+    AIDriver ai;
+    GameView ai_view;
+    AIControls ai_controls;
 
     Entity player_entity;
 
@@ -280,7 +286,7 @@ static void update(float dt) {
             if (next == GAME_STATE_MENU) {
                 game.state = GAME_STATE_MENU;
             }
-            if (game.input.quit_requested) {
+            if (game.input.quit_requested || game.ai.quit_requested) {
                 game.running = false;
             }
             break;
@@ -324,13 +330,19 @@ static void render(void) {
     SDL_RenderPresent(game.renderer);
 }
 
-/* One simulation step. Handles input, game update, and event log flushing. */
+/* One simulation step. Handles input (real + injected), the AI driver,
+ * game update, event log flushing, and input edge clearing. */
 static void step_frame(float dt) {
     if (!game.headless) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             input_process_event(&game.input, &event);
         }
+    }
+
+    /* AI driver produces controls before systems read input */
+    if (game.ai.mode != AI_MODE_NONE) {
+        ai_apply_controls(&game.input, &game.ai_controls, &game.camera);
     }
 
     update(dt);
@@ -346,12 +358,51 @@ static void step_frame(float dt) {
     input_update(&game.input);
 }
 
+/* Built before the driver updates so it sees last frame's positions. */
+static void update_ai_view(float dt) {
+    if (game.ai.mode == AI_MODE_NONE) return;
+
+    ai_build_view(&game.ai_view, &game.ecs, &game.waves);
+    ai_driver_update(&game.ai, dt, &game.ai_view, &game.ai_controls);
+
+    if (game.ai.quit_requested) {
+        game.running = false;
+    }
+}
+
 static void parse_args(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         const char *arg = argv[i];
 
         if (strcmp(arg, "--headless") == 0) {
             game.headless = true;
+        } else if (strncmp(arg, "--ai=", 5) == 0) {
+            const char *mode = arg + 5;
+            if (strcmp(mode, "bot") == 0) {
+                ai_driver_set_bot(&game.ai);
+            } else if (strcmp(mode, "script") == 0) {
+                if (i + 1 < argc && strncmp(argv[i + 1], "--", 2) != 0) {
+                    const char *path = argv[++i];
+                    if (ai_driver_load_script(&game.ai, path) != 0) {
+                        LOG_WARN("Could not load script '%s'; falling back to no AI", path);
+                        game.ai.mode = AI_MODE_NONE;
+                    }
+                } else {
+                    LOG_WARN("--ai=script requires a script path");
+                }
+            } else if (strcmp(mode, "none") == 0) {
+                game.ai.mode = AI_MODE_NONE;
+            } else {
+                LOG_WARN("Unknown --ai mode '%s' (expected none|script|bot)", mode);
+            }
+        } else if (strcmp(arg, "--script") == 0 && i + 1 < argc) {
+            const char *path = argv[++i];
+            if (ai_driver_load_script(&game.ai, path) != 0) {
+                LOG_WARN("Could not load script '%s'; falling back to no AI", path);
+                game.ai.mode = AI_MODE_NONE;
+            }
+        } else if (strncmp(arg, "--script-loop=", 14) == 0) {
+            ai_driver_set_script_loops(&game.ai, atoi(arg + 14));
         } else if (strncmp(arg, "--events=", 9) == 0) {
             game.event_log_path = arg + 9;
         } else if (strncmp(arg, "--seed=", 7) == 0) {
@@ -360,6 +411,15 @@ static void parse_args(int argc, char *argv[]) {
             srand((unsigned int)atoi(argv[++i]));
         } else if (strncmp(arg, "--run-seconds=", 14) == 0) {
             game.run_seconds = (float)atof(arg + 14);
+        } else if (strcmp(arg, "--help") == 0) {
+            printf("%s\n", "Usage: open_world_zombie_waves [options]");
+            printf("%s\n", "  --headless            run with no window/renderer (fast, deterministic)");
+            printf("%s\n", "  --ai=none|script|bot  AI control mode (default none)");
+            printf("%s\n", "  --script <file>       scripted playback (also --script-loop=N)");
+            printf("%s\n", "  --events=<file>       gameplay event log path (default game_events.log)");
+            printf("%s\n", "  --seed=<n>            deterministic RNG seed");
+            printf("%s\n", "  --run-seconds=<s>     auto-exit after s simulated seconds");
+            exit(0);
         } else {
             LOG_WARN("Unknown argument: %s", arg);
         }
@@ -374,6 +434,7 @@ int main(int argc, char *argv[]) {
     LOG_INFO("  Open World Zombie Waves - Starting");
     LOG_INFO("========================================");
 
+    ai_driver_init(&game.ai);
     parse_args(argc, argv);
 
     if (!game.event_log_path) game.event_log_path = "game_events.log";
@@ -382,6 +443,13 @@ int main(int argc, char *argv[]) {
     if (!init()) {
         LOG_FATAL("Initialization failed!");
         return 1;
+    }
+
+    /* With an AI driver, skip straight into a game so it can play. */
+    if (game.ai.mode != AI_MODE_NONE) {
+        reset_game();
+        game.state = GAME_STATE_PLAYING;
+        LOG_INFO("AI driver active - starting game directly");
     }
 
     Uint64 last_time = SDL_GetPerformanceCounter();
@@ -398,6 +466,7 @@ int main(int argc, char *argv[]) {
             /* Fixed-timestep headless simulation, as fast as possible */
             accumulator += frame_dt;
             while (accumulator >= FIXED_STEP && game.running) {
+                update_ai_view(FIXED_STEP);
                 step_frame(FIXED_STEP);
                 accumulator -= FIXED_STEP;
 
@@ -410,6 +479,7 @@ int main(int argc, char *argv[]) {
             float dt = frame_dt;
             if (dt > 0.05f) dt = 0.05f;
 
+            update_ai_view(dt);
             step_frame(dt);
 
             game.elapsed_sim += dt;
