@@ -6,6 +6,7 @@
 #include "ecs/ecs.h"
 #include "core/input.h"
 #include "world/waves.h"
+#include "weapons/weapons.h"
 
 typedef struct {
     float damage_flash;
@@ -17,6 +18,7 @@ void hud_init(HUD *hud);
 void hud_update(HUD *hud, float dt);
 void hud_show_message(HUD *hud, const char *msg, float duration);
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
-              InputState *input, int screen_w, int screen_h, TTF_Font *font);
+              InputState *input, const PlayerInventory *inv,
+              int screen_w, int screen_h, TTF_Font *font);
 
 #endif

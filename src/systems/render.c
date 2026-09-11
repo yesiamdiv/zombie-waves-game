@@ -17,6 +17,12 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         Vec2 screen = camera_world_to_screen(cam, pos->pos);
         float draw_alpha = spr->base_alpha;
         float draw_scale = spr->scale;
+        float draw_rot = 0.0f;
+
+        /* The sword blade is drawn rotated along its orbital angle. */
+        if (ecs->component_masks[i] & (1u << COMP_SWORD_TAG)) {
+            draw_rot = ecs->sword_tags[i].angle;
+        }
 
         /* Flash white when zombie is hurt */
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
@@ -27,7 +33,7 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         }
 
         sprite_draw(renderer, &spr->sprite, screen.x, screen.y,
-                     draw_scale * cam->zoom, 0.0f, draw_alpha);
+                     draw_scale * cam->zoom, draw_rot, draw_alpha);
 
         /* Draw health bar for damaged entities */
         if ((ecs->component_masks[i] & (1u << COMP_HEALTH)) &&
@@ -91,7 +97,7 @@ void system_animation(World *ecs, float dt) {
     }
 }
 
-void system_cleanup(World *ecs, WaveSystem *waves) {
+void system_cleanup(World *ecs, WaveSystem *waves, PlayerInventory *inv) {
     /* Check for dead entities (health <= 0) and destroy them */
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
         if (!ecs->alive[i]) continue;
@@ -110,6 +116,9 @@ void system_cleanup(World *ecs, WaveSystem *waves) {
             if (waves) {
                 waves_on_zombie_killed(waves);
             }
+            if (inv) {
+                weapons_award_kill(inv, 1);
+            }
 
             /* Drop a pickup at the kill site (near the action) so the heal
              * economy is actually reachable by the bot/player (B5). Gated by
@@ -119,7 +128,6 @@ void system_cleanup(World *ecs, WaveSystem *waves) {
             }
 
             /* Death particles */
-            CSprite *spr = &ecs->sprites[i];
             for (int p = 0; p < 8; p++) {
                 Entity particle = ecs_create_entity(ecs);
                 if (particle == ECS_NULL_ENTITY) continue;

@@ -21,6 +21,8 @@ typedef enum {
     GE_ITEM_PICKUP,
     GE_POSITION_SAMPLE,
     GE_INPUT,
+    GE_POINTS,
+    GE_SHOP_PURCHASE,
     GE_COUNT
 } GameEventType;
 
@@ -29,6 +31,9 @@ typedef enum {
     GEK_PLAYER,
     GEK_ZOMBIE,
     GEK_BULLET,
+    GEK_SWORD,
+    GEK_GRENADE,
+    GEK_ROCKET,
     GEK_ITEM,
     GEK_PARTICLE,
     GEK_COUNT

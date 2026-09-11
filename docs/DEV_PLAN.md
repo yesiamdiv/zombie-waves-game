@@ -105,6 +105,9 @@ driver writes each frame (input injector calls).
   @00.400 key W down
   @01.200 key W up
   @02.000 click 1 up
+  @03.000 shop down       # open/close shop menu
+  @03.100 shop up
+  @03.200 weapon 2        # select sword (1=pistol,2=sword,3=grenade,4=launcher)
   @05.000 quit
   ```
 - Runner maps each timestamp to playback against a game clock; skipped-load
@@ -130,6 +133,8 @@ driver writes each frame (input injector calls).
 --events=FILE           gameplay event log path (default game_events.log)
 --seed=N                deterministic RNG seed
 --run-seconds=S         auto-quit after S seconds (headless friendly)
+--zombie-speed-mult=F   multiply zombie speed (default 1.0)
+--points=N              start with N shop points (debug/playtest)
 ```
 
 ---

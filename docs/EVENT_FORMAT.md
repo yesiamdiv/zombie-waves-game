@@ -32,7 +32,7 @@ Fields:
 | `sid`    | Monotonic serial; unique across every line of a run (entity ids under `e=` are recycled by the ECS, so use `sid` for per-line identity) |
 | `EVT`    | Event type (see below)                                |
 | `e`      | Entity id; `4294967295` (`ECS_NULL_ENTITY`) when unused |
-| `k`      | Entity kind: `- player zombie bullet item particle`   |
+| `k`      | Entity kind: `- player zombie bullet sword grenade rocket item particle`   |
 | `x`,`y`  | World-space position (only if non-zero)               |
 | `a`,`b`  | Generic float payloads (type-specific)                |
 | `ia`,`ib`| Generic int payloads (type-specific)                  |
@@ -41,16 +41,18 @@ Fields:
 
 | Name              | `k`       | Payload                                |
 |-------------------|-----------|----------------------------------------|
-| `PLAYER_SHOT`     | `bullet`  | `x,y` world pos; `a,b` aim direction   |
+| `PLAYER_SHOT`     | `bullet`/`sword`/`grenade`/`rocket` | `x,y` spawn pos; `a,b` aim direction (sword omits) |
 | `DAMAGE`          | `zombie`/`player` | `a` damage dealt; `b` health after; `ia` source entity |
 | `KILL`            | `zombie`/`player` | `x,y` death position; `ia` killer entity (`4294967295` if none) |
-| `ENTITY_SPAWN`    | `zombie`/`bullet`/`item`/`particle` | `x,y` spawn pos |
-| `ENTITY_DEATH`    | `-`       | `x,y` death pos                        |
+| `ENTITY_SPAWN`    | `zombie`/`bullet`/`sword`/`grenade`/`rocket`/`item`/`particle` | `x,y` spawn pos |
+| `ENTITY_DEATH`    | `-`/`grenade`/`rocket` | `x,y` death pos; `a` explosion radius (grenades) |
 | `WAVE_START`      | `-`       | `a` wave number; `b` zombies to spawn  |
 | `WAVE_END`        | `-`       | `a` wave number; `b` total kills so far |
 | `PLAYER_HEALTH`   | `player`  | `a` health before; `b` health after    |
 | `ITEM_PICKUP`     | `item`    | `a` item type (0=health 1=ammo 2=speed); `b` value |
-| `POSITION_SAMPLE` | `player`/`zombie`/`bullet`/`item` | `x,y` position; sampled ~5x/sec |
+| `POINTS`          | `player`  | `a` accumulated points; `b` points awarded this kill |
+| `SHOP_PURCHASE`   | `player`  | `a` weapon index (1=sword 2=grenade 3=launcher); `b` cost; `ia` pack quantity |
+| `POSITION_SAMPLE` | `player`/`zombie`/`bullet`/`grenade`/`rocket`/`item` | `x,y` position; sampled ~5x/sec |
 | `INPUT`           | `-`       | `a` scancode or mouse button; `b` down(1)/up(0); `ia=1` when injected by AI |
 
 ## Notes

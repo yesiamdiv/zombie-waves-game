@@ -21,14 +21,19 @@ src/
 │   ├── systems.h       All system declarations
 │   ├── movement.c      Applies velocity, world collision
 │   ├── collision.c     Entity-vs-entity collision (bullets, zombies)
-│   ├── player_input.c  Player movement + shooting
+│   ├── player_input.c  Player movement + shooting + weapon selection
 │   ├── zombie_ai.c     Chase / attack AI
 │   ├── bullets.c       Bullet lifetime + bounds
+│   ├── sword.c         Rotating sword (sword tag update)
+│   ├── grenades.c      Grenade flight + fuse detonation (AoE)
+│   ├── rockets.c       Launcher rocket flight + pierce + lifetime
 │   ├── particles.c     Particle update + fade
-│   └── render.c        Draws all sprites + health bars
+│   └── render.c        Draws all sprites + health bars + sword; cleanup
 ├── ui/
-│   ├── menu.h/c        Main menu, pause, game over screens
-│   └── hud.h/c         In-game HUD (health, wave, kills)
+│   ├── menu.h/c        Main menu, pause, game over, SHOP menu
+│   └── hud.h/c         In-game HUD (health, wave, kills, shop points, weapon)
+├── weapons/
+│   └── weapons.h/c     Player inventory + shop economy (points, purchases)
 └── items/
     └── items.h/c       Health, ammo, speed pickups
 ```
@@ -83,8 +88,34 @@ static inline CShield *ecs_get_shield(World *w, Entity e) {
 
 System execution order matters:
 ```
-player_input -> zombie_ai -> movement -> collision -> bullets -> particles -> cleanup
+player_input -> sword -> zombie_ai -> movement -> collision -> bullets -> grenades -> rockets -> particles -> cleanup
 ```
+
+## Weapon Shop (`src/weapons/weapons.h/c`)
+
+Killing zombies earns points (`POINTS_PER_KILL`, default 15). Press `B` in
+game to open the paused shop menu and spend them:
+
+| Row | Weapon        | Cost    | Notes                                          |
+|-----|---------------|---------|------------------------------------------------|
+| 1   | Pistol        | free    | Default; infinite ammo                         |
+| 2   | Sword         | 150     | Rotates around player while click held         |
+| 3   | Grenades x5   | 75      | AoE (radius 90, dmg 120); refill pack buys +5  |
+| 4   | Launcher      | 450     | Piercing rocket (dmg 120); starts +5 ammo      |
+| 5   | Launcher ammo | 150     | Refill pack buys +5 rockets                    |
+
+Controls: `W/S` navigate, `SPACE`/`Enter` buy & select, `B`/`Esc` close.
+`1-4` hot-swap weapons in-game (locked weapons show a hint message).
+
+The `PlayerInventory` struct holds the current weapon, per-weapon unlocked
+flags and ammunition, and the shop points balance. Economy functions live in
+`weapons.c` (`weapons_buy_*`, `weapons_award_kill`, `weapons_select`). Point
+and purchase events are emitted on the event bus (`GE_POINTS`,
+`GE_SHOP_PURCHASE`; see `docs/EVENT_FORMAT.md`).
+
+In headless/scripted runs, use `--points=<n>` to start with shop points and
+the script commands `@<t> shop down|up` / `@<t> weapon <1-4>` to exercise the
+shop and weapon switching.
 
 ## How to Swap Shapes for Textures
 

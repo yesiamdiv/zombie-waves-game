@@ -19,6 +19,8 @@ static const char *event_type_names[GE_COUNT] = {
     [GE_ITEM_PICKUP]     = "ITEM_PICKUP",
     [GE_POSITION_SAMPLE] = "POSITION_SAMPLE",
     [GE_INPUT]           = "INPUT",
+    [GE_POINTS]          = "POINTS",
+    [GE_SHOP_PURCHASE]   = "SHOP_PURCHASE",
 };
 
 static const char *event_kind_names[GEK_COUNT] = {
@@ -26,6 +28,9 @@ static const char *event_kind_names[GEK_COUNT] = {
     [GEK_PLAYER]   = "player",
     [GEK_ZOMBIE]   = "zombie",
     [GEK_BULLET]   = "bullet",
+    [GEK_SWORD]    = "sword",
+    [GEK_GRENADE]  = "grenade",
+    [GEK_ROCKET]   = "rocket",
     [GEK_ITEM]     = "item",
     [GEK_PARTICLE] = "particle",
 };
@@ -162,6 +167,10 @@ int event_bus_samples(EventBus *bus, void *ecs_ptr, float view_w, float view_h) 
             kind = GEK_ZOMBIE;
         } else if (ecs->component_masks[i] & (1u << COMP_BULLET_TAG)) {
             kind = GEK_BULLET;
+        } else if (ecs->component_masks[i] & (1u << COMP_GRENADE_TAG)) {
+            kind = GEK_GRENADE;
+        } else if (ecs->component_masks[i] & (1u << COMP_ROCKET_TAG)) {
+            kind = GEK_ROCKET;
         } else if (ecs->component_masks[i] & (1u << COMP_ITEM_TAG)) {
             kind = GEK_ITEM;
         }

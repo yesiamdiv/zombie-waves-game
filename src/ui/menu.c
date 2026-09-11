@@ -3,6 +3,15 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdarg.h>
+
+static void shop_set_message(ShopMenu *menu, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(menu->message, sizeof(menu->message), fmt, args);
+    va_end(args);
+    menu->msg_timer = 2.0f;
+}
 
 void menu_init(MainMenu *menu) {
     menu->selected_option = 0;
@@ -197,4 +206,194 @@ void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int
         draw_text_centered(renderer, font, "Press ENTER to return to menu",
                            screen_w * 0.5f, screen_h * 0.7f, prompt);
     }
+}
+
+/* ---------------------------------------------------------------- Shop --- */
+
+/* Shop rows: 0 Pistol | 1 Sword | 2 Grenades x5 | 3 Launcher | 4 Launcher
+ * Ammo x5 | 5 Close. */
+#define SHOP_OPTION_COUNT 6
+
+void shop_menu_init(ShopMenu *menu) {
+    menu->selected_option = 0;
+    menu->option_count = SHOP_OPTION_COUNT;
+    menu->msg_timer = 0;
+    menu->message[0] = '\0';
+}
+
+GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv) {
+    if (menu->msg_timer > 0) menu->msg_timer -= 1.0f / 60.0f;
+
+    if (input_key_pressed(input, SDL_SCANCODE_UP) || input_key_pressed(input, SDL_SCANCODE_W)) {
+        menu->selected_option--;
+        if (menu->selected_option < 0) menu->selected_option = menu->option_count - 1;
+    }
+    if (input_key_pressed(input, SDL_SCANCODE_DOWN) || input_key_pressed(input, SDL_SCANCODE_S)) {
+        menu->selected_option++;
+        if (menu->selected_option >= menu->option_count) menu->selected_option = 0;
+    }
+
+    /* Close on B or ESC. */
+    if (input_key_pressed(input, SDL_SCANCODE_B) ||
+        input_key_pressed(input, SDL_SCANCODE_ESCAPE)) {
+        return GAME_STATE_PLAYING;
+    }
+
+    if (input_key_pressed(input, SDL_SCANCODE_RETURN) ||
+        input_key_pressed(input, SDL_SCANCODE_SPACE)) {
+        switch (menu->selected_option) {
+            case 0: /* Pistol */
+                weapons_select(inv, WEAPON_PISTOL);
+                shop_set_message(menu, "Firearm selected: Pistol");
+                break;
+
+            case 1: /* Sword */
+                if (inv->unlocked[WEAPON_SWORD]) {
+                    weapons_select(inv, WEAPON_SWORD);
+                    shop_set_message(menu, "Sword selected (hold click to spin)");
+                } else if (weapons_buy_sword(inv)) {
+                    weapons_select(inv, WEAPON_SWORD);
+                    shop_set_message(menu, "Sword purchased (%d pts left)", inv->points);
+                } else {
+                    shop_set_message(menu, "Not enough points (need %d)", SWORD_COST);
+                }
+                break;
+
+            case 2: /* Grenades x5 */
+                if (weapons_buy_grenade_pack(inv)) {
+                    weapons_select(inv, WEAPON_GRENADE);
+                    shop_set_message(menu, "Grenades +%d (owned %d)", GRENADES_PER_PACK, inv->grenades);
+                } else {
+                    shop_set_message(menu, "Not enough points (need %d)", GRENADE_PACK_COST);
+                }
+                break;
+
+            case 3: /* Launcher */
+                if (inv->unlocked[WEAPON_LAUNCHER]) {
+                    weapons_select(inv, WEAPON_LAUNCHER);
+                    shop_set_message(menu, "Launcher selected (rockets: %d)", inv->launcher_ammo);
+                } else if (weapons_buy_launcher(inv)) {
+                    weapons_select(inv, WEAPON_LAUNCHER);
+                    shop_set_message(menu, "Launcher purchased! +%d starter rockets",
+                                     LAUNCHER_STARTER_ROCKETS);
+                } else {
+                    shop_set_message(menu, "Not enough points (need %d)", LAUNCHER_COST);
+                }
+                break;
+
+            case 4: /* Launcher ammo x5 */
+                if (!inv->unlocked[WEAPON_LAUNCHER]) {
+                    shop_set_message(menu, "Buy the launcher first");
+                } else if (weapons_buy_launcher_ammo(inv)) {
+                    shop_set_message(menu, "Rockets +%d (owned %d)", ROCKETS_PER_PACK, inv->launcher_ammo);
+                } else {
+                    shop_set_message(menu, "Not enough points (need %d)", LAUNCHER_AMMO_COST);
+                }
+                break;
+
+            case 5: /* Close */
+            default:
+                return GAME_STATE_PLAYING;
+        }
+    }
+
+    return GAME_STATE_SHOP;
+}
+
+void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventory *inv,
+                    int screen_w, int screen_h, TTF_Font *font) {
+    /* Dim overlay so the frozen world reads as "menu mode". */
+    SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.05f, 0.72f);
+    SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
+
+    SDL_FColor title_color = {1.0f, 0.85f, 0.2f, 1.0f};
+    draw_text_centered(renderer, font, "WEAPON SHOP",
+                       screen_w * 0.5f, screen_h * 0.12f, title_color);
+
+    char buf[192];
+    SDL_FColor pts = {0.6f, 1.0f, 0.4f, 1.0f};
+    snprintf(buf, sizeof(buf), "Points: %d", inv->points);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.22f, pts);
+
+    float row_y = screen_h * 0.30f;
+    const float row_h = 40.0f;
+
+    const char *rows[SHOP_OPTION_COUNT] = {
+        "Pistol",
+        "Sword",
+        "Grenades x5",
+        "Launcher",
+        "Launcher Ammo x5",
+        "Close Shop"
+    };
+
+    for (int i = 0; i < menu->option_count; i++) {
+        SDL_FColor opt_color;
+        if (i == menu->selected_option) {
+            opt_color = (SDL_FColor){1.0f, 1.0f, 0.3f, 1.0f};
+        } else {
+            opt_color = (SDL_FColor){0.6f, 0.6f, 0.65f, 0.85f};
+        }
+
+        char prefix[4] = "";
+        if (i == menu->selected_option) snprintf(prefix, sizeof(prefix), "> ");
+
+        char status[96] = "";
+        switch (i) {
+            case 0:
+                if (inv->current == WEAPON_PISTOL) snprintf(status, sizeof(status), " [active]");
+                break;
+            case 1:
+                if (inv->unlocked[WEAPON_SWORD]) {
+                    snprintf(status, sizeof(status), " [owned%s]",
+                             inv->current == WEAPON_SWORD ? ", active" : "");
+                } else {
+                    snprintf(status, sizeof(status), " [%d pts]", SWORD_COST);
+                }
+                break;
+            case 2:
+                if (inv->grenades > 0) {
+                    snprintf(status, sizeof(status), " [owned %d] (%d pts)",
+                             inv->grenades, GRENADE_PACK_COST);
+                } else {
+                    snprintf(status, sizeof(status), " [%d pts]", GRENADE_PACK_COST);
+                }
+                break;
+            case 3:
+                if (inv->unlocked[WEAPON_LAUNCHER]) {
+                    snprintf(status, sizeof(status), " [owned%s, %d rkt]",
+                             inv->current == WEAPON_LAUNCHER ? ", active" : "",
+                             inv->launcher_ammo);
+                } else {
+                    snprintf(status, sizeof(status), " [%d pts]", LAUNCHER_COST);
+                }
+                break;
+            case 4:
+                if (!inv->unlocked[WEAPON_LAUNCHER]) {
+                    snprintf(status, sizeof(status), " [need launcher]");
+                } else {
+                    snprintf(status, sizeof(status), " [owned %d] (%d pts)",
+                             inv->launcher_ammo, LAUNCHER_AMMO_COST);
+                }
+                break;
+            case 5:
+                break;
+        }
+
+        snprintf(buf, sizeof(buf), "%s%s%s", prefix, rows[i], status);
+        draw_text_centered(renderer, font, buf,
+                           screen_w * 0.5f, row_y + i * row_h, opt_color);
+    }
+
+    if (menu->msg_timer > 0) {
+        float blink = menu->msg_timer > 1.0f ? 1.0f : menu->msg_timer;
+        SDL_FColor msg_color = {1.0f, 0.9f, 0.4f, blink};
+        draw_text_centered(renderer, font, menu->message,
+                           screen_w * 0.5f, screen_h * 0.78f, msg_color);
+    }
+
+    SDL_FColor hint = {0.35f, 0.35f, 0.4f, 0.7f};
+    draw_text_centered(renderer, font,
+                       "ENTER/SPACE: Buy/Switch  |  W/S: Navigate  |  B/ESC: Close",
+                       screen_w * 0.5f, screen_h * 0.88f, hint);
 }

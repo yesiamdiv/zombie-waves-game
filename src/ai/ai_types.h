@@ -20,6 +20,8 @@ typedef struct {
     bool move_right;
     bool shoot;
     bool action;      /* generic confirm key (menus) */
+    bool use_shop;    /* toggle the weapon shop (B) */
+    int  weapon;      /* 0 = none, 1-4 = select weapon 1-4 */
     bool has_aim;     /* whether aim_x/aim_y are valid */
     float aim_x, aim_y; /* world-space aim target */
 } AIControls;

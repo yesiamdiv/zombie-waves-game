@@ -19,6 +19,7 @@
 #include "ui/menu.h"
 #include "ui/hud.h"
 #include "items/items.h"
+#include "weapons/weapons.h"
 #include "events/event_bus.h"
 #include "ai/ai_driver.h"
 
@@ -47,6 +48,11 @@ typedef struct {
     float run_seconds;
     double elapsed_sim;
 
+    /* Optional starting shop points, for exercising the shop / upgrade
+     * pipeline in scripted playtests (like --player-hp). Applied after the
+     * inventory is reset. */
+    int start_points;
+
     /* Optional starting HP as a 0-100 percentage of max, for exercising the
      * heal economy and the death/game-over path in scripted playtests (B5).
      * -1 means "spawn with full health". */
@@ -61,6 +67,8 @@ typedef struct {
     MainMenu main_menu;
     PauseMenu pause_menu;
     GameOverScreen gameover_screen;
+    ShopMenu shop_menu;
+    PlayerInventory inventory;
     HUD hud;
 
     /* AI driver */
@@ -119,6 +127,8 @@ static void reset_game(void) {
     ecs_init(&game.ecs);
     world_init(&game.world);
     waves_init(&game.waves, &game.world);
+    weapons_inventory_init(&game.inventory);
+    game.inventory.points = game.start_points > 0 ? game.start_points : 0;
 
     Vec2 spawn = world_get_spawn_point(&game.world);
     game.player_entity = create_player(&game.ecs, spawn);
@@ -246,12 +256,40 @@ static void update(float dt) {
                 break;
             }
 
+            /* Open the weapon shop (freezes gameplay until closed). */
+            if (input_key_pressed(&game.input, SDL_SCANCODE_B)) {
+                shop_menu_init(&game.shop_menu);
+                game.state = GAME_STATE_SHOP;
+                LOG_INFO("Shop opened");
+                break;
+            }
+
+            /* Weapon switching (1-4). Locked weapons are rejected with a hint. */
+            {
+                WeaponType w = WEAPON_PISTOL;
+                SDL_Scancode key = SDL_SCANCODE_UNKNOWN;
+                if (input_key_pressed(&game.input, SDL_SCANCODE_1)) { w = WEAPON_PISTOL;   key = SDL_SCANCODE_1; }
+                if (input_key_pressed(&game.input, SDL_SCANCODE_2)) { w = WEAPON_SWORD;    key = SDL_SCANCODE_2; }
+                if (input_key_pressed(&game.input, SDL_SCANCODE_3)) { w = WEAPON_GRENADE;  key = SDL_SCANCODE_3; }
+                if (input_key_pressed(&game.input, SDL_SCANCODE_4)) { w = WEAPON_LAUNCHER; key = SDL_SCANCODE_4; }
+                if (key != SDL_SCANCODE_UNKNOWN && w != game.inventory.current) {
+                    if (!weapons_select(&game.inventory, w)) {
+                        hud_show_message(&game.hud, "Weapon locked - buy it in the shop (B)", 2.0f);
+                    } else {
+                        LOG_INFO("Selected weapon: %s", weapons_name(game.inventory.current));
+                    }
+                }
+            }
+
             /* Systems update order */
-            system_player_input(&game.ecs, &game.input, &game.camera, dt);
+            system_player_input(&game.ecs, &game.input, &game.camera, dt, &game.inventory);
+            system_sword(&game.ecs, &game.input, &game.inventory, dt);
             system_zombie_ai(&game.ecs, dt);
             system_movement(&game.ecs, &game.world, dt);
             system_collision(&game.ecs, &game.world);
             system_bullets(&game.ecs, &game.world, dt);
+            system_grenades(&game.ecs, &game.input, &game.inventory, dt);
+            system_rockets(&game.ecs, &game.input, &game.inventory, &game.world, dt);
             system_animation(&game.ecs, dt);
             system_particles(&game.ecs, dt);
 
@@ -282,7 +320,7 @@ static void update(float dt) {
                 }
             }
 
-            system_cleanup(&game.ecs, &game.waves);
+            system_cleanup(&game.ecs, &game.waves, &game.inventory);
 
             if (game.player_entity != ECS_NULL_ENTITY &&
                 ecs_is_alive(&game.ecs, game.player_entity)) {
@@ -310,6 +348,18 @@ static void update(float dt) {
             } else if (next == GAME_STATE_MENU) {
                 game.state = GAME_STATE_MENU;
                 LOG_INFO("Quit to menu from pause");
+            }
+            if (game.input.quit_requested) {
+                game.running = false;
+            }
+            break;
+        }
+
+        case GAME_STATE_SHOP: {
+            GameState next = shop_menu_update(&game.shop_menu, &game.input, &game.inventory);
+            if (next == GAME_STATE_PLAYING) {
+                game.state = GAME_STATE_PLAYING;
+                LOG_INFO("Shop closed");
             }
             if (game.input.quit_requested) {
                 game.running = false;
@@ -348,13 +398,16 @@ static void render(void) {
 
         case GAME_STATE_PLAYING:
         case GAME_STATE_PAUSED:
+        case GAME_STATE_SHOP:
             world_draw(game.renderer, &game.world, &game.camera);
             system_render(&game.ecs, game.renderer, &game.camera);
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
-                     &game.input, win_w, win_h, game.font);
+                     &game.input, &game.inventory, win_w, win_h, game.font);
 
             if (game.state == GAME_STATE_PAUSED) {
                 pause_menu_draw(game.renderer, &game.pause_menu, win_w, win_h, game.font_large);
+            } else if (game.state == GAME_STATE_SHOP) {
+                shop_menu_draw(game.renderer, &game.shop_menu, &game.inventory, win_w, win_h, game.font_large);
             }
             break;
 
@@ -444,6 +497,9 @@ static void parse_args(int argc, char *argv[]) {
             srand((unsigned int)atoi(argv[++i]));
         } else if (strncmp(arg, "--run-seconds=", 14) == 0) {
             game.run_seconds = (float)atof(arg + 14);
+        } else if (strncmp(arg, "--points=", 9) == 0) {
+            game.start_points = atoi(arg + 9);
+            if (game.start_points < 0) game.start_points = 0;
         } else if (strncmp(arg, "--player-hp=", 12) == 0) {
             game.player_hp_pct = (float)atof(arg + 12);
             if (game.player_hp_pct < 0.0f) game.player_hp_pct = 0.0f;
@@ -465,6 +521,7 @@ static void parse_args(int argc, char *argv[]) {
             printf("%s\n", "  --seed=<n>            deterministic RNG seed");
             printf("%s\n", "  --run-seconds=<s>     auto-exit after s simulated seconds");
             printf("%s\n", "  --player-hp=<pct>     start player at pct%% HP (0-100; debug/playtest)");
+            printf("%s\n", "  --points=<n>          start with n shop points (debug/playtest)");
             printf("%s\n", "  --player-damage-mult=<f>  zombie melee damage multiplier (debug/playtest)");
             printf("%s\n", "  --zombie-speed-mult=<f>   zombie move-speed multiplier (debug/playtest)");
             exit(0);
@@ -533,6 +590,7 @@ int main(int argc, char *argv[]) {
             while (accumulator >= FIXED_STEP && game.running && !g_signal_stop) {
                 update_ai_view(FIXED_STEP);
                 step_frame(FIXED_STEP);
+                render();
                 accumulator -= FIXED_STEP;
 
                 game.elapsed_sim += FIXED_STEP;
@@ -546,6 +604,7 @@ int main(int argc, char *argv[]) {
 
             update_ai_view(dt);
             step_frame(dt);
+            render();
 
             game.elapsed_sim += dt;
             if (game.run_seconds > 0 && game.elapsed_sim >= game.run_seconds) {

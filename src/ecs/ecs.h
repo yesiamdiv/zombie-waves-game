@@ -26,6 +26,9 @@ enum {
     COMP_PLAYER_TAG,
     COMP_ZOMBIE_TAG,
     COMP_BULLET_TAG,
+    COMP_SWORD_TAG,
+    COMP_GRENADE_TAG,
+    COMP_ROCKET_TAG,
     COMP_ITEM_TAG,
     COMP_ANIMATION,
     COMP_PARTICLE,
@@ -85,6 +88,34 @@ typedef struct {
     Entity owner;
 } CBulletTag;
 
+/* Spinning sword: orbits the owner while the fire button is held. */
+typedef struct {
+    Entity owner;
+    float radius;        /* orbit radius around the owner */
+    float angle;         /* current angle (radians) */
+    float spin_speed;    /* radians / second */
+    float damage;
+    float hit_timer;     /* time until the next hit is allowed */
+    float hit_interval;
+} CSwordTag;
+
+/* Grenade: flies toward the aim point, then explodes in an area of effect. */
+typedef struct {
+    Entity owner;
+    float fuse;              /* seconds until detonation */
+    float max_fuse;
+    float explosion_radius;
+    float damage;
+} CGrenadeTag;
+
+/* Launcher rocket: flies straight, damages every zombie it passes through,
+ * and is destroyed once it leaves the world. */
+typedef struct {
+    Entity owner;
+    float damage;
+    float lifetime;
+} CRocketTag;
+
 typedef enum {
     ITEM_HEALTH,
     ITEM_AMMO,
@@ -129,6 +160,9 @@ typedef struct {
     CPlayerTag player_tags[ECS_MAX_ENTITIES];
     CZombieTag zombie_tags[ECS_MAX_ENTITIES];
     CBulletTag bullet_tags[ECS_MAX_ENTITIES];
+    CSwordTag  sword_tags[ECS_MAX_ENTITIES];
+    CGrenadeTag grenade_tags[ECS_MAX_ENTITIES];
+    CRocketTag rocket_tags[ECS_MAX_ENTITIES];
     CItemTag   item_tags[ECS_MAX_ENTITIES];
     CAnimation animations[ECS_MAX_ENTITIES];
     CParticle  particles[ECS_MAX_ENTITIES];
@@ -167,6 +201,15 @@ static inline CZombieTag *ecs_get_zombie_tag(World *w, Entity e) {
 }
 static inline CBulletTag *ecs_get_bullet_tag(World *w, Entity e) {
     return &w->bullet_tags[ecs_get_entity_index(w, e)];
+}
+static inline CSwordTag *ecs_get_sword_tag(World *w, Entity e) {
+    return &w->sword_tags[ecs_get_entity_index(w, e)];
+}
+static inline CGrenadeTag *ecs_get_grenade_tag(World *w, Entity e) {
+    return &w->grenade_tags[ecs_get_entity_index(w, e)];
+}
+static inline CRocketTag *ecs_get_rocket_tag(World *w, Entity e) {
+    return &w->rocket_tags[ecs_get_entity_index(w, e)];
 }
 static inline CItemTag *ecs_get_item_tag(World *w, Entity e) {
     return &w->item_tags[ecs_get_entity_index(w, e)];

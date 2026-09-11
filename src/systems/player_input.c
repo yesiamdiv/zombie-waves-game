@@ -10,7 +10,8 @@
 
 static float shoot_timer = 0;
 
-void system_player_input(World *ecs, InputState *input, Camera *cam, float dt) {
+void system_player_input(World *ecs, InputState *input, Camera *cam, float dt,
+                         const PlayerInventory *inv) {
     Entity player = ECS_NULL_ENTITY;
 
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -48,10 +49,13 @@ void system_player_input(World *ecs, InputState *input, Camera *cam, float dt) {
     input->mouse_world_x = mouse_world.x;
     input->mouse_world_y = mouse_world.y;
 
-    /* Shooting: fire while the button is held (human hold-to-fire and
-     * AI-driven) at the fire-rate cooldown. */
+    /* Shooting: the pistol fires while the button is held (human hold-to-fire
+     * and AI-driven) at the fire-rate cooldown. The other weapons handle their
+     * own trigger logic (sword spin, grenade throw, rocket volley). */
     shoot_timer -= dt;
-    if (input->mouse_buttons[0] && shoot_timer <= 0) {
+bool pistol_selected = (!inv) || (inv->unlocked[WEAPON_PISTOL] &&
+                                       inv->current == WEAPON_PISTOL);
+    if (pistol_selected && input->mouse_buttons[0] && shoot_timer <= 0) {
         shoot_timer = SHOOT_COOLDOWN;
 
         Vec2 dir = vec2_normalize(vec2_sub(mouse_world, pos->pos));
