@@ -77,6 +77,22 @@ int script_player_load(ScriptPlayer *sp, const char *path) {
                 action.type = SCRIPT_AIM;
                 action.fx = x;
                 action.fy = y;
+            } else if (strcmp(cmd, "shop") == 0) {
+                char state[8] = {0};
+                if (sscanf(s, "%lf %*s %7s", &t, state) < 2) {
+                    LOG_WARN("Script %s:%d: shop needs <down|up>", path, lineno);
+                    continue;
+                }
+                action.type = SCRIPT_SHOP;
+                action.arg2 = (strcmp(state, "down") == 0) ? 1 : 0;
+            } else if (strcmp(cmd, "weapon") == 0) {
+                int w = 0;
+                if (sscanf(s, "%lf %*s %d", &t, &w) < 2 || w < 1 || w > 4) {
+                    LOG_WARN("Script %s:%d: weapon needs 1-4", path, lineno);
+                    continue;
+                }
+                action.type = SCRIPT_WEAPON;
+                action.arg1 = w;
             } else if (strcmp(cmd, "quit") == 0) {
                 action.type = SCRIPT_QUIT;
             } else {
@@ -103,6 +119,8 @@ void script_player_reset(ScriptPlayer *sp) {
     memset(sp->keys, 0, sizeof(sp->keys));
     memset(sp->buttons, 0, sizeof(sp->buttons));
     sp->has_aim = false;
+    sp->shop_held = false;
+    sp->weapon = 0;
 }
 
 static void release_all(ScriptPlayer *sp) {
@@ -137,6 +155,12 @@ void script_player_update(ScriptPlayer *sp, double dt, AIControls *out) {
                 sp->aim = vec2(a->fx, a->fy);
                 sp->has_aim = true;
                 break;
+            case SCRIPT_SHOP:
+                sp->shop_held = a->arg2 != 0;
+                break;
+            case SCRIPT_WEAPON:
+                sp->weapon = a->arg1;
+                break;
             case SCRIPT_QUIT:
                 sp->quit_requested = true;
                 sp->done = true;
@@ -160,4 +184,6 @@ void script_player_update(ScriptPlayer *sp, double dt, AIControls *out) {
     out->has_aim     = sp->has_aim;
     out->aim_x       = sp->aim.x;
     out->aim_y       = sp->aim.y;
+    out->use_shop    = sp->shop_held;
+    out->weapon      = sp->weapon;
 }

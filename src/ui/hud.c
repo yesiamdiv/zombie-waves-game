@@ -90,7 +90,8 @@ static void draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
 }
 
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
-              InputState *input, int screen_w, int screen_h, TTF_Font *font) {
+              InputState *input, const PlayerInventory *inv,
+              int screen_w, int screen_h, TTF_Font *font) {
     char buf[128];
 
     /* Find player */
@@ -154,6 +155,25 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     snprintf(buf, sizeof(buf), "Score: %d", score);
     draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 45.0f, wave_color);
 
+    /* Points (shop currency) */
+    if (inv) {
+        SDL_FColor pts_color = {0.6f, 1.0f, 0.4f, 0.95f};
+        snprintf(buf, sizeof(buf), "Points: %d", inv->points);
+        draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 70.0f, pts_color);
+
+        /* Current weapon + consumable stocks */
+        char wbuf[96];
+        snprintf(wbuf, sizeof(wbuf), "Weapon: %s%s",
+                 weapons_name(inv->current),
+                 inv->current != WEAPON_PISTOL ? " [1-4 to switch]" : " [1-4 weapons]");
+        SDL_FColor wcol = {0.9f, 0.9f, 0.95f, 0.95f};
+        draw_text_right(renderer, font, wbuf, (float)screen_w - 20.0f, 95.0f, wcol);
+
+        snprintf(buf, sizeof(buf), "Grenades: %d | Rockets: %d",
+                 inv->grenades, inv->launcher_ammo);
+        draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 120.0f, wcol);
+    }
+
     /* Crosshair at the actual mouse position (tracks the cursor exactly). */
     float cx = input ? input->mouse_x : (float)screen_w * 0.5f;
     float cy = input ? input->mouse_y : (float)screen_h * 0.5f;
@@ -179,7 +199,8 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
                            (float)screen_w * 0.5f, (float)screen_h * 0.3f, msg_color);
     }
 
-    /* Pause hint */
+    /* Pause / shop hints */
     SDL_FColor pause_hint = {0.3f, 0.3f, 0.35f, 0.5f};
-    draw_text(renderer, font, "ESC: Pause", 20.0f, (float)screen_h - 30.0f, pause_hint);
+    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-4: Weapon",
+              20.0f, (float)screen_h - 30.0f, pause_hint);
 }

@@ -12,6 +12,8 @@ typedef enum {
     SCRIPT_KEY,
     SCRIPT_CLICK,
     SCRIPT_AIM,
+    SCRIPT_SHOP,
+    SCRIPT_WEAPON,
     SCRIPT_QUIT,
 } ScriptActionType;
 
@@ -36,6 +38,8 @@ typedef struct {
     bool buttons[5];
     Vec2 aim;
     bool has_aim;
+    bool shop_held;
+    int  weapon;   /* 1-4 = keep selecting this weapon, 0 = none */
 } ScriptPlayer;
 
 /* Parses a script file. Returns 0 on success. */

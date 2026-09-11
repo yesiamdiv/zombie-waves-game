@@ -75,7 +75,16 @@ void ai_apply_controls(InputState *input, const AIControls *controls, const Came
     input_inject_key(input, SDL_SCANCODE_A, controls->move_left);
     input_inject_key(input, SDL_SCANCODE_D, controls->move_right);
     input_inject_key(input, SDL_SCANCODE_SPACE, space);
+    input_inject_key(input, SDL_SCANCODE_B, controls->use_shop);
     input_inject_click(input, 0, controls->shoot);
+
+    /* Weapon selection: re-press 1-4 every frame the driver asks for it
+     * (idempotent - selecting the same weapon again is a no-op). */
+    if (controls->weapon >= 1 && controls->weapon <= 4) {
+        SDL_Scancode sel = SDL_SCANCODE_1 + (controls->weapon - 1);
+        input_inject_key(input, sel, true);
+        input_inject_key(input, sel, false);
+    }
 
     if (controls->has_aim && cam) {
         Vec2 screen = camera_world_to_screen((Camera *)cam, vec2(controls->aim_x, controls->aim_y));
