@@ -26,6 +26,9 @@
 #define WINDOW_W 1280
 #define WINDOW_H 720
 #define FIXED_STEP (1.0f / 120.0f)
+/* Fallback frame budget (ms) when the renderer cannot do vsync: caps the
+ * windowed loop so it never pegs a core flat. */
+#define FRAME_BUDGET_MS 16.0
 
 /* Zombie melee damage multiplier; 1.0 is normal play. Raise it (or lower player
  * HP) in scripted playtests to deterministically force damage, heal seeking,
@@ -45,6 +48,7 @@ typedef struct {
     bool running;
 
     bool headless;
+    bool vsync_active;
     float run_seconds;
     double elapsed_sim;
 
@@ -188,6 +192,20 @@ static bool init(void) {
         if (!game.renderer) {
             LOG_FATAL("SDL_CreateRenderer failed: %s", SDL_GetError());
             return false;
+        }
+
+        /* Synchronize present with the display refresh. Without vsync (and no
+         * frame cap) the render loop spins a core flat at 100% CPU, which
+         * starves the desktop compositor's input dispatch under Wayland - the
+         * OS cursor freezes while movement keys are held (playtest finding).
+         * If vsync is unsupported, fall back to a delay-based frame cap. */
+        if (SDL_SetRenderVSync(game.renderer, 1)) {
+            game.vsync_active = true;
+            LOG_INFO("Renderer vsync enabled");
+        } else {
+            game.vsync_active = false;
+            LOG_WARN("Renderer vsync unavailable (%s); using 60 FPS frame cap",
+                     SDL_GetError());
         }
 
         game.font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18);
@@ -605,6 +623,16 @@ int main(int argc, char *argv[]) {
             update_ai_view(dt);
             step_frame(dt);
             render();
+
+            if (!game.vsync_active) {
+                /* No vsync: cap the frame rate so a single rendering loop
+                 * cannot peg the CPU and stall compositor input. */
+                Uint64 now = SDL_GetPerformanceCounter();
+                double frame_ms = (double)(now - current_time) * 1000.0 / (double)freq;
+                if (frame_ms < FRAME_BUDGET_MS) {
+                    SDL_Delay((Uint32)(FRAME_BUDGET_MS - frame_ms));
+                }
+            }
 
             game.elapsed_sim += dt;
             if (game.run_seconds > 0 && game.elapsed_sim >= game.run_seconds) {
