@@ -12,6 +12,11 @@
 #include "events/event_bus.h"
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
+#include "config.h"
+
+/* Normal-play default; the game binary overrides via debug flags. */
+float g_zombie_damage_mult = 1.0f;
+float g_zombie_speed_mult = 1.0f;
 
 static int tests_passed = 0;
 static int tests_failed = 0;
@@ -145,6 +150,10 @@ static void test_wave_system(void) {
     /* Spawn a zombie directly and test bullet damage */
     Entity zombie = waves_spawn_zombie(&ecs, vec2(500, 500));
     CHECK(zombie != ECS_NULL_ENTITY);
+
+    /* Zombies must sense the player from anywhere in the 400-600 spawn ring,
+     * otherwise the last zombie can soft-lock the wave (playtest B1). */
+    CHECK(ecs_get_zombie_tag(&ecs, zombie)->detection_range >= 600.0f);
     float health_before = ecs_get_health(&ecs, zombie)->current;
 
     Entity bullet = spawn_test_bullet(&ecs, vec2(500, 500), player);
@@ -305,6 +314,43 @@ static void test_script_aim_shot(void) {
     remove(quit_path);
 }
 
+static void test_wave_timeout(void) {
+    LOG_INFO("--- Test: Wave timeout force-end ---");
+    World ecs;
+    GameWorld world;
+    WaveSystem waves;
+
+    ecs_init(&ecs);
+    world_init(&world);
+    waves_init(&waves, &world);
+
+    Entity player = spawn_player(&ecs, vec2(world.world_pixel_w * 0.5f,
+                                            world.world_pixel_h * 0.5f));
+    CHECK(player != ECS_NULL_ENTITY);
+
+    /* A single zombie that is never killed (no collision/cleanup run) must
+     * not stall the wave forever: the 60s WAVE_MAX_DURATION safety net
+     * force-ends it (playtest B1). */
+    waves_start_next_wave(&waves);
+    waves.zombies_to_spawn = 1;
+    waves.spawn_interval = 0.01f;
+
+    float dt = 1.0f / 120.0f;
+    int frames_ran = 0;
+    int max_frames = (int)(75.0f / dt);
+    while (!waves.between_waves && frames_ran < max_frames) {
+        waves_update(&waves, &ecs, &world, dt);
+        frames_ran++;
+    }
+
+    CHECK(waves.between_waves);
+    CHECK(waves.wave_active == false);
+    CHECK(waves.zombies_alive == 0);
+    CHECK(waves.total_kills == 0);          /* nothing was actually killed */
+    CHECK(frames_ran < max_frames);         /* ended before the hard cap */
+    CHECK(waves.wave_elapsed > 59.0f);      /* took ~the 60s timeout */
+}
+
 static void test_event_stream(void) {
     LOG_INFO("--- Test: Gameplay event stream ---");
     const char *path = "/tmp/opencode/test_events.log";
@@ -361,6 +407,7 @@ static void test_event_stream(void) {
     FILE *f = fopen(path, "r");
     CHECK(f != NULL);
     bool saw_wave_start = false, saw_spawn = false, saw_kill = false, saw_wave_end = false;
+    bool saw_sid = false;
     size_t total = 0;
     if (f) {
         char line[512];
@@ -370,6 +417,7 @@ static void test_event_stream(void) {
             if (strstr(line, "EVT=ENTITY_SPAWN")) saw_spawn = true;
             if (strstr(line, "EVT=KILL")) saw_kill = true;
             if (strstr(line, "EVT=WAVE_END")) saw_wave_end = true;
+            if (strstr(line, "sid=")) saw_sid = true;
         }
         fclose(f);
     }
@@ -378,6 +426,7 @@ static void test_event_stream(void) {
     CHECK(saw_spawn);
     CHECK(saw_kill);
     CHECK(saw_wave_end);
+    CHECK(saw_sid);
 
     remove(path);
 }
@@ -449,6 +498,7 @@ int tests_run_all(void) {
     test_script_aim_shot();
     test_event_stream();
     test_deterministic_seed();
+    test_wave_timeout();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

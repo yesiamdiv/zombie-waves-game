@@ -1,10 +1,20 @@
 #include "world/waves.h"
 #include "events/event_bus.h"
+#include "config.h"
 #include "core/log.h"
 #include <stdlib.h>
 
 #define SPAWN_RING_MIN 400.0f
 #define SPAWN_RING_MAX 600.0f
+
+/* Zombies must be able to sense the player from anywhere in the spawn ring,
+ * otherwise a spawn at ring-edge leaves them idle forever and the wave
+ * soft-locks (playtest finding B1). */
+#define ZOMBIE_DETECTION_RANGE (SPAWN_RING_MAX + 100.0f)
+
+/* Safety net: if a wave is still "in progress" after this many seconds it is
+ * force-completed so a stuck/unkillable zombie can never soft-lock the game. */
+#define WAVE_MAX_DURATION 60.0f
 
 void waves_init(WaveSystem *ws, GameWorld *world) {
     memset(ws, 0, sizeof(WaveSystem));
@@ -48,6 +58,7 @@ void waves_start_next_wave(WaveSystem *ws) {
     ws->wave_active = true;
     ws->between_waves = false;
     ws->difficulty_multiplier = 1.0f + (ws->wave_number - 1) * 0.15f;
+    ws->wave_elapsed = 0;
 
     LOG_INFO("=== WAVE %d STARTED === (%d zombies, interval: %.2fs, difficulty: %.2f)",
              ws->wave_number, ws->zombies_to_spawn, ws->spawn_interval, ws->difficulty_multiplier);
@@ -115,7 +126,7 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
         .state = ZOMBIE_CHASE,
         .attack_timer = 0,
         .attack_cooldown = 1.0f,
-        .detection_range = 400.0f,
+        .detection_range = ZOMBIE_DETECTION_RANGE,
         .attack_range = 20.0f,
         .hurt_timer = 0
     };
@@ -152,6 +163,23 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world, float dt) {
         return;
     }
 
+    ws->wave_elapsed += dt;
+
+    /* Soft-lock safety net: if all zombies are spawned but some are still
+     * alive well past the expected clear time, force-end the wave so a
+     * stuck/unkillable zombie can never stall the game forever (B1). */
+    if (ws->wave_elapsed >= WAVE_MAX_DURATION &&
+        ws->zombies_spawned >= ws->zombies_to_spawn && ws->zombies_alive > 0) {
+        LOG_WARN("Wave %d timed out after %.0fs; force-ending (%d zombies)",
+                 ws->wave_number, ws->wave_elapsed, ws->zombies_alive);
+        for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+            if (ecs->alive[i] && (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG))) {
+                ecs_destroy_entity(ecs, i);
+            }
+        }
+        ws->zombies_alive = 0;
+    }
+
     /* Spawn zombies */
     if (ws->zombies_spawned < ws->zombies_to_spawn) {
         ws->spawn_timer += dt;
@@ -176,6 +204,7 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world, float dt) {
                 h->current = h->max;
                 CVelocity *v = ecs_get_velocity(ecs, z);
                 v->max_speed *= ws->difficulty_multiplier;
+                v->max_speed *= g_zombie_speed_mult;
 
                 ws->zombies_spawned++;
                 ws->zombies_alive++;

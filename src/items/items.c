@@ -59,6 +59,16 @@ void items_spawn_random(World *ecs, Vec2 pos) {
     items_spawn(ecs, pos, (ItemType)type);
 }
 
+int items_count_alive(World *ecs) {
+    int count = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs->alive[i] && (ecs->component_masks[i] & (1u << COMP_ITEM_TAG))) {
+            count++;
+        }
+    }
+    return count;
+}
+
 void items_check_pickup(World *ecs, Entity player) {
     Vec2 player_pos = ecs_get_position(ecs, player)->pos;
     float pickup_range = 20.0f;

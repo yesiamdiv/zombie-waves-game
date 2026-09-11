@@ -52,7 +52,7 @@ EventBus *event_bus_init(const char *path) {
             LOG_ERROR("Failed to open event log '%s'", path);
         } else {
             fprintf(bus->file, "# open-world-zombie-waves gameplay event log\n");
-            fprintf(bus->file, "# format: t=<seconds> f=<frame> EVT=<type> e=<entity> k=<kind> [payload]\n");
+            fprintf(bus->file, "# format: t=<seconds> f=<frame> sid=<serial> EVT=<type> e=<entity> k=<kind> [payload]\n");
             fprintf(bus->file, "# see docs/EVENT_FORMAT.md\n");
         }
     } else {
@@ -99,7 +99,8 @@ void event_emit(EventBus *bus, GameEventType type, Entity entity, EventKind kind
         .kind = kind,
         .x = x, .y = y,
         .a = a, .b = b,
-        .ia = ia, .ib = ib
+        .ia = ia, .ib = ib,
+        .sid = bus->next_sid++
     };
     event_bus_push(bus, &ev);
 }
@@ -112,8 +113,9 @@ void event_bus_flush(EventBus *bus) {
         const char *tn = ev->type < GE_COUNT ? event_type_names[ev->type] : "UNKNOWN";
         const char *kn = ev->kind < GEK_COUNT ? event_kind_names[ev->kind] : "-";
 
-        fprintf(bus->file, "t=%.3f f=%llu EVT=%s e=%u k=%s",
-                ev->time_sec, (unsigned long long)ev->frame, tn, ev->entity, kn);
+        fprintf(bus->file, "t=%.3f f=%llu sid=%llu EVT=%s e=%u k=%s",
+                ev->time_sec, (unsigned long long)ev->frame,
+                (unsigned long long)ev->sid, tn, ev->entity, kn);
 
         if (ev->x != 0.0f || ev->y != 0.0f)
             fprintf(bus->file, " x=%.1f y=%.1f", ev->x, ev->y);

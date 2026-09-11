@@ -1,5 +1,6 @@
 #include "systems/systems.h"
 #include "events/event_bus.h"
+#include "items/items.h"
 #include <stdlib.h>
 
 void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
@@ -108,6 +109,13 @@ void system_cleanup(World *ecs, WaveSystem *waves) {
                        0, 0, 0, 0);
             if (waves) {
                 waves_on_zombie_killed(waves);
+            }
+
+            /* Drop a pickup at the kill site (near the action) so the heal
+             * economy is actually reachable by the bot/player (B5). Gated by
+             * the live-item cap so long survival runs stay bounded (B6). */
+            if ((rand() % 100) < 40 && items_count_alive(ecs) < MAX_ALIVE_ITEMS) {
+                items_spawn_random(ecs, pos->pos);
             }
 
             /* Death particles */

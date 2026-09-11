@@ -5,9 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
 
 #include "core/log.h"
 #include "core/input.h"
+#include "config.h"
 #include "ecs/ecs.h"
 #include "graphics/sprite.h"
 #include "world/world.h"
@@ -24,6 +26,16 @@
 #define WINDOW_H 720
 #define FIXED_STEP (1.0f / 120.0f)
 
+/* Zombie melee damage multiplier; 1.0 is normal play. Raise it (or lower player
+ * HP) in scripted playtests to deterministically force damage, heal seeking,
+ * and the death/game-over path (B5). */
+float g_zombie_damage_mult = 1.0f;
+
+/* Zombie movement-speed multiplier; 1.0 is normal play. Raise it so the horde
+ * closes to melee even against an elite bot, making the melee->death->game-over
+ * pipeline reachable in scripted playtests. */
+float g_zombie_speed_mult = 1.0f;
+
 typedef struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
@@ -34,6 +46,11 @@ typedef struct {
     bool headless;
     float run_seconds;
     double elapsed_sim;
+
+    /* Optional starting HP as a 0-100 percentage of max, for exercising the
+     * heal economy and the death/game-over path in scripted playtests (B5).
+     * -1 means "spawn with full health". */
+    float player_hp_pct;
 
     GameState state;
     InputState input;
@@ -58,7 +75,17 @@ typedef struct {
     const char *event_log_path;
 } Game;
 
-static Game game = {0};
+/* Defaults to full-health start; -1 disables the HP override. */
+static Game game = {.player_hp_pct = -1.0f};
+
+/* Set by the SIGINT/SIGTERM handler so headless runs can be stopped cleanly
+ * (playtest finding B3). */
+static volatile sig_atomic_t g_signal_stop = 0;
+
+static void on_sigint(int sig) {
+    (void)sig;
+    g_signal_stop = 1;
+}
 
 static Entity create_player(World *ecs, Vec2 pos) {
     Entity e = ecs_create_entity(ecs);
@@ -95,6 +122,14 @@ static void reset_game(void) {
 
     Vec2 spawn = world_get_spawn_point(&game.world);
     game.player_entity = create_player(&game.ecs, spawn);
+
+    if (game.player_hp_pct >= 0.0f) {
+        CHealth *hp = ecs_get_health(&game.ecs, game.player_entity);
+        hp->current = hp->max * (game.player_hp_pct / 100.0f);
+        if (hp->current <= 0.0f) hp->current = 1.0f;
+        LOG_INFO("Player HP overridden to %.0f/%.0f (%.0f%%)",
+                 hp->current, hp->max, game.player_hp_pct);
+    }
 
     camera_set_position(&game.camera, spawn);
 
@@ -236,7 +271,8 @@ static void update(float dt) {
             }
 
             game.item_spawn_timer += dt;
-            if (game.item_spawn_timer > 15.0f) {
+            if (game.item_spawn_timer > 15.0f &&
+                items_count_alive(&game.ecs) < MAX_ALIVE_ITEMS) {
                 game.item_spawn_timer = 0;
                 Vec2 item_pos;
                 item_pos.x = 200.0f + (float)(rand() % (int)(game.world.world_pixel_w - 400));
@@ -371,6 +407,8 @@ static void update_ai_view(float dt) {
 }
 
 static void parse_args(int argc, char *argv[]) {
+    bool ai_script_requested = false;
+
     for (int i = 1; i < argc; i++) {
         const char *arg = argv[i];
 
@@ -381,15 +419,10 @@ static void parse_args(int argc, char *argv[]) {
             if (strcmp(mode, "bot") == 0) {
                 ai_driver_set_bot(&game.ai);
             } else if (strcmp(mode, "script") == 0) {
-                if (i + 1 < argc && strncmp(argv[i + 1], "--", 2) != 0) {
-                    const char *path = argv[++i];
-                    if (ai_driver_load_script(&game.ai, path) != 0) {
-                        LOG_WARN("Could not load script '%s'; falling back to no AI", path);
-                        game.ai.mode = AI_MODE_NONE;
-                    }
-                } else {
-                    LOG_WARN("--ai=script requires a script path");
-                }
+                /* Decoupled from the script path so options can appear in
+                 * any order (playtest finding B2). The actual path arrives
+                 * via --script <file> or a trailing bare argument. */
+                ai_script_requested = true;
             } else if (strcmp(mode, "none") == 0) {
                 game.ai.mode = AI_MODE_NONE;
             } else {
@@ -411,6 +444,18 @@ static void parse_args(int argc, char *argv[]) {
             srand((unsigned int)atoi(argv[++i]));
         } else if (strncmp(arg, "--run-seconds=", 14) == 0) {
             game.run_seconds = (float)atof(arg + 14);
+        } else if (strncmp(arg, "--player-hp=", 12) == 0) {
+            game.player_hp_pct = (float)atof(arg + 12);
+            if (game.player_hp_pct < 0.0f) game.player_hp_pct = 0.0f;
+            if (game.player_hp_pct > 100.0f) game.player_hp_pct = 100.0f;
+        } else if (strncmp(arg, "--player-damage-mult=", 21) == 0) {
+            float m = (float)atof(arg + 21);
+            if (m < 0.0f) m = 0.0f;
+            g_zombie_damage_mult = m;
+        } else if (strncmp(arg, "--zombie-speed-mult=", 20) == 0) {
+            float m = (float)atof(arg + 20);
+            if (m < 0.0f) m = 0.0f;
+            g_zombie_speed_mult = m;
         } else if (strcmp(arg, "--help") == 0) {
             printf("%s\n", "Usage: open_world_zombie_waves [options]");
             printf("%s\n", "  --headless            run with no window/renderer (fast, deterministic)");
@@ -419,10 +464,26 @@ static void parse_args(int argc, char *argv[]) {
             printf("%s\n", "  --events=<file>       gameplay event log path (default game_events.log)");
             printf("%s\n", "  --seed=<n>            deterministic RNG seed");
             printf("%s\n", "  --run-seconds=<s>     auto-exit after s simulated seconds");
+            printf("%s\n", "  --player-hp=<pct>     start player at pct%% HP (0-100; debug/playtest)");
+            printf("%s\n", "  --player-damage-mult=<f>  zombie melee damage multiplier (debug/playtest)");
+            printf("%s\n", "  --zombie-speed-mult=<f>   zombie move-speed multiplier (debug/playtest)");
             exit(0);
+        } else if (ai_script_requested && game.ai.mode != AI_MODE_SCRIPT &&
+                   arg[0] != '-') {
+            /* Bare trailing path accepted when script mode was requested and
+             * no script has been bound yet (order-independent). */
+            if (ai_driver_load_script(&game.ai, arg) != 0) {
+                LOG_WARN("Could not load script '%s'; falling back to no AI", arg);
+                game.ai.mode = AI_MODE_NONE;
+            }
         } else {
             LOG_WARN("Unknown argument: %s", arg);
         }
+    }
+
+    if (ai_script_requested && game.ai.mode != AI_MODE_SCRIPT) {
+        LOG_WARN("--ai=script requested but no script could be loaded; running with no AI");
+        game.ai.mode = AI_MODE_NONE;
     }
 }
 
@@ -435,6 +496,10 @@ int main(int argc, char *argv[]) {
     LOG_INFO("========================================");
 
     ai_driver_init(&game.ai);
+
+    signal(SIGINT, on_sigint);
+    signal(SIGTERM, on_sigint);
+
     parse_args(argc, argv);
 
     if (!game.event_log_path) game.event_log_path = "game_events.log";
@@ -456,7 +521,7 @@ int main(int argc, char *argv[]) {
     Uint64 freq = SDL_GetPerformanceFrequency();
     double accumulator = 0.0;
 
-    while (game.running) {
+    while (game.running && !g_signal_stop) {
         Uint64 current_time = SDL_GetPerformanceCounter();
         float frame_dt = (float)(current_time - last_time) / (float)freq;
         last_time = current_time;
@@ -465,7 +530,7 @@ int main(int argc, char *argv[]) {
         if (game.headless) {
             /* Fixed-timestep headless simulation, as fast as possible */
             accumulator += frame_dt;
-            while (accumulator >= FIXED_STEP && game.running) {
+            while (accumulator >= FIXED_STEP && game.running && !g_signal_stop) {
                 update_ai_view(FIXED_STEP);
                 step_frame(FIXED_STEP);
                 accumulator -= FIXED_STEP;
@@ -487,6 +552,10 @@ int main(int argc, char *argv[]) {
                 game.running = false;
             }
         }
+    }
+
+    if (g_signal_stop) {
+        LOG_INFO("Interrupt received; shutting down cleanly");
     }
 
     shutdown();

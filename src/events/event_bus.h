@@ -43,6 +43,7 @@ typedef struct {
     float x, y;       /* position (world) */
     float a, b;       /* generic float payloads */
     int ia, ib;       /* generic int payloads */
+    Uint64 sid;       /* monotonic serial, unique per event line */
 } GameEvent;
 
 typedef struct {
@@ -55,6 +56,7 @@ typedef struct {
     float pos_sample_interval;
     float pos_sample_timer;
     double start_wall_time;
+    Uint64 next_sid;
 } EventBus;
 
 /* The event bus is a process-global singleton. It is write-only during

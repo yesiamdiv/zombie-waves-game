@@ -1,5 +1,6 @@
 #include "systems/systems.h"
 #include "events/event_bus.h"
+#include "config.h"
 #include "core/log.h"
 
 #define ZOMBIE_ATTACK_DAMAGE 10.0f
@@ -67,7 +68,8 @@ void system_zombie_ai(World *ecs, float dt) {
                             if (ecs_has_component(ecs, j, COMP_HEALTH)) {
                                 CHealth *hp = ecs_get_health(ecs, j);
                                 float prev = hp->current;
-                                hp->current = prev - ZOMBIE_ATTACK_DAMAGE;
+                                float dmg = ZOMBIE_ATTACK_DAMAGE * g_zombie_damage_mult;
+                                hp->current = prev - dmg;
                                 LOG_DEBUG("Zombie hit player! Health: %.0f",
                                          hp->current);
                                 event_emit(g_events, GE_PLAYER_HEALTH, j, GEK_PLAYER,
@@ -75,7 +77,7 @@ void system_zombie_ai(World *ecs, float dt) {
                                            hp->current, hp->max, (int)prev, 0);
                                 event_emit(g_events, GE_DAMAGE, j, GEK_PLAYER,
                                            ecs->positions[j].pos.x, ecs->positions[j].pos.y,
-                                           ZOMBIE_ATTACK_DAMAGE, hp->current > 0 ? hp->current : 0,
+                                           dmg, hp->current > 0 ? hp->current : 0,
                                            (int)prev, i);
                             }
                             break;

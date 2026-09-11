@@ -15,6 +15,7 @@ typedef struct {
     float spawn_interval;
     float wave_cooldown;
     float wave_cooldown_timer;
+    float wave_elapsed;        /* seconds since the current wave started */
     bool wave_active;
     bool between_waves;
     int total_kills;
