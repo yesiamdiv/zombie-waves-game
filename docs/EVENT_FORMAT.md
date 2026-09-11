@@ -48,7 +48,7 @@ Fields:
 | `ENTITY_DEATH`    | `-`       | `x,y` death pos                        |
 | `WAVE_START`      | `-`       | `a` wave number; `b` zombies to spawn  |
 | `WAVE_END`        | `-`       | `a` wave number; `b` total kills so far |
-| `PLAYER_HEALTH`   | `player`  | `a` health before; `b` health after    |
+| `PLAYER_HEALTH`   | `player`  | `a` health after the change; `b` max health; `ia` health before the change. Emitted on zombie melee damage (`zombie_ai`) and on `ITEM_HEALTH` pickup heal (`items`) |
 | `ITEM_PICKUP`     | `item`    | `a` item type (0=health 1=ammo 2=speed); `b` value |
 | `POSITION_SAMPLE` | `player`/`zombie`/`bullet`/`item` | `x,y` position; sampled ~5x/sec |
 | `INPUT`           | `-`       | `a` scancode or mouse button; `b` down(1)/up(0); `ia=1` when injected by AI |

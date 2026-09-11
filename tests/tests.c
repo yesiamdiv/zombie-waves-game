@@ -179,6 +179,12 @@ static void test_wave_system(void) {
 
 static void test_items(void) {
     LOG_INFO("--- Test: Items ---");
+    const char *path = "/tmp/opencode/test_items_events.log";
+    remove(path);
+
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+
     World ecs;
     ecs_init(&ecs);
 
@@ -195,6 +201,35 @@ static void test_items(void) {
     items_check_pickup(&ecs, player);
     CHECK(!ecs_is_alive(&ecs, medkit));
     CHECK(ecs_get_health(&ecs, player)->current > 100.0f);
+
+    event_bus_flush(bus);
+
+    /* Heal uptake must be visible in the event log (QA B5 nit): the pickup
+     * emits both ITEM_PICKUP and PLAYER_HEALTH with a=hp after, b=max,
+     * ia=hp before. */
+    FILE *f = fopen(path, "r");
+    CHECK(f != NULL);
+    bool saw_pickup = false, saw_health = false;
+    char health_line[512] = "";
+    if (f) {
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            if (strstr(line, "EVT=ITEM_PICKUP")) saw_pickup = true;
+            if (strstr(line, "EVT=PLAYER_HEALTH")) {
+                saw_health = true;
+                strcpy(health_line, line);
+            }
+        }
+        fclose(f);
+    }
+    CHECK(saw_pickup);
+    CHECK(saw_health);
+    CHECK(strstr(health_line, "a=130.00") != NULL);  /* 100 + 30 */
+    CHECK(strstr(health_line, "b=200.00") != NULL);  /* max */
+    CHECK(strstr(health_line, "ia=100") != NULL);    /* before */
+
+    event_bus_shutdown(bus);
+    remove(path);
 }
 
 static void test_entity_limit(void) {

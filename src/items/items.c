@@ -88,8 +88,14 @@ void items_check_pickup(World *ecs, Entity player) {
                 case ITEM_HEALTH:
                     if (ecs_has_component(ecs, player, COMP_HEALTH)) {
                         CHealth *hp = ecs_get_health(ecs, player);
+                        float prev = hp->current;
                         hp->current = hp->current + item->value;
                         if (hp->current > hp->max) hp->current = hp->max;
+                        /* Same payload shape as the melee emitter in
+                         * zombie_ai.c: a=hp after, b=max, ia=hp before. */
+                        event_emit(g_events, GE_PLAYER_HEALTH, player, GEK_PLAYER,
+                                   player_pos.x, player_pos.y,
+                                   hp->current, hp->max, (int)prev, 0);
                     }
                     break;
 
