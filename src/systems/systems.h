@@ -8,6 +8,7 @@
 #include "world/waves.h"
 #include "weapons/weapons.h"
 #include "players.h"
+#include "net/net_mirror.h"
 #include <SDL3/SDL.h>
 
 /* Movement system - applies velocity to positions, respects world bounds */
@@ -41,6 +42,11 @@ void system_particles(World *ecs, float dt);
 
 /* Render system - draws all visible sprites */
 void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam);
+
+/* Render-only net client: draw the interpolated snapshot mirror. `render_time`
+ * is the local render clock used to blend the mirror's snapshot pair. */
+void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
+                          const NetMirror *mirror, float render_time);
 
 /* Multiplayer-only: draw the color-coded spawn beacons for every in-use
  * player slot at `slot->beacon_pos` (the respawn anchor in TDM). */

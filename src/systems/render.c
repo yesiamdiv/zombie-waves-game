@@ -1,4 +1,5 @@
 #include "systems/systems.h"
+#include "net/net_mirror.h"
 #include "events/event_bus.h"
 #include "items/items.h"
 #include <stdlib.h>
@@ -76,6 +77,84 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
                 SDL_FRect fill = {bar_x, bar_y, bar_w * ratio, bar_h};
                 SDL_RenderFillRect(renderer, &fill);
             }
+        }
+    }
+}
+
+/* Render the interpolated snapshot mirror (render-only net clients).
+ * `render_time` is the local render clock; entities are drawn at the blend
+ * between the mirror's older/newer 20 Hz snapshots. Visuals are reconstructed
+ * on the client from `kind` (mirror does not carry sprite data). */
+void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
+                          const NetMirror *mirror, float render_time) {
+    if (!renderer || !cam || !mirror || !net_mirror_ready(mirror)) return;
+
+    float t_new = net_mirror_newer_time(mirror);
+    float t_old = net_mirror_older_time(mirror);
+    float t = 1.0f;
+    if (t_new > t_old) {
+        t = (render_time - t_old) / (t_new - t_old);
+        if (t < 0.0f) t = 0.0f;
+        else if (t > 1.0f) t = 1.0f;
+    }
+
+    const NetSnapshot *n = &mirror->newer;
+    for (int i = 0; i < n->count; i++) {
+        NetEntitySnap e;
+        if (!net_mirror_sample(mirror, n->entities[i].id, t, &e)) continue;
+        if (!camera_is_visible(cam, e.pos, 60.0f)) continue;
+
+        Vec2 screen = camera_world_to_screen(cam, e.pos);
+        float z = cam->zoom;
+        SDL_FColor color = COLOR_WHITE;
+        float size = 8.0f;
+
+        switch (e.kind) {
+            case NET_ENT_PLAYER: {
+                int slot = net_mirror_slot_for(mirror, e.id);
+                color = net_slot_color(slot < 0 ? 1 : slot);
+                size = 10.0f;
+                break;
+            }
+            case NET_ENT_ZOMBIE:
+                color = COLOR_GREEN;
+                size = 11.0f;
+                break;
+            case NET_ENT_BULLET:
+                color = color_rgb(1.0f, 0.9f, 0.3f);
+                size = 3.0f;
+                break;
+            case NET_ENT_GRENADE:
+                color = COLOR_DARK_GREEN;
+                size = 5.0f;
+                break;
+            case NET_ENT_ROCKET:
+                color = COLOR_ORANGE;
+                size = 5.0f;
+                break;
+            case NET_ENT_ITEM:
+                color = COLOR_CYAN;
+                size = 7.0f;
+                break;
+            default:
+                continue;
+        }
+
+        Sprite s = sprite_circle(size, color);
+        sprite_draw(renderer, &s, screen.x, screen.y, z, 0.0f, 1.0f);
+
+        /* Health bar over damaged/player entities. */
+        if (e.kind == NET_ENT_PLAYER || e.kind == NET_ENT_ZOMBIE) {
+            float bar_h = 5.0f * z;
+            float bar_w = (e.kind == NET_ENT_PLAYER ? 30.0f : 24.0f) * z;
+            float ratio = e.hp / (e.kind == NET_ENT_PLAYER ? 200.0f : 100.0f);
+            SDL_SetRenderDrawColorFloat(renderer, 0.15f, 0.15f, 0.15f, 0.9f);
+            SDL_RenderFillRect(renderer, &(SDL_FRect){
+                screen.x - bar_w * 0.5f, screen.y - 24.0f * z, bar_w, bar_h});
+            SDL_SetRenderDrawColorFloat(renderer, 0.2f, 0.9f, 0.3f, 0.9f);
+            SDL_RenderFillRect(renderer, &(SDL_FRect){
+                screen.x - bar_w * 0.5f, screen.y - 24.0f * z,
+                bar_w * ratio, bar_h});
         }
     }
 }

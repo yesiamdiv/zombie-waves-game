@@ -15,6 +15,7 @@
 #include "config.h"
 #include "net/net.h"
 #include "net/net_codec.h"
+#include "net/net_mirror.h"
 
 /* Normal-play default; the game binary overrides via debug flags. */
 float g_zombie_damage_mult = 1.0f;
@@ -1116,7 +1117,7 @@ static void test_net_codec_game(void) {
 
     /* SNAPSHOT: header + wave state + mixed entity kinds round trip. */
     {
-        uint8_t buf[NET_HDR_SIZE + 10 + 12 * 26];
+        uint8_t buf[NET_SNAP_MAX_BYTES];
         NetSnapshot snap = {0};
         snap.sim_time = 12.5f;
         snap.wave_number = 3;
@@ -1171,7 +1172,7 @@ static void test_net_codec_game(void) {
 
     /* Snapshot with many entities (interpolation sanity: 100 zombies). */
     {
-        uint8_t buf[NET_HDR_SIZE + 10 + NET_SNAP_MAX_ENTITIES * 26];
+        uint8_t buf[NET_SNAP_MAX_BYTES];
         NetSnapshot snap = {0};
         snap.count = 100;
         for (int i = 0; i < 100; i++) {
@@ -1278,6 +1279,66 @@ static void test_net_snapshot_build(void) {
     CHECK(got.sim_time == 6.25f);
 }
 
+/* Two-snapshot mirror: pushes blend pos/hp, slot map resolves own player,
+ * single-snapshot state samples at full weight, absent ids are rejected. */
+static void test_net_mirror_interp(void) {
+    LOG_INFO("--- Test: net_mirror interpolation ---");
+    NetMirror m;
+    net_mirror_reset(&m);
+    CHECK(!net_mirror_ready(&m));
+    CHECK(!net_mirror_sample(&m, 5, 0.5f, NULL));
+
+    NetSnapshot s0 = {0};
+    s0.sim_time = 0.0f;
+    s0.slot_entities[0] = 7;
+    s0.count = 1;
+    s0.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {0, 0}, {0, 0}, 200.0f, 0, 0};
+    net_mirror_push(&m, &s0);
+    CHECK(net_mirror_ready(&m));
+    /* Single snapshot: full-weight regardless of t. */
+    NetEntitySnap e;
+    CHECK(net_mirror_sample(&m, 7, 0.0f, &e));
+    CHECK(e.pos.x == 0.0f);
+    CHECK(net_mirror_slot_for(&m, 7) == 0);
+    CHECK(net_mirror_slot_for(&m, 99) == -1);
+
+    NetSnapshot s1 = {0};
+    s1.sim_time = 1.0f;
+    s1.slot_entities[0] = 7;
+    s1.count = 1;
+    s1.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {100, 20}, {0, 0}, 150.0f, 0, 0};
+    net_mirror_push(&m, &s1);
+
+    /* Blend 0 -> older, 1 -> newer, 0.5 -> midpoint. */
+    CHECK(net_mirror_sample(&m, 7, 0.0f, &e));
+    CHECK(e.pos.x == 0.0f);
+    CHECK(net_mirror_sample(&m, 7, 1.0f, &e));
+    CHECK(e.pos.x == 100.0f);
+    CHECK(e.hp == 150.0f);
+    CHECK(net_mirror_sample(&m, 7, 0.5f, &e));
+    CHECK(e.pos.x == 50.0f && e.pos.y == 10.0f);
+    CHECK(net_mirror_sample(&m, 7, 2.0f, &e));
+    CHECK(e.pos.x == 100.0f);           /* t clamped */
+    CHECK(net_mirror_sample(&m, 7, -1.0f, &e));
+    CHECK(e.pos.x == 0.0f);
+
+    /* Entries only in the newer snapshot resolve at full weight. */
+    NetSnapshot s2 = {0};
+    s2.sim_time = 2.0f;
+    s2.slot_entities[0] = 7;
+    s2.count = 2;
+    s2.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {200, 0}, {0, 0}, 100.0f, 0, 0};
+    s2.entities[1] = (NetEntitySnap){11, NET_ENT_ZOMBIE, {55, 0}, {0, 0}, 50.0f, 0, 0};
+    net_mirror_push(&m, &s2);
+    CHECK(net_mirror_sample(&m, 11, 0.25f, &e));
+    CHECK(e.kind == NET_ENT_ZOMBIE);
+    CHECK(e.pos.x == 55.0f);
+    CHECK(!net_mirror_sample(&m, 999, 0.5f, &e));
+    CHECK(net_mirror_slot_for(&m, 7) == 0);
+    CHECK(net_mirror_older_time(&m) == 1.0f);
+    CHECK(net_mirror_newer_time(&m) == 2.0f);
+}
+
 /* ---------------------------------------------------------------- Net codec */
 
 int tests_run_all(void) {
@@ -1311,6 +1372,7 @@ int tests_run_all(void) {
     test_net_codec();
     test_net_codec_game();
     test_net_snapshot_build();
+    test_net_mirror_interp();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

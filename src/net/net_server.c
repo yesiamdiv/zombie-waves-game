@@ -116,20 +116,19 @@ bool net_server_get_input(const NetServer *s, int slot, NetInput *out) {
     return true;
 }
 
-static void send_unreliable(ENetPeer *peer, const uint8_t *buf, int len) {
-    ENetPacket *pk = enet_packet_create(buf, (size_t)len, 0);
-    if (!pk) return;
-    if (enet_peer_send(peer, NET_CH_SNAP, pk) != 0) enet_packet_destroy(pk);
-}
-
 void net_server_broadcast_snapshot(NetServer *s, const NetSnapshot *snap) {
     if (!s || s->state != NET_SERVER_HOSTING || !snap) return;
-    uint8_t buf[NET_HDR_SIZE + 10 + NET_SNAP_MAX_ENTITIES * 26];
+    uint8_t buf[NET_SNAP_MAX_BYTES];
     NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, (uint16_t)s->snaps_sent, 0, 0};
     int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, snap);
     if (len <= 0) return;
     for (int i = 1; i < NET_MAX_PLAYERS; i++) {
-        if (s->slot_peers[i]) send_unreliable(s->slot_peers[i], buf, len);
+        if (s->slot_peers[i]) {
+            ENetPacket *pk = enet_packet_create(buf, (size_t)len, 0);
+            if (pk && enet_peer_send(s->slot_peers[i], NET_CH_SNAP, pk) != 0) {
+                enet_packet_destroy(pk);
+            }
+        }
     }
     s->snaps_sent++;
 }

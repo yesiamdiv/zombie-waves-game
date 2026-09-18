@@ -110,6 +110,9 @@ typedef struct {
 
 #define NET_SNAP_HZ 20           /* host snapshot cadence (matches the plan) */
 #define NET_INPUT_HZ 30          /* client input cadence (matches the plan) */
+#define NET_SNAP_ENTRY_BYTES 26  /* NetEntitySnap wire size */
+#define NET_SNAP_MAX_BYTES \
+    (NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES)
 
 /* Snapshot builder: iterate the live ECS world, push all semantic entities
  * into `out` for broadcast, and stamp the slot->entity map. Must be called on

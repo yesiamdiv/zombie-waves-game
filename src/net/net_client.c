@@ -172,6 +172,8 @@ void net_client_update(NetClient *c) {
                             c->snap = snap;
                             c->snap_valid = true;
                             c->snap_seq = h.seq;
+                            LOG_DEBUG("NET: snapshot seq=%u count=%d sim=%.2f",
+                                      h.seq, snap.count, snap.sim_time);
                         } else {
                             LOG_WARN("NET: malformed snapshot from host");
                         }

@@ -27,6 +27,7 @@
 #include "net/net.h"
 #include "net/net_server.h"
 #include "net/net_client.h"
+#include "net/net_mirror.h"
 
 #define WINDOW_W 1280
 #define WINDOW_H 720
@@ -109,6 +110,8 @@ typedef struct {
     float net_input_tx_accum;
     uint8_t net_weapon;
     float net_snap_accum;   /* host: 20 Hz snapshot cadence accumulator */
+    NetMirror net_mirror;   /* client: interpolated world mirror */
+    bool auto_start;        /* --auto-start: host starts immediately (headless) */
 } Game;
 
 /* Defaults to full-health start; -1 disables the HP override. */
@@ -221,6 +224,7 @@ static bool begin_net_session(void) {
 
 /* Leave a live net session and drop back to the main menu (idempotent). */
 static void leave_net_session(void) {
+    net_mirror_reset(&game.net_mirror);
     if (game.net_host_mode) {
         if (game.net_server.state != NET_SERVER_OFFLINE) {
             LOG_INFO("NET: leaving lobby (stopping host)");
@@ -321,6 +325,37 @@ static void shutdown_game(void) {
     log_shutdown();
 }
 
+/* True when this process is a render-only net client (joins the host's sim,
+ * never runs one itself). */
+static bool render_only_client(void);
+
+/* Client: drain the newest received snapshot into the interpolation mirror
+ * exactly once (by sequence), so frames between 20 Hz snapshots blend. */
+static void drain_mirror(void);
+
+/* Client: interpolated position of the local player's mirror entity (own
+ * roster slot), driving the camera on render-only clients. */
+static bool client_local_pos(Vec2 *out) {
+    if (!out || !net_mirror_ready(&game.net_mirror)) return false;
+    int slot = game.net_client.slot;
+    if (slot < 0 || slot >= NET_MAX_PLAYERS) return false;
+    uint16_t id = game.net_mirror.newer.slot_entities[slot];
+    if (id == 0) return false;
+
+    float t_new = net_mirror_newer_time(&game.net_mirror);
+    float t_old = net_mirror_older_time(&game.net_mirror);
+    float t = 1.0f;
+    if (t_new > t_old) {
+        t = ((float)game.elapsed_sim - t_old) / (t_new - t_old);
+        if (t < 0.0f) t = 0.0f;
+        else if (t > 1.0f) t = 1.0f;
+    }
+    NetEntitySnap e;
+    if (!net_mirror_sample(&game.net_mirror, id, t, &e)) return false;
+    *out = e.pos;
+    return true;
+}
+
 static void update(float dt) {
     switch (game.state) {
         case GAME_STATE_MENU: {
@@ -398,8 +433,11 @@ static void update(float dt) {
                 net_server_update(&game.net_server);
                 /* Host starts the match; clients must wait for the P2
                  * snapshot stream before gameplay can begin. */
-                if (input_key_pressed(&game.input, SDL_SCANCODE_RETURN) ||
-                    input_key_pressed(&game.input, SDL_SCANCODE_SPACE)) {
+                /* Host starts the match under the same semantic as the Enter/Space
+         * shortcut; --auto-start exists for headless verification runs. */
+        if (game.auto_start ||
+            input_key_pressed(&game.input, SDL_SCANCODE_RETURN) ||
+            input_key_pressed(&game.input, SDL_SCANCODE_SPACE)) {
                     reset_game();
                     game.state = GAME_STATE_PLAYING;
                     LOG_INFO("Match starting from lobby (%s)",
@@ -420,6 +458,15 @@ static void update(float dt) {
                     /* Non-destructive pump: ignore a handshake while already
                      * connected (re-broadcasts, late roster updates). */
                     net_client_update(&game.net_client);
+                    const NetClient *pc = &game.net_client;
+                    /* The host is authoritative: the match begins the moment
+                     * the first 20 Hz snapshot arrives (render-only client). */
+                    if (pc->state == NET_CLIENT_CONNECTED && pc->snap_valid) {
+                        net_mirror_reset(&game.net_mirror);
+                        reset_game();
+                        game.state = GAME_STATE_PLAYING;
+                        LOG_INFO("Match started (first snapshot from host)");
+                    }
                 }
             }
             if (input_key_pressed(&game.input, SDL_SCANCODE_ESCAPE) ||
@@ -480,6 +527,17 @@ static void update(float dt) {
                         LOG_INFO("Net client selected weapon: %s", weapons_name(w));
                     }
                 }
+            }
+
+            /* Render-only client: no local simulation. The host's snapshot
+             * mirror drives the camera; the world is drawn from the mirror. */
+            if (render_only_client()) {
+                Vec2 p;
+                if (client_local_pos(&p)) {
+                    camera_follow(&game.camera, p, dt);
+                }
+                hud_update(&game.hud, dt);
+                break;
             }
 
             /* Systems update order - run once per resident player slot so
@@ -746,13 +804,19 @@ static void render(void) {
         case GAME_STATE_PAUSED:
         case GAME_STATE_SHOP:
             world_draw(game.renderer, &game.world, &game.camera);
-            system_render(&game.ecs, game.renderer, &game.camera);
-            if (game_mode_is_multi(game.mode)) {
-                system_render_beacons(game.renderer, &game.camera,
-                                      game.players, MAX_PLAYERS);
+            if (render_only_client()) {
+                /* Render-only client: draw the interpolated snapshot mirror. */
+                system_render_mirror(game.renderer, &game.camera,
+                                     &game.net_mirror, (float)game.elapsed_sim);
+            } else {
+                system_render(&game.ecs, game.renderer, &game.camera);
+                if (game_mode_is_multi(game.mode)) {
+                    system_render_beacons(game.renderer, &game.camera,
+                                          game.players, MAX_PLAYERS);
+                }
             }
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
-                     &game.players[0], game_mode_is_multi(game.mode),
+                     &game.players[0], !render_only_client(),
                      win_w, win_h, game.font);
 
             if (game.state == GAME_STATE_PAUSED) {
@@ -804,7 +868,6 @@ static void apply_net_inputs(void) {
 static void send_net_input(float dt) {
     if (game.net_host_mode || game.net_client.state != NET_CLIENT_CONNECTED) {
         game.net_input_tx_accum = 0;
-        game.net_snap_accum = 0;
         return;
     }
     game.net_input_tx_accum += dt;
@@ -830,10 +893,39 @@ static void send_net_input(float dt) {
     net_client_send_input(&game.net_client, &in);
 }
 
+/* True when this process is a render-only net client (joins the host's sim,
+ * never runs one itself). */
+static bool render_only_client(void) {
+    return !game.net_host_mode && game.net_client.host &&
+           game.net_client.state == NET_CLIENT_CONNECTED;
+}
+
+/* Client: drain the newest received snapshot into the interpolation mirror
+ * exactly once (by sequence), so frames between 20 Hz snapshots blend. */
+static void drain_mirror(void) {
+    if (game.net_host_mode) return;
+    if (game.net_client.state != NET_CLIENT_CONNECTED) return;
+    if (!game.net_client.snap_valid) return;
+    if (game.net_client.snap_seq == game.net_client.last_mirror_seq) return;
+    game.net_client.last_mirror_seq = game.net_client.snap_seq;
+    net_mirror_push(&game.net_mirror, &game.net_client.snap);
+    /* Headless verification: prove replication cheaply (~1 log/s). */
+    if (game.headless && (game.net_client.snap_seq % NET_SNAP_HZ) == 0) {
+        LOG_INFO("CLIENT mirror seq=%u host_sim=%.2f wave=%u ents=%d",
+                 (unsigned)game.net_client.snap_seq,
+                 game.net_mirror.newer.sim_time,
+                 (unsigned)game.net_mirror.newer.wave_number,
+                 game.net_mirror.newer.count);
+    }
+}
+
 /* Host: broadcast a 20 Hz world snapshot to every remote client. Called once
  * per fixed sim step (after the sim update) so the wire sim_time stays exact. */
 static void broadcast_snapshots(float dt) {
-    if (!game.net_host_mode) return;
+    if (!game.net_host_mode) {
+        game.net_snap_accum = 0;
+        return;
+    }
     game.net_snap_accum += dt;
     if (game.net_snap_accum < (1.0f / NET_SNAP_HZ)) return;
     game.net_snap_accum = 0;
@@ -870,6 +962,7 @@ static void step_frame(float dt) {
     send_net_input(dt);
 
     update(dt);
+    drain_mirror();
     broadcast_snapshots(dt);
 
     if (g_events) {
@@ -961,6 +1054,8 @@ static void parse_args(int argc, char *argv[]) {
             g_zombie_speed_mult = m;
         } else if (strcmp(arg, "--host") == 0) {
             game.net_host_mode = true;
+        } else if (strcmp(arg, "--auto-start") == 0) {
+            game.auto_start = true;
         } else if (strncmp(arg, "--port=", 7) == 0) {
             long p = strtol(arg + 7, NULL, 10);
             if (p <= 0 || p > 65535) {

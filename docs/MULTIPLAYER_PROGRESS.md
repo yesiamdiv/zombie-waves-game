@@ -194,8 +194,26 @@ Multiplayer specifics:
         slot 1 (seed=...)" → "player list (2 in lobby) [0]'Host' [1]'Alice'(you)".
         Full ctest green (core_tests + net_spike + net_loopback), zero warnings;
         SP seeded bot runs still byte-identical → determinism intact.
+- [x] P2 — snapshot replication, interpolation, net-input → `AIControls` path.
+  - P2a — wire codec for ch1 game traffic: `NetInput`/`NetSnapshot`/`NetEntitySnap`
+    encode+decode (little-endian f32/u16/u8, bytes-exact round-trips, truncation +
+    max-entities guards). 492 tests. Commit `e323990`.
+  - P2b — net input up: client streams local input ≥30 Hz (unreliable ch1,
+    latest-wins); host folds each remote slot's input into that `InputState`
+    through the same path bots use; `InputState.world_aim` drives aim in world
+    space. net_test verifies the INPUT exchange; 492 tests. Commit `86e9d2b`.
+  - P2c — snapshot replication: `net_snapshot_build()` (host: iterate the live
+    ECS, only semantic entities + zombie/bullet/grenade/rocket/item owners +
+    slot→entity map) → 20 Hz `net_server_broadcast_snapshot()` fan-out over ch1;
+    client keeps the latest snapshot, feeds a two-snapshot `NetMirror`
+    (interpolated `net_mirror_sample`), advances to PLAYING on the first
+    snapshot, and renders the world from `system_render_mirror` (camera follows
+    the interpolated own-slot entity). `--auto-start` lets a headless host start
+    the match. Verified end-to-end with two real processes: host "snapshots
+    sent=20/40/60… peers=1", client "snapshot seq=… count=1/2", "Match started
+    (first snapshot from host)", mirror seq=20/40/… host_sim matches, wave+count
+    replicate as zombies spawn. 546 tests; ctest 3/3; SP determinism byte-identical.
 - [ ] *next work items below*
-- [ ] P2 — snapshot replication, interpolation, net-input → `AIControls` path.
 - [ ] P3 — shared waves/items/shop + per-player points + scaling.
 - [ ] P4 — disconnect/pause broadcast/player list/chat; `--host --headless`.
 

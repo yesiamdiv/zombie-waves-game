@@ -35,6 +35,7 @@ typedef struct {
     NetSnapshot snap;
     bool snap_valid;
     uint32_t snap_seq;
+    uint32_t last_mirror_seq;    /* last snapshot drained into the mirror */
 
     uint16_t seq;
     bool left;                   /* intentional leave (LEAVE sent) */
