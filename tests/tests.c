@@ -96,7 +96,7 @@ static void test_ecs_basics(void) {
 
 static void test_world_valid(void) {
     LOG_INFO("--- Test: World generation ---");
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     CHECK(world.width == WORLD_TILES_X);
@@ -123,7 +123,7 @@ static void test_world_valid(void) {
 static void test_wave_system(void) {
     LOG_INFO("--- Test: Wave spawning ---");
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
 
     ecs_init(&ecs);
@@ -256,7 +256,7 @@ static void test_entity_limit(void) {
 static void test_wave_completion(void) {
     LOG_INFO("--- Test: Wave completion ---");
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
 
     ecs_init(&ecs);
@@ -352,7 +352,7 @@ static void test_script_aim_shot(void) {
 static void test_wave_timeout(void) {
     LOG_INFO("--- Test: Wave timeout force-end ---");
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
 
     ecs_init(&ecs);
@@ -396,7 +396,7 @@ static void test_event_stream(void) {
     CHECK(g_events == bus);
 
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
     ecs_init(&ecs);
     world_init(&world);
@@ -471,7 +471,7 @@ static void test_event_stream(void) {
 static int run_spawn_sim(Vec2 *out, int max_out) {
     srand(2026);
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
     ecs_init(&ecs);
     world_init(&world);
@@ -585,7 +585,7 @@ static void test_sword_spin(void) {
     LOG_INFO("--- Test: Sword spin system ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
@@ -632,7 +632,7 @@ static void test_sword_sweep_hits(void) {
     LOG_INFO("--- Test: Sword sweep hits along the blade ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
@@ -670,7 +670,7 @@ static void test_zombie_contact_and_slow(void) {
     LOG_INFO("--- Test: Zombie contact damage & player slow ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 player_pos = {150.0f, 150.0f};
@@ -710,7 +710,7 @@ static void test_rocket_damage_and_destruction(void) {
     LOG_INFO("--- Test: Rocket pierce & out-of-bounds destruction ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 ppos = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
@@ -761,7 +761,7 @@ static void test_grenade_detonation(void) {
     LOG_INFO("--- Test: Grenade AoE detonation ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 ppos = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
