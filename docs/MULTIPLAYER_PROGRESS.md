@@ -62,12 +62,19 @@ Multiplayer specifics:
       commit `30a1b84`): two `world_init()` worlds yield identical tiles,
       dimensions, and spawn point. Confirms `world.c` uses no `rand()` → **no world
       transfer needed on join** (D7 resolved in favour of sending only a version).
+- [x] P0.2 — `GameMode` enum (`src/game_mode.h`, commit `a61e172`):
+      `SINGLE | MULTI_TDM | MULTI_HARDCORE`, `MULTI_RESPAWN_TIME = 5.0f`,
+      `--mode=` CLI flag (logs + warns on unknown), default `single` so solo
+      behavior is bit-identical. No gameplay branches yet (that's P0.6).
 - [ ] *next work items below*
 
 ## In progress / next
 
-- [ ] P0.2 — `GameMode` enum (`SINGLE`, `MULTI_TDM`, `MULTI_HARDCORE`) threaded through
-      `main.c` + arg `--mode=`, defaulting single-player behavior unchanged.
+- [ ] P0.3 — `players[]` table: up to `MAX_PLAYERS(4)` slots each holding owned
+      entity, name, color, `InputState` (posted), `PlayerInventory`, kill count,
+      alive/respawn state — replace single `game.input` + `game.inventory` use in
+      systems (invoke via a `player_index_of(entity)` helper); kill credit via
+      `CBulletTag.owner` → the owning slot's inventory.
 - [ ] P0.3 — `players[]` table (per-player `InputState`, `PlayerInventory`, entity,
       color, beacon, name) replacing the single `game.input`/`game.inventory` usage.
 - [ ] P0.4 — Generalize player systems (`zombie_ai`, `sword`, `grenades`, `rockets`,
