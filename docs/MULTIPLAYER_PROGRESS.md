@@ -66,15 +66,28 @@ Multiplayer specifics:
       `SINGLE | MULTI_TDM | MULTI_HARDCORE`, `MULTI_RESPAWN_TIME = 5.0f`,
       `--mode=` CLI flag (logs + warns on unknown), default `single` so solo
       behavior is bit-identical. No gameplay branches yet (that's P0.6).
+- [x] P0.3 — Per-player slot table (`src/players.h/.c`, commit `f0073dd`):
+      `Player players[MAX_PLAYERS]` (in_use/alive/eliminated/name/color/entity/
+      input/inventory/kills/shoot_cd/respawn_timer). `system_player_input`,
+      `system_sword`, `system_grenades`, `system_rockets` now take `Player *`
+      and run per resident slot from main.c. Kill credit: bullet/sword/grenade/
+      rocket owners now stamp `CZombieTag.last_hit_by`; `system_cleanup` resolves
+      it via `players_find_index` → credits that slot's inventory + `kills`.
+      Single-player = slot 0 (SDL input mirrored in each frame); pistol cooldown
+      moved to the slot. Verified: 148 tests incl. new `test_kill_credit`
+      (2-player kill attribution); 2 seeded headless bot runs → identical logs.
 - [ ] *next work items below*
 
 ## In progress / next
 
-- [ ] P0.3 — `players[]` table: up to `MAX_PLAYERS(4)` slots each holding owned
-      entity, name, color, `InputState` (posted), `PlayerInventory`, kill count,
-      alive/respawn state — replace single `game.input` + `game.inventory` use in
-      systems (invoke via a `player_index_of(entity)` helper); kill credit via
-      `CBulletTag.owner` → the owning slot's inventory.
+- [ ] P0.4 — Generalize remaining `find_player()`/first-match assumptions in
+      `zombie_ai.c`, `waves.c`, `hud.c`, `ai_driver.c`, `render.c` (player tag
+      scan is fine for the local camera but zombie targeting must become
+      nearest-alive-player; kill credit already done in P0.3).
+- [ ] P0.5 — Spawn beacons (MP only): colored beacon per player at spawn +
+      respawn anchor (TDM); render + HUD color-coded.
+- [ ] P0.6 — Death/respawn per mode: `MULTI_RESPAWN_TIME` timer in TDM,
+      `eliminated` in HARDCORE; game-over only when all players gone.
 - [ ] P0.3 — `players[]` table (per-player `InputState`, `PlayerInventory`, entity,
       color, beacon, name) replacing the single `game.input`/`game.inventory` usage.
 - [ ] P0.4 — Generalize player systems (`zombie_ai`, `sword`, `grenades`, `rockets`,
