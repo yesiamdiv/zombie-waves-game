@@ -120,6 +120,33 @@ static void test_world_valid(void) {
     CHECK(world_is_walkable(&world, spawn.x, spawn.y));
 }
 
+static void test_world_determinism(void) {
+    LOG_INFO("--- Test: World gen determinism (multiplayer gate) ---");
+    GameWorld a, b;
+    world_init(&a);
+    world_init(&b);
+
+    CHECK(a.width == b.width && a.height == b.height);
+    CHECK(a.world_pixel_w == b.world_pixel_w);
+    CHECK(a.world_pixel_h == b.world_pixel_h);
+
+    bool same_tiles = true;
+    for (int y = 0; y < a.height; y++) {
+        for (int x = 0; x < a.width; x++) {
+            if (a.tiles[y][x] != b.tiles[y][x]) {
+                same_tiles = false;
+                break;
+            }
+        }
+        if (!same_tiles) break;
+    }
+    CHECK(same_tiles);
+
+    Vec2 sa = world_get_spawn_point(&a);
+    Vec2 sb = world_get_spawn_point(&b);
+    CHECK(sa.x == sb.x && sa.y == sb.y);
+}
+
 static void test_wave_system(void) {
     LOG_INFO("--- Test: Wave spawning ---");
     World ecs;
@@ -742,6 +769,7 @@ int tests_run_all(void) {
 
     test_ecs_basics();
     test_world_valid();
+    test_world_determinism();
     test_wave_system();
     test_items();
     test_entity_limit();
