@@ -96,14 +96,35 @@ Multiplayer specifics:
       - Result: **PASS at 2, 3, and 4 clients** (~800–1.6k round trips each,
         `lost=0`, `decode_err=0`, `echo_mismatch=0`), clean disconnect.
         `ctest` passes both `core_tests` and `net_spike`.
+- [x] P0.4 — Nearest-alive-player targeting everywhere (`94ae2c4`). Killed the
+      remaining "first player found in the ECS" assumptions now that up to 4
+      slots exist:
+
+      - `system_zombie_ai(ecs, players, player_count, dt)`: each zombie chases
+        the **nearest ALIVE player** (slot table; falls back to the nearest
+        player-tagged entity when `players==NULL` for tests/legacy callers),
+        and its ATTACK damages exactly that target (previously hit "the first
+        player in the scan" regardless of distance). No alive survivors → zombies
+        go idle.
+      - `waves_update(ws, ecs, world, players, player_count, dt)` + ring spawning:
+        spawn circle centers on the nearest alive player (to world center) so
+        hordes converge on the actual fight.
+      - `hud_draw(renderer, hud, ecs, waves, const Player *local, ...)`: bound to
+        one explicit slot (health = `local->entity`, crosshair = `local->input`,
+        shop = `local->inventory`) — no ECS scan for "a" player.
+      - `ai_build_view(view, ecs, waves, Entity local_player)`: anchored on the
+        driven player entity so bots/AI reason about their own health/position.
+      - `Player` struct given a tag (`typedef struct Player {...}`) so headers
+        can forward-declare it (waves.h, hud.h) without heavy includes.
+      - New `test_nearest_alive_target`: zombie targets nearest of two players,
+        then retargets the survivor when the nearest dies (8 checks).
+      Verified: **156 tests pass** (was 148), zero warnings; two seeded headless
+      bot runs → byte-identical event logs (5 kills, 1351 lines) → determinism
+      intact.
 - [ ] *next work items below*
 
 ## In progress / next
 
-- [ ] P0.4 — Generalize remaining `find_player()`/first-match assumptions in
-      `zombie_ai.c`, `waves.c`, `hud.c`, `ai_driver.c`, `render.c` (player tag
-      scan is fine for the local camera but zombie targeting must become
-      nearest-alive-player; kill credit already done in P0.3).
 - [ ] P0.5 — Spawn beacons (MP only): colored beacon per player at spawn +
       respawn anchor (TDM); render + HUD color-coded.
 - [ ] P0.6 — Death/respawn per mode: `MULTI_RESPAWN_TIME` timer in TDM,
