@@ -121,12 +121,17 @@ Multiplayer specifics:
       Verified: **156 tests pass** (was 148), zero warnings; two seeded headless
       bot runs → byte-identical event logs (5 kills, 1351 lines) → determinism
       intact.
+- [x] P0.5 — Color-coded spawn beacons (`579d904`): `Player.beacon_pos`
+      (spawn/respawn anchor) set in `player_respawn()`; new
+      `system_render_beacons()` draws a dark pad + player-colored core + bright
+      center at each in-use slot's beacon (camera-culled), rendered **only in
+      multiplayer modes** from main.c. HUD shows the slot's colored name tag
+      when `multi`. Single-player visuals/determinism unchanged.
+      `test_beacon_anchor` locks the anchor + slot color. 160 tests pass.
 - [ ] *next work items below*
 
 ## In progress / next
 
-- [ ] P0.5 — Spawn beacons (MP only): colored beacon per player at spawn +
-      respawn anchor (TDM); render + HUD color-coded.
 - [ ] P0.6 — Death/respawn per mode: `MULTI_RESPAWN_TIME` timer in TDM,
       `eliminated` in HARDCORE; game-over only when all players gone.
 - [ ] P1 — ENet fetch (`FetchContent v1.3.18`) + codec + host/join UI + handshake.
