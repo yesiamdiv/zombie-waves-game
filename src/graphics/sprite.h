@@ -22,8 +22,14 @@ typedef struct {
     } as;
 
     SDL_FColor color;
-    float rotation;   /* radians, for future rotation support */
+    float rotation;   /* radians */
     float alpha;      /* 0.0 - 1.0 */
+
+    /* SPRITE_SHAPE_TEXTURE: resolved texture plus optional source rect. A
+     * zero-area src means "use the whole texture". color acts as a tint (white
+     * = no tint) when combined with texture alpha modulation. */
+    SDL_Texture *texture;
+    SDL_FRect src;
 } Sprite;
 
 typedef struct {
@@ -33,6 +39,8 @@ typedef struct {
 
 Sprite sprite_rect(float w, float h, SDL_FColor color);
 Sprite sprite_circle(float radius, SDL_FColor color);
+Sprite sprite_texture(SDL_Texture *texture);
+Sprite sprite_texture_rect(SDL_Texture *texture, SDL_FRect src);
 Sprite sprite_none(void);
 
 void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, float scale, float rotation, float alpha);

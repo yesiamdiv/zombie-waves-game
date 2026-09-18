@@ -12,6 +12,7 @@
 #include "config.h"
 #include "ecs/ecs.h"
 #include "graphics/sprite.h"
+#include "assets/asset_manager.h"
 #include "world/world.h"
 #include "world/camera.h"
 #include "world/waves.h"
@@ -43,6 +44,7 @@ float g_zombie_speed_mult = 1.0f;
 typedef struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
+    AssetManager assets;
     TTF_Font *font;
     TTF_Font *font_large;
     bool running;
@@ -194,6 +196,8 @@ static bool init(void) {
             return false;
         }
 
+        asset_manager_init(&game.assets, game.renderer);
+
         /* Synchronize present with the display refresh. Without vsync (and no
          * frame cap) the render loop spins a core flat at 100% CPU, which
          * starves the desktop compositor's input dispatch under Wayland - the
@@ -243,6 +247,7 @@ static void shutdown(void) {
 
     if (game.font) TTF_CloseFont(game.font);
     if (game.font_large) TTF_CloseFont(game.font_large);
+    asset_manager_shutdown(&game.assets);
     if (game.renderer) SDL_DestroyRenderer(game.renderer);
     if (game.window) SDL_DestroyWindow(game.window);
     if (!game.headless) TTF_Quit();

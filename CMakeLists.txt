@@ -28,14 +28,23 @@ FetchContent_Declare(
 set(SDLTTF_SAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL_ttf)
 
+FetchContent_Declare(
+    SDL_image
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
+    GIT_TAG        main
+    GIT_SHALLOW    TRUE
+)
+set(SDLIMAGE_SAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(SDL_image)
+
 # Core game logic library (everything except the entry point)
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
      "src/core/*.c" "src/ecs/*.c" "src/graphics/*.c"
      "src/world/*.c" "src/systems/*.c" "src/ui/*.c" "src/items/*.c"
-     "src/events/*.c" "src/ai/*.c" "src/weapons/*.c")
+     "src/events/*.c" "src/ai/*.c" "src/weapons/*.c" "src/assets/*.c")
 add_library(zombie_core STATIC ${CORE_SOURCES})
 target_include_directories(zombie_core PUBLIC src)
-target_link_libraries(zombie_core PUBLIC SDL3::SDL3 SDL3_ttf::SDL3_ttf)
+target_link_libraries(zombie_core PUBLIC SDL3::SDL3 SDL3_ttf::SDL3_ttf SDL3_image::SDL3_image)
 
 add_executable(${PROJECT_NAME} src/main.c)
 target_link_libraries(${PROJECT_NAME} PRIVATE zombie_core)
