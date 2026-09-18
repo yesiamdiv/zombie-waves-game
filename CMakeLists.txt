@@ -49,6 +49,13 @@ target_link_libraries(zombie_core PUBLIC SDL3::SDL3 SDL3_ttf::SDL3_ttf SDL3_imag
 add_executable(${PROJECT_NAME} src/main.c)
 target_link_libraries(${PROJECT_NAME} PRIVATE zombie_core)
 
+# Ship assets beside the binary so the game finds textures and maps
+# regardless of the working directory it is launched from.
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/assets
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets)
+
 # Static tests (QA)
 add_executable(zombie_tests tests/tests.c)
 target_link_libraries(zombie_tests PRIVATE zombie_core)
