@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include "core/mathutil.h"
 #include "graphics/sprite.h"
+#include "ecs/ecs.h"
+#include "world/waves.h"
+#include "players.h"
 
 /* ---------------------------------------------------------------------------
  * Wire protocol for the multiplayer layer (docs/MULTIPLAYER_PLAN.md §5-§8).
@@ -92,15 +95,27 @@ typedef struct {
     uint16_t owner;         /* bullet/grenade/rocket source player, else 0 */
 } NetEntitySnap;
 
-/* 20 Hz host->client snapshot (channel 1). */
+/* 20 Hz host->client snapshot (channel 1). `slot_entities` maps each roster
+ * slot to its live player entity id (0 when the slot has no entity), so a
+ * client can identify which snapshot entity is its own player. */
 typedef struct {
     float sim_time;         /* host simulation clock (seconds) */
+    uint16_t slot_entities[NET_MAX_PLAYERS];
     uint16_t wave_number;
     uint8_t wave_active;
     uint16_t total_kills;
     int count;
     NetEntitySnap entities[NET_SNAP_MAX_ENTITIES];
 } NetSnapshot;
+
+#define NET_SNAP_HZ 20           /* host snapshot cadence (matches the plan) */
+#define NET_INPUT_HZ 30          /* client input cadence (matches the plan) */
+
+/* Snapshot builder: iterate the live ECS world, push all semantic entities
+ * into `out` for broadcast, and stamp the slot->entity map. Must be called on
+ * the host at the 20 Hz snapshot cadence (not every frame). Returns count. */
+int net_snapshot_build(const World *ecs, const Player *players, int player_count,
+                       float sim_time, const WaveSystem *waves, NetSnapshot *out);
 
 /* REJECT reasons */
 enum {

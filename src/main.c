@@ -108,6 +108,7 @@ typedef struct {
     /* P2: net input cadence + client-side weapon selection. */
     float net_input_tx_accum;
     uint8_t net_weapon;
+    float net_snap_accum;   /* host: 20 Hz snapshot cadence accumulator */
 } Game;
 
 /* Defaults to full-health start; -1 disables the HP override. */
@@ -803,6 +804,7 @@ static void apply_net_inputs(void) {
 static void send_net_input(float dt) {
     if (game.net_host_mode || game.net_client.state != NET_CLIENT_CONNECTED) {
         game.net_input_tx_accum = 0;
+        game.net_snap_accum = 0;
         return;
     }
     game.net_input_tx_accum += dt;
@@ -826,6 +828,19 @@ static void send_net_input(float dt) {
     in.aim_x = aim.x;
     in.aim_y = aim.y;
     net_client_send_input(&game.net_client, &in);
+}
+
+/* Host: broadcast a 20 Hz world snapshot to every remote client. Called once
+ * per fixed sim step (after the sim update) so the wire sim_time stays exact. */
+static void broadcast_snapshots(float dt) {
+    if (!game.net_host_mode) return;
+    game.net_snap_accum += dt;
+    if (game.net_snap_accum < (1.0f / NET_SNAP_HZ)) return;
+    game.net_snap_accum = 0;
+    NetSnapshot snap;
+    int n = net_snapshot_build(&game.ecs, game.players, MAX_PLAYERS,
+                               (float)game.elapsed_sim, &game.waves, &snap);
+    if (n > 0) net_server_broadcast_snapshot(&game.net_server, &snap);
 }
 
 /* One simulation step. Handles input (real + injected), the AI driver,
@@ -855,6 +870,7 @@ static void step_frame(float dt) {
     send_net_input(dt);
 
     update(dt);
+    broadcast_snapshots(dt);
 
     if (g_events) {
         event_bus_tick(g_events, dt);

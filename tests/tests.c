@@ -1196,6 +1196,88 @@ static void test_net_codec_game(void) {
     }
 }
 
+/* Snapshot builder maps a live world into the 20 Hz wire format. */
+static void test_net_snapshot_build(void) {
+    LOG_INFO("--- Test: net_snapshot_build maps the live world ---");
+    World ecs;
+    ecs_init(&ecs);
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    player_respawn(players, &ecs, 0, "P1", &COLOR_RED, vec2(10, 20));
+    Entity p0 = players[0].entity;
+    Entity z = waves_spawn_zombie(&ecs, vec2(100, 200));
+    CHECK(z != ECS_NULL_ENTITY);
+
+    Entity bullet = ecs_create_entity(&ecs);
+    CHECK(bullet != ECS_NULL_ENTITY);
+    ecs_add_component(&ecs, bullet, COMP_POSITION);
+    ecs_add_component(&ecs, bullet, COMP_VELOCITY);
+    ecs_add_component(&ecs, bullet, COMP_SPRITE);
+    ecs_add_component(&ecs, bullet, COMP_COLLIDER);
+    ecs_add_component(&ecs, bullet, COMP_BULLET_TAG);
+    ecs_get_position(&ecs, bullet)->pos = vec2(55, 66);
+    ecs_get_velocity(&ecs, bullet)->vel = vec2(400, 0);
+    ecs_get_velocity(&ecs, bullet)->max_speed = 400.0f;
+    ecs_get_bullet_tag(&ecs, bullet)->owner = p0;
+
+    GameWorld gw;
+    world_init(&gw);
+    WaveSystem ws;
+    waves_init(&ws, &gw);
+    ws.wave_number = 4;
+    ws.wave_active = true;
+    ws.total_kills = 9;
+
+    NetSnapshot snap;
+    int n = net_snapshot_build(&ecs, players, MAX_PLAYERS, 6.25f, &ws, &snap);
+    CHECK(n >= 3);
+    CHECK(snap.sim_time == 6.25f);
+    CHECK(snap.wave_number == 4);
+    CHECK(snap.wave_active == 1);
+    CHECK(snap.total_kills == 9);
+    CHECK(snap.slot_entities[0] == p0);
+    CHECK(snap.slot_entities[1] == 0);
+    for (int s = 0; s < NET_MAX_PLAYERS; s++) CHECK(snap.slot_entities[s] < 2048);
+
+    int players_n = 0, zombies_n = 0, bullets_n = 0;
+    Entity bulletOwner = ECS_NULL_ENTITY;
+    for (int i = 0; i < n; i++) {
+        const NetEntitySnap *e = &snap.entities[i];
+        if (e->kind == NET_ENT_PLAYER) {
+            players_n++;
+            CHECK(e->id == p0);
+            CHECK(e->pos.x == 10.0f && e->pos.y == 20.0f);
+            CHECK(e->hp > 0.0f);
+        } else if (e->kind == NET_ENT_ZOMBIE) {
+            zombies_n++;
+            CHECK(e->id == z);
+            CHECK(e->pos.x == 100.0f);
+        } else if (e->kind == NET_ENT_BULLET) {
+            bullets_n++;
+            CHECK(e->id == bullet);
+            CHECK(e->vel.x == 400.0f);
+            bulletOwner = e->owner;
+        }
+    }
+    CHECK(players_n == 1);
+    CHECK(zombies_n == 1);
+    CHECK(bullets_n == 1);
+    CHECK(bulletOwner == p0);
+
+    /* The built snapshot round-trips through the wire codec. */
+    uint8_t buf[NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * 26];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 3, 0, 0};
+    int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
+    CHECK(len > NET_HDR_SIZE);
+    NetSnapshot got;
+    memset(&got, 0, sizeof(got));
+    NetHeader oh;
+    CHECK(net_decode_snapshot(buf, len, &oh, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    CHECK(got.count == n);
+    CHECK(got.slot_entities[0] == p0);
+    CHECK(got.sim_time == 6.25f);
+}
+
 /* ---------------------------------------------------------------- Net codec */
 
 int tests_run_all(void) {
@@ -1228,6 +1310,7 @@ int tests_run_all(void) {
     test_grenade_detonation();
     test_net_codec();
     test_net_codec_game();
+    test_net_snapshot_build();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

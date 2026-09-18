@@ -192,6 +192,37 @@ int main(void) {
     /* Slot 0 (the local host) never has remote input. */
     CHECK(!net_server_get_input(&server, 0, &got));
 
+    /* ------------------- channel 1 game traffic: SNAPSHOT down ------------- */
+    NetSnapshot snap = {0};
+    snap.sim_time = 6.25f;
+    snap.wave_number = 3;
+    snap.wave_active = 1;
+    snap.slot_entities[0] = 101;
+    snap.slot_entities[1] = 202;
+    snap.count = 2;
+    snap.entities[0] = (NetEntitySnap){101, NET_ENT_PLAYER, {10, 20}, {0, 0}, 100.0f, 0, 0};
+    snap.entities[1] = (NetEntitySnap){303, NET_ENT_ZOMBIE, {300, 400}, {50, 0}, 25.0f, 0, 0};
+    net_server_broadcast_snapshot(&server, &snap);
+    for (int i = 0; i < 2; i++) {
+        service(&server, c, 2);
+    }
+    CHECK(server.snaps_sent == 1);
+    for (int i = 0; i < 2; i++) {
+        if (c[i].state != NET_CLIENT_CONNECTED) continue;
+        CHECK(c[i].snap_valid);
+        CHECK(c[i].snap_seq == 0);
+        CHECK(c[i].snap.count == 2);
+        CHECK(c[i].snap.sim_time == 6.25f);
+        CHECK(c[i].snap.wave_number == 3);
+        CHECK(c[i].snap.slot_entities[1] == 202);
+        CHECK(c[i].snap.entities[0].id == 101);
+        CHECK(c[i].snap.entities[0].kind == NET_ENT_PLAYER);
+        CHECK(c[i].snap.entities[0].pos.x == 10.0f);
+        CHECK(c[i].snap.entities[1].id == 303);
+        CHECK(c[i].snap.entities[1].kind == NET_ENT_ZOMBIE);
+        CHECK(c[i].snap.entities[1].hp == 25.0f);
+    }
+
     /* ------------------------------------------------------------ teardown */
     for (int i = 0; i < 3; i++) net_client_shutdown(&c[i]);
     net_server_shutdown(&server);

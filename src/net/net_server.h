@@ -35,6 +35,7 @@ typedef struct {
     uint64_t rejects;
     uint64_t bad_packets;
     uint64_t rx_inputs;
+    uint64_t snaps_sent;
     char status[96];
 } NetServer;
 
@@ -60,5 +61,8 @@ int net_server_build_player_list(const NetServer *s, NetPlayerInfo *out, int max
 /* Latest input heard from a remote slot. Returns false when the slot is the
  * local host slot (slot 0) or has never voiced in. */
 bool net_server_get_input(const NetServer *s, int slot, NetInput *out);
+
+/* Encode and send a 20 Hz snapshot to every remote peer (unreliable ch1). */
+void net_server_broadcast_snapshot(NetServer *s, const NetSnapshot *snap);
 
 #endif

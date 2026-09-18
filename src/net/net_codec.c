@@ -275,6 +275,9 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
     if (net_hdr_encode(buf, h) != 0) return -1;
     off = NET_HDR_SIZE;
     if (put_f32(buf, cap, &off, snap->sim_time) != 0) return -1;
+    for (int i = 0; i < NET_MAX_PLAYERS; i++) {
+        if (put_u16(buf, cap, &off, snap->slot_entities[i]) != 0) return -1;
+    }
     if (put_u16(buf, cap, &off, snap->wave_number) != 0) return -1;
     if (put_u8(buf, cap, &off, snap->wave_active) != 0) return -1;
     if (put_u16(buf, cap, &off, snap->total_kills) != 0) return -1;
@@ -300,6 +303,9 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
     if (h->kind != NET_PKT_SNAPSHOT) return -1;
     int off = NET_HDR_SIZE;
     if (get_f32(buf, len, &off, &snap->sim_time) != 0) return -1;
+    for (int i = 0; i < NET_MAX_PLAYERS; i++) {
+        if (get_u16(buf, len, &off, &snap->slot_entities[i]) != 0) return -1;
+    }
     if (get_u16(buf, len, &off, &snap->wave_number) != 0) return -1;
     if (get_u8(buf, len, &off, &snap->wave_active) != 0) return -1;
     if (get_u16(buf, len, &off, &snap->total_kills) != 0) return -1;
