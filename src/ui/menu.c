@@ -152,6 +152,10 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
     SDL_FColor hint = {0.3f, 0.3f, 0.35f, 0.6f};
     draw_text_centered(renderer, font, "WASD/Arrows: Move  |  Mouse: Aim & Shoot  |  ESC: Pause",
                        screen_w * 0.5f, screen_h * 0.85f, hint);
+
+    SDL_FColor run_note = {0.3f, 0.3f, 0.35f, 0.6f};
+    draw_text_centered(renderer, font, "Weapon purchases reset each run",
+                       screen_w * 0.5f, screen_h * 0.90f, run_note);
 }
 
 void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
@@ -199,6 +203,10 @@ void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int
 
     snprintf(buf, sizeof(buf), "Score: %d", go->final_score);
     draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.49f, info);
+
+    SDL_FColor note = {0.7f, 0.65f, 0.45f, 1.0f};
+    draw_text_centered(renderer, font, "New run resets weapon purchases and points",
+                       screen_w * 0.5f, screen_h * 0.60f, note);
 
     if (go->display_timer > 1.0f) {
         float blink = 0.5f + sinf(go->display_timer * 3.0f) * 0.5f;
