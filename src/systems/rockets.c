@@ -7,14 +7,6 @@
 #define ROCKET_LIFETIME 3.0f
 #define ROCKET_RADIUS   5.0f
 
-static Entity find_player(World *ecs) {
-    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
-        if (!ecs->alive[i]) continue;
-        if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) return i;
-    }
-    return ECS_NULL_ENTITY;
-}
-
 static void fire_rocket(World *ecs, Entity player, const InputState *input) {
     CPosition *ppos = ecs_get_position(ecs, player);
 
@@ -73,6 +65,7 @@ static void damage_overlapping(World *ecs, Entity rocket, CRocketTag *tag) {
         CHealth *hp = &ecs->healths[i];
         float prev = hp->current;
         hp->current = prev - tag->damage;
+        ecs->zombie_tags[i].last_hit_by = tag->owner;
         event_emit(g_events, GE_DAMAGE, i, GEK_ZOMBIE,
                    zpos.x, zpos.y, tag->damage, hp->current > 0 ? hp->current : 0,
                    (int)prev, 0);
@@ -91,10 +84,13 @@ static void damage_overlapping(World *ecs, Entity rocket, CRocketTag *tag) {
     }
 }
 
-void system_rockets(World *ecs, InputState *input, PlayerInventory *inv,
-                    GameWorld *world, float dt) {
-    Entity player = find_player(ecs);
-    if (player == ECS_NULL_ENTITY || !input || !inv) return;
+void system_rockets(World *ecs, Player *p, GameWorld *world, float dt) {
+    if (!p || !p->in_use || !p->alive) return;
+    Entity player = p->entity;
+    if (player == ECS_NULL_ENTITY || !ecs_is_alive(ecs, player)) return;
+
+    InputState *input = &p->input;
+    PlayerInventory *inv = &p->inventory;
 
     /* Fire on the click edge, consuming one rocket. */
     if (input->mouse_pressed[0] &&

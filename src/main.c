@@ -23,6 +23,7 @@
 #include "events/event_bus.h"
 #include "ai/ai_driver.h"
 #include "game_mode.h"
+#include "players.h"
 
 #define WINDOW_W 1280
 #define WINDOW_H 720
@@ -65,6 +66,10 @@ typedef struct {
     float player_hp_pct;
 
     GameState state;
+    /* Local raw input: SDL events are polled into this, the AI driver may
+     * inject controls, and the menu/pause/shop states read it directly. During
+     * gameplay the local slot's InputState is mirrored from this every frame
+     * so the systems read through the per-player slot (multiplayer-safe). */
     InputState input;
     World ecs;
     Camera camera;
@@ -74,15 +79,13 @@ typedef struct {
     PauseMenu pause_menu;
     GameOverScreen gameover_screen;
     ShopMenu shop_menu;
-    PlayerInventory inventory;
+    Player players[MAX_PLAYERS];
     HUD hud;
 
     /* AI driver */
     AIDriver ai;
     GameView ai_view;
     AIControls ai_controls;
-
-    Entity player_entity;
 
     float item_spawn_timer;
     int last_announced_wave;
@@ -104,46 +107,26 @@ static void on_sigint(int sig) {
     g_signal_stop = 1;
 }
 
-static Entity create_player(World *ecs, Vec2 pos) {
-    Entity e = ecs_create_entity(ecs);
-    if (e == ECS_NULL_ENTITY) return e;
-
-    ecs_add_component(ecs, e, COMP_POSITION);
-    ecs_add_component(ecs, e, COMP_VELOCITY);
-    ecs_add_component(ecs, e, COMP_HEALTH);
-    ecs_add_component(ecs, e, COMP_SPRITE);
-    ecs_add_component(ecs, e, COMP_COLLIDER);
-    ecs_add_component(ecs, e, COMP_PLAYER_TAG);
-
-    *ecs_get_position(ecs, e) = (CPosition){{pos.x, pos.y}};
-    *ecs_get_velocity(ecs, e) = (CVelocity){{0, 0}, 200.0f};
-    *ecs_get_health(ecs, e) = (CHealth){200.0f, 200.0f};
-    *ecs_get_collider(ecs, e) = (CCollider){14.0f, false};
-
-    *ecs_get_sprite(ecs, e) = (CSprite){
-        .sprite = sprite_rect(16.0f, 16.0f, COLOR_BLUE),
-        .scale = 1.0f,
-        .base_alpha = 1.0f
-    };
-
-    LOG_INFO("Player created at (%.0f, %.0f)", pos.x, pos.y);
-    return e;
-}
-
 static void reset_game(void) {
     LOG_INFO("=== RESETTING GAME ===");
 
     ecs_init(&game.ecs);
     world_init(&game.world);
     waves_init(&game.waves, &game.world);
-    weapons_inventory_init(&game.inventory);
-    game.inventory.points = game.start_points > 0 ? game.start_points : 0;
+    players_reset(game.players, MAX_PLAYERS);
 
+    /* Single-player: the local player occupies slot 0. */
     Vec2 spawn = world_get_spawn_point(&game.world);
-    game.player_entity = create_player(&game.ecs, spawn);
+    if (player_respawn(game.players, &game.ecs, 0, "Player", &COLOR_BLUE, spawn) < 0) {
+        LOG_FATAL("Failed to spawn local player");
+        return;
+    }
+    if (game.start_points > 0) {
+        game.players[0].inventory.points = game.start_points;
+    }
 
     if (game.player_hp_pct >= 0.0f) {
-        CHealth *hp = ecs_get_health(&game.ecs, game.player_entity);
+        CHealth *hp = ecs_get_health(&game.ecs, game.players[0].entity);
         hp->current = hp->max * (game.player_hp_pct / 100.0f);
         if (hp->current <= 0.0f) hp->current = 1.0f;
         LOG_INFO("Player HP overridden to %.0f/%.0f (%.0f%%)",
@@ -289,30 +272,35 @@ static void update(float dt) {
 
             /* Weapon switching (1-4). Locked weapons are rejected with a hint. */
             {
+                PlayerInventory *local_inv = &game.players[0].inventory;
                 WeaponType w = WEAPON_PISTOL;
                 SDL_Scancode key = SDL_SCANCODE_UNKNOWN;
                 if (input_key_pressed(&game.input, SDL_SCANCODE_1)) { w = WEAPON_PISTOL;   key = SDL_SCANCODE_1; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_2)) { w = WEAPON_SWORD;    key = SDL_SCANCODE_2; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_3)) { w = WEAPON_GRENADE;  key = SDL_SCANCODE_3; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_4)) { w = WEAPON_LAUNCHER; key = SDL_SCANCODE_4; }
-                if (key != SDL_SCANCODE_UNKNOWN && w != game.inventory.current) {
-                    if (!weapons_select(&game.inventory, w)) {
+                if (key != SDL_SCANCODE_UNKNOWN && w != local_inv->current) {
+                    if (!weapons_select(local_inv, w)) {
                         hud_show_message(&game.hud, "Weapon locked - buy it in the shop (B)", 2.0f);
                     } else {
-                        LOG_INFO("Selected weapon: %s", weapons_name(game.inventory.current));
+                        LOG_INFO("Selected weapon: %s", weapons_name(local_inv->current));
                     }
                 }
             }
 
-            /* Systems update order */
-            system_player_input(&game.ecs, &game.input, &game.camera, dt, &game.inventory);
-            system_sword(&game.ecs, &game.input, &game.inventory, dt);
+            /* Systems update order - run once per resident player slot so
+             * every player's input/inventory resolve against their own slot. */
+            for (int s = 0; s < MAX_PLAYERS; s++) {
+                if (!game.players[s].in_use) continue;
+                system_player_input(&game.ecs, &game.players[s], &game.camera, dt);
+                system_sword(&game.ecs, &game.players[s], dt);
+                system_grenades(&game.ecs, &game.players[s], dt);
+                system_rockets(&game.ecs, &game.players[s], &game.world, dt);
+            }
             system_zombie_ai(&game.ecs, dt);
             system_movement(&game.ecs, &game.world, dt);
             system_collision(&game.ecs, &game.world);
             system_bullets(&game.ecs, &game.world, dt);
-            system_grenades(&game.ecs, &game.input, &game.inventory, dt);
-            system_rockets(&game.ecs, &game.input, &game.inventory, &game.world, dt);
             system_animation(&game.ecs, dt);
             system_particles(&game.ecs, dt);
 
@@ -327,8 +315,10 @@ static void update(float dt) {
                 hud_show_message(&game.hud, msg, 3.0f);
             }
 
-            if (game.player_entity != ECS_NULL_ENTITY) {
-                items_check_pickup(&game.ecs, game.player_entity);
+            for (int s = 0; s < MAX_PLAYERS; s++) {
+                if (!game.players[s].in_use || game.players[s].entity == ECS_NULL_ENTITY) continue;
+                if (!ecs_is_alive(&game.ecs, game.players[s].entity)) continue;
+                items_check_pickup(&game.ecs, game.players[s].entity);
             }
 
             game.item_spawn_timer += dt;
@@ -343,17 +333,18 @@ static void update(float dt) {
                 }
             }
 
-            system_cleanup(&game.ecs, &game.waves, &game.inventory);
+            system_cleanup(&game.ecs, &game.waves, game.players, MAX_PLAYERS);
 
-            if (game.player_entity != ECS_NULL_ENTITY &&
-                ecs_is_alive(&game.ecs, game.player_entity)) {
-                camera_follow(&game.camera, ecs_get_position(&game.ecs, game.player_entity)->pos, dt);
+            Player *local = &game.players[0];
+            if (local->entity != ECS_NULL_ENTITY &&
+                ecs_is_alive(&game.ecs, local->entity)) {
+                camera_follow(&game.camera, ecs_get_position(&game.ecs, local->entity)->pos, dt);
             }
 
             hud_update(&game.hud, dt);
 
-            if (game.player_entity == ECS_NULL_ENTITY ||
-                !ecs_is_alive(&game.ecs, game.player_entity)) {
+            if (!local->in_use || local->entity == ECS_NULL_ENTITY ||
+                !ecs_is_alive(&game.ecs, local->entity)) {
                 set_game_over();
             }
 
@@ -379,7 +370,7 @@ static void update(float dt) {
         }
 
         case GAME_STATE_SHOP: {
-            GameState next = shop_menu_update(&game.shop_menu, &game.input, &game.inventory);
+            GameState next = shop_menu_update(&game.shop_menu, &game.input, &game.players[0].inventory);
             if (next == GAME_STATE_PLAYING) {
                 game.state = GAME_STATE_PLAYING;
                 LOG_INFO("Shop closed");
@@ -425,12 +416,12 @@ static void render(void) {
             world_draw(game.renderer, &game.world, &game.camera);
             system_render(&game.ecs, game.renderer, &game.camera);
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
-                     &game.input, &game.inventory, win_w, win_h, game.font);
+                     &game.players[0].input, &game.players[0].inventory, win_w, win_h, game.font);
 
             if (game.state == GAME_STATE_PAUSED) {
                 pause_menu_draw(game.renderer, &game.pause_menu, win_w, win_h, game.font_large);
             } else if (game.state == GAME_STATE_SHOP) {
-                shop_menu_draw(game.renderer, &game.shop_menu, &game.inventory, win_w, win_h, game.font_large);
+                shop_menu_draw(game.renderer, &game.shop_menu, &game.players[0].inventory, win_w, win_h, game.font_large);
             }
             break;
 
@@ -455,6 +446,12 @@ static void step_frame(float dt) {
     /* AI driver produces controls before systems read input */
     if (game.ai.mode != AI_MODE_NONE) {
         ai_apply_controls(&game.input, &game.ai_controls, &game.camera);
+    }
+
+    /* Mirror the local raw input into the local player's slot so the systems
+     * read through the per-player table (single-player == slot 0). */
+    if (game.players[0].in_use) {
+        game.players[0].input = game.input;
     }
 
     update(dt);

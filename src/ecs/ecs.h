@@ -80,6 +80,9 @@ typedef struct {
     float detection_range;
     float attack_range;
     float hurt_timer;
+    /* Entity that last damaged this zombie (a player). Used by system_cleanup
+     * to credit the correct player's inventory for the kill. */
+    Entity last_hit_by;
 } CZombieTag;
 
 typedef struct {

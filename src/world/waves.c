@@ -128,7 +128,8 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
         .attack_cooldown = 1.0f,
         .detection_range = ZOMBIE_DETECTION_RANGE,
         .attack_range = 20.0f,
-        .hurt_timer = 0
+        .hurt_timer = 0,
+        .last_hit_by = ECS_NULL_ENTITY
     };
 
     /* Vary zombie colors and sizes slightly */

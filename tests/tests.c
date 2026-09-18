@@ -76,6 +76,54 @@ static Entity spawn_test_bullet(World *ecs, Vec2 pos, Entity owner) {
     return e;
 }
 
+/* Build a lone in-use slot around an already-spawned entity for direct
+ * per-player system calls (weapon tests). */
+static void player_slot_wrap(Player *p, Entity e) {
+    memset(p, 0, sizeof(Player));
+    p->in_use = true;
+    p->alive = true;
+    p->entity = e;
+    input_init(&p->input);
+    weapons_inventory_init(&p->inventory);
+}
+
+static void test_kill_credit(void) {
+    LOG_INFO("--- Test: Per-player kill credit via damage owner ---");
+    World ecs;
+    ecs_init(&ecs);
+
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    player_respawn(players, &ecs, 0, "P1", &COLOR_RED, vec2(400, 400));
+    player_respawn(players, &ecs, 1, "P2", &COLOR_BLUE, vec2(600, 400));
+    CHECK(players[0].entity != ECS_NULL_ENTITY);
+    CHECK(players[1].entity != ECS_NULL_ENTITY);
+    CHECK(players[0].inventory.points == 0);
+    CHECK(players[0].kills == 0);
+
+    /* Zombie standing between the two players; P1 (slot 0) shoots it dead. */
+    Entity z = waves_spawn_zombie(&ecs, vec2(500, 400));
+    CHECK(z != ECS_NULL_ENTITY);
+    int safety = 0;
+    while (ecs_is_alive(&ecs, z) && ecs_get_health(&ecs, z)->current > 0 && safety < 20) {
+        Entity b = spawn_test_bullet(&ecs, ecs_get_position(&ecs, z)->pos,
+                                     players[0].entity);
+        CHECK(b != ECS_NULL_ENTITY);
+        system_collision(&ecs, NULL);
+        safety++;
+    }
+    CHECK(ecs_get_health(&ecs, z)->current <= 0);
+    CHECK(safety < 20);
+    CHECK(ecs_get_zombie_tag(&ecs, z)->last_hit_by == players[0].entity);
+
+    /* Cleanup with the slot table: the kill must land in P1's slot. */
+    system_cleanup(&ecs, NULL, players, MAX_PLAYERS);
+    CHECK(players[0].kills == 1);
+    CHECK(players[0].inventory.points == POINTS_PER_KILL);
+    CHECK(players[1].kills == 0);
+    CHECK(players[1].inventory.points == 0);
+}
+
 static void test_ecs_basics(void) {
     LOG_INFO("--- Test: ECS basics ---");
     World ecs;
@@ -168,7 +216,7 @@ static void test_wave_system(void) {
         system_zombie_ai(&ecs, dt);
         system_movement(&ecs, &world, dt);
         system_collision(&ecs, &world);
-        system_cleanup(&ecs, &waves, NULL);
+        system_cleanup(&ecs, &waves, NULL, 0);
     }
 
     CHECK(waves.wave_number >= 1);
@@ -198,7 +246,7 @@ static void test_wave_system(void) {
         Entity b = spawn_test_bullet(&ecs, ecs_get_position(&ecs, zombie)->pos, player);
         CHECK(b != ECS_NULL_ENTITY);
         system_collision(&ecs, &world);
-        system_cleanup(&ecs, &waves, NULL);
+        system_cleanup(&ecs, &waves, NULL, 0);
         safety++;
     }
     CHECK(!ecs_is_alive(&ecs, zombie));
@@ -316,7 +364,7 @@ static void test_wave_completion(void) {
             }
         }
 
-        system_cleanup(&ecs, &waves, NULL);
+        system_cleanup(&ecs, &waves, NULL, 0);
     }
 
     CHECK(guard < 3000);          /* wave completed in time */
@@ -454,7 +502,7 @@ static void test_event_stream(void) {
             }
         }
 
-        system_cleanup(&ecs, &waves, NULL);
+        system_cleanup(&ecs, &waves, NULL, 0);
         event_bus_flush(bus);
     }
 
@@ -619,21 +667,19 @@ static void test_sword_spin(void) {
     Entity player = spawn_player(&ecs, spawn);
     CHECK(player != ECS_NULL_ENTITY);
 
-    PlayerInventory inv;
-    weapons_inventory_init(&inv);
-    inv.points = 1000;
-    weapons_buy_sword(&inv);
-    weapons_select(&inv, WEAPON_SWORD);
+    Player p;
+    player_slot_wrap(&p, player);
+    p.inventory.points = 1000;
+    weapons_buy_sword(&p.inventory);
+    weapons_select(&p.inventory, WEAPON_SWORD);
 
     /* Fake input: mouse held, aim straight ahead. */
-    InputState input;
-    input_init(&input);
-    input.mouse_buttons[0] = true;
-    input.mouse_world_x = spawn.x + 100.0f;
-    input.mouse_world_y = spawn.y;
+    p.input.mouse_buttons[0] = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
 
     /* First tick: the system should spawn a sword entity. */
-    system_sword(&ecs, &input, &inv, 1.0f / 60.0f);
+    system_sword(&ecs, &p, 1.0f / 60.0f);
 
     Entity sword_entity = ECS_NULL_ENTITY;
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -644,8 +690,8 @@ static void test_sword_spin(void) {
     CHECK(ecs_get_sword_tag(&ecs, sword_entity)->angle != 0.0f);
 
     /* Release mouse: the sword should be destroyed. */
-    input.mouse_buttons[0] = false;
-    system_sword(&ecs, &input, &inv, 1.0f / 60.0f);
+    p.input.mouse_buttons[0] = false;
+    system_sword(&ecs, &p, 1.0f / 60.0f);
 
     bool alive = false;
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -672,21 +718,19 @@ static void test_rocket_damage_and_destruction(void) {
     CHECK(zombie != ECS_NULL_ENTITY);
     float hp_before = ecs_get_health(&ecs, zombie)->current;
 
-    PlayerInventory inv;
-    weapons_inventory_init(&inv);
-    inv.points = 1000;
-    weapons_buy_launcher(&inv);
-    weapons_select(&inv, WEAPON_LAUNCHER);
+    Player p;
+    player_slot_wrap(&p, player);
+    p.inventory.points = 1000;
+    weapons_buy_launcher(&p.inventory);
+    weapons_select(&p.inventory, WEAPON_LAUNCHER);
 
-    InputState input;
-    input_init(&input);
-    input.mouse_pressed[0] = true;      /* fire on the click edge */
-    input.mouse_world_x = ppos.x + 200.0f;
-    input.mouse_world_y = ppos.y;
+    p.input.mouse_pressed[0] = true;      /* fire on the click edge */
+    p.input.mouse_world_x = ppos.x + 200.0f;
+    p.input.mouse_world_y = ppos.y;
 
     /* Fire a rocket. */
-    system_rockets(&ecs, &input, &inv, &world, 0.0f);
-    CHECK(inv.launcher_ammo == LAUNCHER_STARTER_ROCKETS - 1);
+    system_rockets(&ecs, &p, &world, 0.0f);
+    CHECK(p.inventory.launcher_ammo == LAUNCHER_STARTER_ROCKETS - 1);
 
     Entity rocket = ECS_NULL_ENTITY;
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -696,13 +740,13 @@ static void test_rocket_damage_and_destruction(void) {
     CHECK(rocket != ECS_NULL_ENTITY);
 
     /* Advance and collide: rocket pierces through the zombie. */
-    input.mouse_pressed[0] = false;
-    system_rockets(&ecs, &input, &inv, &world, 0.016f);
+    p.input.mouse_pressed[0] = false;
+    system_rockets(&ecs, &p, &world, 0.016f);
     CHECK(ecs_get_health(&ecs, zombie)->current < hp_before);
 
     /* Move rocket out of world bounds → should be destroyed. */
     *ecs_get_position(&ecs, rocket) = (CPosition){{-100.0f, -100.0f}};
-    system_rockets(&ecs, &input, &inv, &world, 0.01f);
+    system_rockets(&ecs, &p, &world, 0.01f);
     CHECK(!ecs_is_alive(&ecs, rocket));
 }
 
@@ -723,22 +767,20 @@ static void test_grenade_detonation(void) {
     CHECK(zombie != ECS_NULL_ENTITY);
     float hp_before = ecs_get_health(&ecs, zombie)->current;
 
-    PlayerInventory inv;
-    weapons_inventory_init(&inv);
-    inv.points = 1000;
-    weapons_buy_grenade_pack(&inv);
-    CHECK(inv.grenades == GRENADES_PER_PACK);
-    weapons_select(&inv, WEAPON_GRENADE);
+    Player p;
+    player_slot_wrap(&p, player);
+    p.inventory.points = 1000;
+    weapons_buy_grenade_pack(&p.inventory);
+    CHECK(p.inventory.grenades == GRENADES_PER_PACK);
+    weapons_select(&p.inventory, WEAPON_GRENADE);
 
-    InputState input;
-    input_init(&input);
-    input.mouse_pressed[0] = true;
-    input.mouse_world_x = ppos.x + 200.0f;
-    input.mouse_world_y = ppos.y;
+    p.input.mouse_pressed[0] = true;
+    p.input.mouse_world_x = ppos.x + 200.0f;
+    p.input.mouse_world_y = ppos.y;
 
     /* Throw a grenade. */
-    system_grenades(&ecs, &input, &inv, 0.0f);
-    CHECK(inv.grenades == GRENADES_PER_PACK - 1);
+    system_grenades(&ecs, &p, 0.0f);
+    CHECK(p.inventory.grenades == GRENADES_PER_PACK - 1);
 
     Entity grenade = ECS_NULL_ENTITY;
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -748,9 +790,9 @@ static void test_grenade_detonation(void) {
     CHECK(grenade != ECS_NULL_ENTITY);
 
     /* Advance the fuse until it detonates. */
-    input.mouse_pressed[0] = false;
+    p.input.mouse_pressed[0] = false;
     for (int frame = 0; frame < 120; frame++) {
-        system_grenades(&ecs, &input, &inv, 1.0f / 60.0f);
+        system_grenades(&ecs, &p, 1.0f / 60.0f);
         if (!ecs_is_alive(&ecs, grenade)) break;
     }
     CHECK(!ecs_is_alive(&ecs, grenade));
@@ -770,6 +812,7 @@ int tests_run_all(void) {
     test_ecs_basics();
     test_world_valid();
     test_world_determinism();
+    test_kill_credit();
     test_wave_system();
     test_items();
     test_entity_limit();

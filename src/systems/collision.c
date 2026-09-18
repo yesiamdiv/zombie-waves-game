@@ -43,6 +43,11 @@ void system_collision(World *ecs, GameWorld *world) {
                     float prev = hp->current;
                     hp->current = prev - dmg;
 
+                    /* Credit the shooter with any resulting kill. */
+                    if (ecs_has_component(ecs, b, COMP_ZOMBIE_TAG)) {
+                        ecs_get_zombie_tag(ecs, b)->last_hit_by = bullet->owner;
+                    }
+
                     EventKind kind = GEK_NONE;
                     if (ecs_has_component(ecs, b, COMP_ZOMBIE_TAG)) kind = GEK_ZOMBIE;
                     else if (ecs_has_component(ecs, b, COMP_PLAYER_TAG)) kind = GEK_PLAYER;

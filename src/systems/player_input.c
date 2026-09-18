@@ -8,21 +8,12 @@
 #define BULLET_LIFETIME 2.0f
 #define SHOOT_COOLDOWN 0.2f
 
-static float shoot_timer = 0;
+void system_player_input(World *ecs, Player *p, Camera *cam, float dt) {
+    if (!p || !p->in_use || !p->alive) return;
+    Entity player = p->entity;
+    if (player == ECS_NULL_ENTITY || !ecs_is_alive(ecs, player)) return;
 
-void system_player_input(World *ecs, InputState *input, Camera *cam, float dt,
-                         const PlayerInventory *inv) {
-    Entity player = ECS_NULL_ENTITY;
-
-    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
-        if (!ecs->alive[i]) continue;
-        if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) {
-            player = i;
-            break;
-        }
-    }
-    if (player == ECS_NULL_ENTITY) return;
-
+    InputState *input = &p->input;
     CPosition *pos = ecs_get_position(ecs, player);
     CVelocity *vel = ecs_get_velocity(ecs, player);
 
@@ -52,11 +43,11 @@ void system_player_input(World *ecs, InputState *input, Camera *cam, float dt,
     /* Shooting: the pistol fires while the button is held (human hold-to-fire
      * and AI-driven) at the fire-rate cooldown. The other weapons handle their
      * own trigger logic (sword spin, grenade throw, rocket volley). */
-    shoot_timer -= dt;
-bool pistol_selected = (!inv) || (inv->unlocked[WEAPON_PISTOL] &&
-                                       inv->current == WEAPON_PISTOL);
-    if (pistol_selected && input->mouse_buttons[0] && shoot_timer <= 0) {
-        shoot_timer = SHOOT_COOLDOWN;
+    p->shoot_cd -= dt;
+    bool pistol_selected = p->inventory.unlocked[WEAPON_PISTOL] &&
+                           p->inventory.current == WEAPON_PISTOL;
+    if (pistol_selected && input->mouse_buttons[0] && p->shoot_cd <= 0) {
+        p->shoot_cd = SHOOT_COOLDOWN;
 
         Vec2 dir = vec2_normalize(vec2_sub(mouse_world, pos->pos));
         if (vec2_length(dir) < 0.001f) dir = vec2(1, 0);
@@ -82,9 +73,8 @@ bool pistol_selected = (!inv) || (inv->unlocked[WEAPON_PISTOL] &&
                 .owner = player
             };
 
-            SDL_FColor bullet_color = {1.0f, 0.9f, 0.3f, 1.0f};
             *ecs_get_sprite(ecs, bullet) = (CSprite){
-                .sprite = sprite_circle(4.0f, bullet_color),
+                .sprite = sprite_circle(4.0f, (SDL_FColor){1.0f, 0.9f, 0.3f, 1.0f}),
                 .scale = 1.0f,
                 .base_alpha = 1.0f
             };

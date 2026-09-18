@@ -97,7 +97,7 @@ void system_animation(World *ecs, float dt) {
     }
 }
 
-void system_cleanup(World *ecs, WaveSystem *waves, PlayerInventory *inv) {
+void system_cleanup(World *ecs, WaveSystem *waves, Player *players, int player_count) {
     /* Check for dead entities (health <= 0) and destroy them */
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
         if (!ecs->alive[i]) continue;
@@ -116,8 +116,21 @@ void system_cleanup(World *ecs, WaveSystem *waves, PlayerInventory *inv) {
             if (waves) {
                 waves_on_zombie_killed(waves);
             }
-            if (inv) {
-                weapons_award_kill(inv, 1);
+
+            /* Credit whoever last damaged this zombie - resolved through the
+             * slot table so kills land in the right player's inventory. */
+            Entity killer = ecs->zombie_tags[i].last_hit_by;
+            int slot = players_find_index(players, player_count, killer);
+            if (slot < 0) {
+                /* No recorded shooter (e.g. an unattributed source): fall back
+                 * to the first resident slot. */
+                for (int s = 0; s < player_count && slot < 0; s++) {
+                    if (players && players[s].in_use) slot = s;
+                }
+            }
+            if (slot >= 0) {
+                weapons_award_kill(&players[slot].inventory, 1);
+                players[slot].kills++;
             }
 
             /* Drop a pickup at the kill site (near the action) so the heal
