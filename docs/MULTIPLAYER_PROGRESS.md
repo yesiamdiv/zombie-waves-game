@@ -128,12 +128,23 @@ Multiplayer specifics:
       multiplayer modes** from main.c. HUD shows the slot's colored name tag
       when `multi`. Single-player visuals/determinism unchanged.
       `test_beacon_anchor` locks the anchor + slot color. 160 tests pass.
+- [x] P0.6 — Death/respawn per mode: `players_match_update()` runs right after
+      `system_cleanup` each frame. A slot whose entity the ECS just destroyed is
+      marked dead, then the mode applies: **SINGLE** → just dead (game over when
+      slot 0 drops, unchanged); **MULTI_TDM** → arms a `MULTI_RESPAWN_TIME`=5s
+      countdown and `player_respawn_slot()` rebuilds the entity at the slot's OWN
+      beacon, preserving inventory/kills/name/color (fresh `player_respawn()`
+      still requires `!in_use` = join-only); **HARDCORE** → `eliminated=true`
+      forever, no timer. Game over is host-side per mode (TDM never fires from
+      deaths). HUD shows a red "Respawning at beacon in Xs" countdown /
+      "ELIMINATED" overlay for a dead local slot in MP. Refactored a shared
+      `spawn_player_entity()` helper; `players.h` now includes `game_mode.h`.
+      New `test_tdm_respawn` + `test_hardcore_elimination` (192 tests pass, zero
+      warnings). Verified live: forced 1-HP idle script re-loops the real TDM
+      death→5s→respawn→death cycle at the spawn position; HARDCORE eliminates
+      then ends the game; SP event log still byte-identical to the P0.5 baseline
+      → determinism intact.
 - [ ] *next work items below*
-
-## In progress / next
-
-- [ ] P0.6 — Death/respawn per mode: `MULTI_RESPAWN_TIME` timer in TDM,
-      `eliminated` in HARDCORE; game-over only when all players gone.
 - [ ] P1 — ENet fetch (`FetchContent v1.3.18`) + codec + host/join UI + handshake.
 - [ ] P2 — snapshot replication, interpolation, net-input → `AIControls` path.
 - [ ] P3 — shared waves/items/shop + per-player points + scaling.

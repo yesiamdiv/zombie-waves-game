@@ -5,6 +5,7 @@
 #include "core/input.h"
 #include "graphics/sprite.h"
 #include "weapons/weapons.h"
+#include "game_mode.h"
 #include <stdbool.h>
 
 #define MAX_PLAYERS 4
@@ -48,5 +49,15 @@ int player_respawn(Player *players, World *ecs, int idx, const char *slot_name,
 
 /* Index of the in-use slot owning `entity`, else -1. */
 int players_find_index(const Player *players, int count, Entity entity);
+
+/* TDM respawn: recreate `idx`'s entity at their own beacon, preserving the
+ * slot's inventory/name/color/kills. Returns idx or -1 (invalid slot / no ECS
+ * space). */
+int player_respawn_slot(Player *players, World *ecs, int idx);
+
+/* per-frame death/respawn rule update (call AFTER system_cleanup). See the
+ * .c for the SINGLE / TDM / HARDCORE semantics. Returns alive slot count. */
+int players_match_update(World *ecs, Player *players, int count, GameMode mode,
+                         float dt);
 
 #endif

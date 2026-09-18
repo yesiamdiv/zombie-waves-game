@@ -171,6 +171,113 @@ static void test_beacon_anchor(void) {
     CHECK(players[0].color.r == COLOR_RED.r);
 }
 
+/* Kill every player slot currently alive. */
+static void kill_player_slots(World *ecs, Player *players, int player_count) {
+    for (int s = 0; s < player_count; s++) {
+        if (!players[s].in_use || !players[s].alive) continue;
+        if (players[s].entity == ECS_NULL_ENTITY) continue;
+        if (ecs_is_alive(ecs, players[s].entity)) {
+            ecs_get_health(ecs, players[s].entity)->current = 0.0f;
+        }
+    }
+}
+
+static void test_tdm_respawn(void) {
+    LOG_INFO("--- Test: TDM respawns at own beacon after MULTI_RESPAWN_TIME ---");
+    World ecs;
+    ecs_init(&ecs);
+
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    player_respawn(players, &ecs, 0, "P1", &COLOR_RED, vec2(300, 300));
+    player_respawn(players, &ecs, 1, "P2", &COLOR_BLUE, vec2(900, 700));
+    Entity e0 = players[0].entity;
+    Entity e1 = players[1].entity;
+
+    /* Kill both. */
+    kill_player_slots(&ecs, players, MAX_PLAYERS);
+    system_cleanup(&ecs, NULL, players, MAX_PLAYERS);
+    CHECK(!ecs_is_alive(&ecs, e0));
+    CHECK(!ecs_is_alive(&ecs, e1));
+
+    /* First rule tick: both slots marked dead, TDM timers armed. */
+    int alive = players_match_update(&ecs, players, MAX_PLAYERS,
+                                     GAME_MODE_MULTI_TDM, 0.0f);
+    CHECK(alive == 0);
+    CHECK(!players[0].alive && !players[1].alive);
+    CHECK(players[0].respawn_timer == MULTI_RESPAWN_TIME);
+    CHECK(players[1].respawn_timer == MULTI_RESPAWN_TIME);
+    CHECK(!players[0].eliminated);
+
+    /* Gifts survive death (inventory KEPT across respawn). */
+    players[0].inventory.points = 100;
+    players[1].kills = 3;
+
+    /* Tick nearly the whole timer on both; still dead. */
+    players_match_update(&ecs, players, MAX_PLAYERS, GAME_MODE_MULTI_TDM,
+                         MULTI_RESPAWN_TIME - 0.5f);
+    CHECK(!players[0].alive);
+    CHECK(players[0].respawn_timer > 0.0f);
+
+    /* Finish the countdown: both respawn at their own beacons. */
+    alive = players_match_update(&ecs, players, MAX_PLAYERS, GAME_MODE_MULTI_TDM,
+                                 0.5f);
+    CHECK(alive == 2);
+    CHECK(players[0].alive && players[1].alive);
+    /* The ECS reuses freed entity indices, so the new entity may be the same
+     * numeric id but must be a FRESH, live entity at the beacon. */
+    CHECK(ecs_is_alive(&ecs, players[0].entity));
+    CHECK(ecs_is_alive(&ecs, players[1].entity));
+    CHECK(players[0].entity != ECS_NULL_ENTITY);
+    CHECK(players[1].entity != ECS_NULL_ENTITY);
+    CHECK(ecs_get_position(&ecs, players[0].entity)->pos.x == 300.0f);
+    CHECK(ecs_get_position(&ecs, players[1].entity)->pos.x == 900.0f);
+    CHECK(players[0].respawn_timer == 0.0f);
+
+    /* Persistent slot data was NOT wiped by the respawn. */
+    CHECK(players[0].inventory.points == 100);
+    CHECK(players[1].kills == 3);
+    CHECK(strcmp(players[0].name, "P1") == 0);
+    CHECK(players[0].color.r == COLOR_RED.r);
+}
+
+static void test_hardcore_elimination(void) {
+    LOG_INFO("--- Test: HARDCORE eliminates permanently, game-over at 0 alive ---");
+    World ecs;
+    ecs_init(&ecs);
+
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    player_respawn(players, &ecs, 0, "P1", &COLOR_RED, vec2(300, 300));
+    player_respawn(players, &ecs, 1, "P2", &COLOR_BLUE, vec2(900, 700));
+
+    /* One player dies: the other keeps the match alive. */
+    ecs_get_health(&ecs, players[0].entity)->current = 0.0f;
+    system_cleanup(&ecs, NULL, players, MAX_PLAYERS);
+    int alive = players_match_update(&ecs, players, MAX_PLAYERS,
+                                     GAME_MODE_MULTI_HARDCORE, 0.0f);
+    CHECK(alive == 1);
+    CHECK(!players[0].alive);
+    CHECK(players[0].eliminated);
+    CHECK(players[0].respawn_timer == 0.0f);   /* no TDM timer in hardcore */
+    CHECK(players[1].alive && !players[1].eliminated);
+
+    /* Passing time must NOT un-eliminate or respawn a hardcore player. */
+    alive = players_match_update(&ecs, players, MAX_PLAYERS,
+                                 GAME_MODE_MULTI_HARDCORE, 999.0f);
+    CHECK(alive == 1);
+    CHECK(!players[0].alive);
+    CHECK(players[0].eliminated);
+
+    /* Everyone out -> 0 alive (host then ends the match). */
+    ecs_get_health(&ecs, players[1].entity)->current = 0.0f;
+    system_cleanup(&ecs, NULL, players, MAX_PLAYERS);
+    alive = players_match_update(&ecs, players, MAX_PLAYERS,
+                                 GAME_MODE_MULTI_HARDCORE, 0.0f);
+    CHECK(alive == 0);
+    CHECK(players[0].eliminated && players[1].eliminated);
+}
+
 static void test_ecs_basics(void) {
     LOG_INFO("--- Test: ECS basics ---");
     World ecs;
@@ -862,6 +969,8 @@ int tests_run_all(void) {
     test_kill_credit();
     test_nearest_alive_target();
     test_beacon_anchor();
+    test_tdm_respawn();
+    test_hardcore_elimination();
     test_wave_system();
     test_items();
     test_entity_limit();

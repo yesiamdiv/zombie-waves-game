@@ -95,13 +95,31 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
               int screen_w, int screen_h, TTF_Font *font) {
     char buf[128];
 
-    /* This HUD belongs to one specific player slot (the local/displayed one).
-     * Its entity carries the health; its input drives the crosshair; its
-     * inventory supplies the shop readout. */
-    if (!local || local->entity == ECS_NULL_ENTITY ||
-        !ecs_is_alive(ecs, local->entity)) {
+    if (!local) return;
+
+    bool alive = local->entity != ECS_NULL_ENTITY && ecs_is_alive(ecs, local->entity);
+
+    /* Dead local player: multiplayer shows the post-death overlay (respawn
+     * countdown in TDM, elimination mark in HARDCORE). Single-player hands off
+     * to the game-over screen instead. */
+    if (!alive) {
+        if (multi) {
+            SDL_FColor dead_color = {1.0f, 0.3f, 0.3f, 1.0f};
+            if (local->eliminated) {
+                draw_text_centered(renderer, font, "ELIMINATED",
+                                   (float)screen_w * 0.5f, (float)screen_h * 0.3f,
+                                   dead_color);
+            } else if (local->respawn_timer > 0.0f) {
+                snprintf(buf, sizeof(buf), "Respawning at beacon in %.1fs",
+                         local->respawn_timer);
+                draw_text_centered(renderer, font, buf,
+                                   (float)screen_w * 0.5f, (float)screen_h * 0.3f,
+                                   dead_color);
+            }
+        }
         return;
     }
+
     const InputState *input = &local->input;
     const PlayerInventory *inv = &local->inventory;
 

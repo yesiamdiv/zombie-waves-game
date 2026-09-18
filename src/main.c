@@ -336,6 +336,9 @@ static void update(float dt) {
 
             system_cleanup(&game.ecs, &game.waves, game.players, MAX_PLAYERS);
 
+            int alive_count = players_match_update(&game.ecs, game.players,
+                                                   MAX_PLAYERS, game.mode, dt);
+
             Player *local = &game.players[0];
             if (local->entity != ECS_NULL_ENTITY &&
                 ecs_is_alive(&game.ecs, local->entity)) {
@@ -344,8 +347,28 @@ static void update(float dt) {
 
             hud_update(&game.hud, dt);
 
-            if (!local->in_use || local->entity == ECS_NULL_ENTITY ||
-                !ecs_is_alive(&game.ecs, local->entity)) {
+            bool game_over = false;
+            switch (game.mode) {
+                case GAME_MODE_SINGLE:
+                    game_over = !game.players[0].in_use || !game.players[0].alive;
+                    break;
+                case GAME_MODE_MULTI_HARDCORE: {
+                    /* Game ends only when every resident player is out. */
+                    int resident = 0;
+                    for (int s = 0; s < MAX_PLAYERS; s++) {
+                        if (game.players[s].in_use) resident++;
+                    }
+                    game_over = resident > 0 && alive_count == 0;
+                    break;
+                }
+                case GAME_MODE_MULTI_TDM:
+                default:
+                    /* TDM always respawns; the match ends when the host stops
+                     * it (hosting/leave handling is P4). */
+                    game_over = false;
+                    break;
+            }
+            if (game_over) {
                 set_game_over();
             }
 
