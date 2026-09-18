@@ -4,6 +4,7 @@
 #include "core/mathutil.h"
 #include "core/log.h"
 #include "camera.h"
+#include "world/theme.h"
 #include <SDL3/SDL.h>
 
 #define WORLD_GRID_SIZE 64
@@ -25,6 +26,7 @@ typedef struct {
     int height;
     float world_pixel_w;
     float world_pixel_h;
+    ThemeID theme;
 } GameWorld;
 
 void world_init(GameWorld *world);

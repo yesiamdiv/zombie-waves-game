@@ -24,9 +24,20 @@ const char *asset_path(const char *rel) {
     return buf;
 }
 
+static AssetManager *g_assets = NULL;
+
+void asset_manager_set_global(AssetManager *am) {
+    g_assets = am;
+}
+
+AssetManager *asset_manager_global(void) {
+    return g_assets;
+}
+
 void asset_manager_init(AssetManager *am, SDL_Renderer *renderer) {
     am->renderer = renderer;
     am->head = NULL;
+    g_assets = am;
 }
 
 void asset_manager_shutdown(AssetManager *am) {
@@ -39,6 +50,7 @@ void asset_manager_shutdown(AssetManager *am) {
     }
     am->head = NULL;
     am->renderer = NULL;
+    g_assets = NULL;
 }
 
 SDL_Texture *asset_manager_get(AssetManager *am, const char *name) {

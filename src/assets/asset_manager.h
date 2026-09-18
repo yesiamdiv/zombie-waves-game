@@ -20,6 +20,11 @@ typedef struct {
 void asset_manager_init(AssetManager *am, SDL_Renderer *renderer);
 void asset_manager_shutdown(AssetManager *am);
 
+/* Convenience global handle for systems that resolve textures at draw time.
+ * Set by asset_manager_init; NULL in headless builds so lookups stay safe. */
+void asset_manager_set_global(AssetManager *am);
+AssetManager *asset_manager_global(void);
+
 /* Return the cached (and lazily loaded) texture for a relative name like
  * "textures/ground.png". Returns NULL in headless builds or on load failure. */
 SDL_Texture *asset_manager_get(AssetManager *am, const char *name);

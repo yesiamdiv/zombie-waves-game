@@ -1,21 +1,15 @@
 #include "world/world.h"
 #include "world/camera.h"
+#include "assets/asset_manager.h"
 #include <stdlib.h>
 #include <string.h>
-
-static const SDL_FColor tile_colors[] = {
-    [TILE_GROUND]  = {0.22f, 0.28f, 0.18f, 1.0f},  /* dark green grass */
-    [TILE_WALL]    = {0.45f, 0.42f, 0.38f, 1.0f},  /* stone gray */
-    [TILE_WATER]   = {0.15f, 0.35f, 0.65f, 1.0f},  /* deep blue */
-    [TILE_ROAD]    = {0.35f, 0.33f, 0.30f, 1.0f},  /* asphalt */
-    [TILE_SPAWN]   = {0.30f, 0.35f, 0.22f, 1.0f},  /* lighter green */
-};
 
 void world_init(GameWorld *world) {
     world->width = WORLD_TILES_X;
     world->height = WORLD_TILES_Y;
     world->world_pixel_w = WORLD_TILES_X * WORLD_GRID_SIZE;
     world->world_pixel_h = WORLD_TILES_Y * WORLD_GRID_SIZE;
+    world->theme = THEME_GRASSLAND;
 
     /* Start with all ground */
     for (int y = 0; y < WORLD_TILES_Y; y++) {
@@ -86,6 +80,8 @@ void world_init(GameWorld *world) {
 }
 
 void world_draw(SDL_Renderer *renderer, GameWorld *world, Camera *cam) {
+    const Theme *theme = theme_get(world->theme);
+    AssetManager *am = asset_manager_global();
     float gs = WORLD_GRID_SIZE * cam->zoom;
 
     int start_x = (int)((cam->position.x - cam->viewport_w * 0.5f / cam->zoom) / WORLD_GRID_SIZE) - 1;
@@ -98,20 +94,57 @@ void world_draw(SDL_Renderer *renderer, GameWorld *world, Camera *cam) {
     end_x = clampi(end_x, 0, world->width - 1);
     end_y = clampi(end_y, 0, world->height - 1);
 
+    SDL_Texture *ground_tex[3] = {0};
+    SDL_Texture *wall_tex = NULL, *water_tex = NULL, *road_tex = NULL;
+    if (am) {
+        for (int i = 0; i < 3; i++) ground_tex[i] = asset_manager_get(am, theme->ground[i]);
+        wall_tex  = asset_manager_get(am, theme->wall);
+        water_tex = asset_manager_get(am, theme->water);
+        road_tex  = asset_manager_get(am, theme->road);
+    }
+
     for (int y = start_y; y <= end_y; y++) {
         for (int x = start_x; x <= end_x; x++) {
             TileType tile = world->tiles[y][x];
-            const SDL_FColor *c = &tile_colors[tile];
-            SDL_SetRenderDrawColorFloat(renderer, c->r, c->g, c->b, c->a);
+
+            SDL_Texture *tex = NULL;
+            SDL_FColor c = theme->ground_color;
+            switch (tile) {
+                case TILE_WALL:
+                    tex = wall_tex;
+                    c = theme->wall_color;
+                    break;
+                case TILE_WATER:
+                    tex = water_tex;
+                    c = theme->water_color;
+                    break;
+                case TILE_ROAD:
+                    tex = road_tex;
+                    c = theme->road_color;
+                    break;
+                case TILE_GROUND:
+                case TILE_SPAWN:
+                default:
+                    tex = ground_tex[(x * 7 + y * 13) % 3];
+                    c = theme->ground_color;
+                    break;
+            }
 
             Vec2 screen = camera_world_to_screen(cam, vec2(x * WORLD_GRID_SIZE, y * WORLD_GRID_SIZE));
             SDL_FRect rect = {screen.x, screen.y, gs + 1, gs + 1};
-            SDL_RenderFillRect(renderer, &rect);
+
+            if (tex) {
+                SDL_RenderTexture(renderer, tex, NULL, &rect);
+            } else {
+                SDL_SetRenderDrawColorFloat(renderer, c.r, c.g, c.b, c.a);
+                SDL_RenderFillRect(renderer, &rect);
+            }
         }
     }
 
-    /* Grid lines (subtle) */
-    SDL_SetRenderDrawColorFloat(renderer, 0.15f, 0.18f, 0.12f, 0.3f);
+    /* Grid lines (subtle), navigational aid shared across themes */
+    SDL_SetRenderDrawColorFloat(renderer, theme->grid_color.r, theme->grid_color.g,
+                                theme->grid_color.b, 0.35f);
     for (int y = start_y; y <= end_y; y++) {
         for (int x = start_x; x <= end_x; x++) {
             Vec2 screen = camera_world_to_screen(cam, vec2(x * WORLD_GRID_SIZE, y * WORLD_GRID_SIZE));
