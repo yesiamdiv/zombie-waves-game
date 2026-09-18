@@ -58,13 +58,14 @@ Multiplayer specifics:
 
 - [x] `docs/MULTIPLAYER_PLAN.md` created + committed on `main` (`395e3ae`).
 - [x] Worktree + `feature/multiplayer` branch created; this log added.
+- [x] P0.1 — World determinism test (`test_world_determinism`, `tests/tests.c`,
+      commit `30a1b84`): two `world_init()` worlds yield identical tiles,
+      dimensions, and spawn point. Confirms `world.c` uses no `rand()` → **no world
+      transfer needed on join** (D7 resolved in favour of sending only a version).
 - [ ] *next work items below*
 
 ## In progress / next
 
-- [ ] P0.1 — World determinism test: assert `world_init()` produces identical tiles +
-      spawn point across two separate worlds; gate networking's "no world transfer"
-      assumption (add to `tests/tests.c`).
 - [ ] P0.2 — `GameMode` enum (`SINGLE`, `MULTI_TDM`, `MULTI_HARDCORE`) threaded through
       `main.c` + arg `--mode=`, defaulting single-player behavior unchanged.
 - [ ] P0.3 — `players[]` table (per-player `InputState`, `PlayerInventory`, entity,
