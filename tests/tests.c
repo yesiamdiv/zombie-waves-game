@@ -7,6 +7,7 @@
 #include "ecs/ecs.h"
 #include "world/world.h"
 #include "world/waves.h"
+#include "world/map_registry.h"
 #include "systems/systems.h"
 #include "items/items.h"
 #include "events/event_bus.h"
@@ -808,6 +809,89 @@ static void test_grenade_detonation(void) {
     CHECK(ecs_get_health(&ecs, zombie)->current < hp_before);
 }
 
+/* ------------------------------------------------------- Map file loading */
+
+static void test_map_parser(void) {
+    LOG_INFO("--- Test: Map ASCII parser ---");
+    GameWorld w = {0};
+    const char *ascii =
+        "#######\n"
+        "#S.+##\n"
+        "#~...#\n"
+        "#####.#\n";
+    CHECK(world_init_from_string(&w, ascii, THEME_DESERT));
+    CHECK(w.width == 7);
+    CHECK(w.height == 4);
+    CHECK(w.world_pixel_w == 7.0f * WORLD_GRID_SIZE);
+    CHECK(w.world_pixel_h == 4.0f * WORLD_GRID_SIZE);
+    CHECK(w.theme == THEME_DESERT);
+
+    CHECK(world_get_tile(&w, 0, 0) == TILE_WALL);
+    CHECK(world_get_tile(&w, 6, 3) == TILE_WALL);
+    CHECK(world_get_tile(&w, 5, 3) == TILE_GROUND);
+    CHECK(world_get_tile(&w, 3, 1) == TILE_ROAD);
+    CHECK(world_get_tile(&w, 1, 2) == TILE_WATER);
+    CHECK(world_get_tile(&w, 1, 1) == TILE_GROUND);   /* 'S' -> ground */
+
+    CHECK(w.has_spawn);
+    CHECK(w.spawn_x == 1 && w.spawn_y == 1);
+    Vec2 sp = world_get_spawn_point(&w);
+    CHECK(world_is_walkable(&w, sp.x, sp.y));
+
+    CHECK(world_get_tile(&w, -1, 0) == TILE_WALL);
+    CHECK(world_get_tile(&w, 0, -1) == TILE_WALL);
+    CHECK(world_get_tile(&w, 99, 99) == TILE_WALL);
+
+    /* Too small to be a map. */
+    GameWorld tiny = {0};
+    CHECK(!world_init_from_string(&tiny, "ab\ncd\n", THEME_SNOW));
+    world_free(&w);
+}
+
+static void test_map_registry_loads(void) {
+    LOG_INFO("--- Test: Ship map registry loads ---");
+    int count = map_registry_count();
+    CHECK(count >= 4);
+
+    for (int i = 0; i < count; i++) {
+        const MapDef *def = map_registry_get(i);
+        CHECK(def != NULL);
+        CHECK(def->name != NULL && def->name[0] != '\0');
+        CHECK(def->file != NULL && def->file[0] != '\0');
+
+        GameWorld w = {0};
+        CHECK(world_load_map(&w, def));
+        CHECK(w.width >= 8 && w.height >= 8);
+        CHECK(w.world_pixel_w == (float)w.width * WORLD_GRID_SIZE);
+        CHECK(w.world_pixel_h == (float)w.height * WORLD_GRID_SIZE);
+        CHECK(w.theme == def->theme);
+        CHECK(w.tiles != NULL);
+
+        /* Interior is bounded by walls and mostly walkable. */
+        int walkable = 0, total = 0;
+        for (int y = 0; y < w.height; y++) {
+            for (int x = 0; x < w.width; x++) {
+                total++;
+                if (world_is_walkable(&w, x * WORLD_GRID_SIZE + 32,
+                                             y * WORLD_GRID_SIZE + 32)) {
+                    walkable++;
+                }
+            }
+        }
+        CHECK(walkable > total / 2);
+
+        Vec2 sp = world_get_spawn_point(&w);
+        CHECK(world_is_walkable(&w, sp.x, sp.y));
+        world_free(&w);
+    }
+
+    /* Registry entry 0 resolves to an actual file on disk. */
+    const MapDef *first = map_registry_get(0);
+    GameWorld probe = {0};
+    CHECK(world_load_map(&probe, first));
+    world_free(&probe);
+}
+
 /* ---------------------------------------------------------------- End Weapons */
 
 int tests_run_all(void) {
@@ -834,6 +918,8 @@ int tests_run_all(void) {
     test_zombie_contact_and_slow();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
+    test_map_parser();
+    test_map_registry_loads();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

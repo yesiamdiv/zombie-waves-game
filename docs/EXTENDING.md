@@ -123,17 +123,82 @@ In headless/scripted runs, use `--points=<n>` to start with shop points and
 the script commands `@<t> shop down|up` / `@<t> weapon <1-4>` to exercise the
 shop and weapon switching.
 
-## How to Swap Shapes for Textures
+## Textures, Sprites and the Asset Manager
 
-The `Sprite` struct uses a `SpriteShape` enum. Currently supports:
+Entities and tiles no longer need to be flat colored shapes. `Sprite` supports:
+
 - `SPRITE_SHAPE_RECT` - Colored rectangle
 - `SPRITE_SHAPE_CIRCLE` - Colored circle
-- `SPRITE_SHAPE_TEXTURE` - (reserved for SDL_Texture)
+- `SPRITE_SHAPE_TEXTURE` - An `SDL_Texture` drawn with color-mod tint/alpha
 
-To add texture support:
-1. Add `SDL_Texture *texture` and `SDL_FRect src_rect` to the `Sprite` union
-2. In `sprite_draw()`, handle `SPRITE_SHAPE_TEXTURE` with `SDL_RenderTexture()`
-3. Load textures in a resource manager and assign to sprites
+Load textures lazily through the global asset manager and build textured
+sprites without tracking lifetimes:
+
+```c
+SDL_Texture *tex = sprite_tex("textures/entities/zombie.png"); /* cached */
+Sprite s = sprite_texture(tex);
+s.color = (SDL_FColor){0.4f, 0.2f, 0.3f, 1.0f};  /* runtime tint */
+*ecs_get_sprite(ecs, e) = (CSprite){ .sprite = s, .scale = 0.5f, .base_alpha = 1.0f };
+```
+
+- `asset_manager.c` resolves `asset_path()` (SDL_GetBasePath, then CWD) and
+  keys textures by path; loaded textures use `SDL_SCALEMODE_NEAREST` so pixel
+  art stays crisp when scaled.
+- `CSprite.scale` is applied on top of the camera zoom, so author art at a
+  base resolution and scale it to the world size (player art is 32px drawn at
+  `scale = 0.5` for a 16-unit sprite).
+- Entity art is tintable: paint in light tones (`w` white, `s` light grey) plus
+  dark outlines (`K`), then tint at runtime (blue soldier, per-variant
+  zombies). If a texture fails to load (e.g. headless builds), creation sites
+  fall back to their old colored-shape sprite automatically.
+
+## Regenerating / Replacing Art
+
+`tools/gen_assets.py` regenerates every pixel-art texture into
+`assets/textures/`:
+
+```sh
+python3 tools/gen_assets.py --verify
+```
+
+Tile art is authored as 16x16 pixel grids and scaled x4 to 64x64; entity art
+is authored at its final resolution (32x32 or 40x16 for the sword blade).
+The tool writes `assets/textures/{tiles,entities}/*.png`; filenames are the
+texture keys used in code, so replacing any one of these PNGs with real art of
+the same name is enough to swap it in. Themes map tile roles to textures plus
+a fallback color in `src/world/theme.c`.
+
+## Maps, Layouts and Themes
+
+The world is a tile grid (`TILE_*` in `world.h`) of 64-unit tiles. Maps are
+plain ASCII files in `assets/maps/*.map`:
+
+| Char | Tile      |
+|------|-----------|
+| `#`  | wall      |
+| `~`  | water     |
+| `+`  | road      |
+| `S`  | spawn (walkable ground + spawn point) |
+| other | ground  |
+
+To add a map:
+
+1. Create `assets/maps/<name>.map` (a walled boundary around interior ground,
+   at least 8x8 tiles; keep `S` on walkable ground).
+2. Add an entry to `src/world/map_registry.c`:
+
+```c
+{ "Canyon", "maps/canyon.map", THEME_DESERT },
+```
+
+3. The main-menu map selector (`src/ui/menu.c`, option 2) picks it up
+   automatically. The parser (`world_init_from_string`) is also usable from
+   tests via `world_load_map()`.
+
+Themes (`src/world/theme.h`) bundle per-tile textures and a fallback color;
+the City map uses the largest grid (50x60) and Grassland the smallest
+(46x34) to exercise different world sizes. `world_get_spawn_point()` returns
+the `S` tile center, or world center when the map has no `S`.
 
 ## Logging
 

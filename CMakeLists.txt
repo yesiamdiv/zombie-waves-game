@@ -59,3 +59,4 @@ endif()
 
 enable_testing()
 add_test(NAME core_tests COMMAND zombie_tests)
+set_tests_properties(core_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
