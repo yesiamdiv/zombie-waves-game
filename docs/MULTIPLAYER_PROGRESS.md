@@ -144,8 +144,57 @@ Multiplayer specifics:
       death→5s→respawn→death cycle at the spawn position; HARDCORE eliminates
       then ends the game; SP event log still byte-identical to the P0.5 baseline
       → determinism intact.
+- [x] P1 — Real net layer (codec + host/join + lobby):
+      - P1a — `src/net/net.h` + `net_codec.h/.c`: wire protocol. Fixed 7-byte
+        header (version/kind/u16 seq/from_slot/flags/checksum, little-endian,
+        covers bytes 0..5). `NET_WIRE_VERSION 2`, `NET_NAME_MAX 32`
+        (`NET_NAME_CAP 33`), `NET_MAX_PLAYERS 4`, `NET_DEFAULT_PORT 5123`,
+        `NET_WORLD_GEN_VERSION 1`. Channel 0 = reliable/ordered control
+        (JOIN/HELLO/REJECT/PLAYER_LIST/LEAVE + reject reasons
+        NONE/FULL/VERSION/WORLD/OTHER + leave reasons + mismatch flags),
+        channel 1 reserved for P2 snapshots. `net_slot_color()` = fixed 4-color
+        palette (blue/red/green/yellow). Codec is byte-exact round-trip +
+        truncation-safe name decode (`get_name`). Unit tests in `tests/tests.c`
+        → **240 tests pass**.
+      - P1b — `net_server.h/.c` + `net_client.h/.c`: listen-server (slot 0 =
+        local host, slots 1..3 in join order), JOIN→HELLO(slot, seed,
+        world_gen)→PLAYER_LIST broadcast on join/leave, `peer->data` = slot
+        (never trust client-claimed identity), client handles
+        HELLO/REJECT/PLAYER_LIST/LEAVE, preserves `REJECTED` across transport
+        teardown, `wire_version_override` seam for stale-client tests,
+        `net_parse_host_port()` defaults port 5123.
+      - ENet gotchas learned: `enet_peer_disconnect()` → `enet_peer_reset_queues()`
+        races an un-acked reliable REJECT on loopback and drops it before client
+        dispatch → `reject_and_drop()` uses **`enet_peer_disconnect_later`** so
+        the coded reason is acked first. Client `while` loop re-checks
+        `c->host` each iteration (DISCONNECT handler tears the host down).
+      - P1c — `tests/net_test.c` loopback ctest (`zombie_net_test` /
+        `net_loopback`): 1 host + Alice/Bob join (slots, roster), stale-build
+        client (`wire_version_override=1`) is REJECTED with `VERSION` +
+        `VERSION_MISMATCH` flag, Cara joins after Bob leaves → slot reuse.
+        **net_test passes**.
+      - P1d — main.c integration: `--host [--port=N]`, `--join ip[:port]`,
+        `--name=N` (defaults name/port; forces `multi-tdm` if a MP mode wasn't
+        given). New `GAME_STATE_CONNECTING`/`GAME_STATE_LOBBY`; caller pumps
+        `net_server_update()`/`net_client_update()` each frame; `begin_net_session()`
+        / `leave_net_session()` manage the session; lobby overlay renders
+        roster slots + names + RTT (host reads `slot_peers[i]->roundTripTime`,
+        client reads `net_client_rtt_ms()`), host's "ENTER starts the match".
+        Net layer is also serviced during PLAYING (leaves/disconnects observed;
+        real replication is P2). Local `shutdown()` renamed `shutdown_game()` to
+        avoid colliding with POSIX `shutdown` pulled in by ENet headers.
+      - P1e — menu entries: options are now `Solo | Host Co-op | Join Co-op |
+        Quit`; "Join Co-op" opens a minimal scancode-based address field
+        (default `127.0.0.1:5123`, `SDL3` dropped `SDL_SCANCODE_COLON` → ':' maps
+        to `SDL_SCANCODE_SEMICOLON`); confirm hands the address to
+        `begin_net_session()`.
+      - P1f — verified two real processes over loopback: host logs "connection
+        from ... joining" → "'Alice' joined -> slot 1" → "broadcast player list
+        (2 players)"; client logs "JOIN sent (wire=2)" → "hello from 'Host' ->
+        slot 1 (seed=...)" → "player list (2 in lobby) [0]'Host' [1]'Alice'(you)".
+        Full ctest green (core_tests + net_spike + net_loopback), zero warnings;
+        SP seeded bot runs still byte-identical → determinism intact.
 - [ ] *next work items below*
-- [ ] P1 — ENet fetch (`FetchContent v1.3.18`) + codec + host/join UI + handshake.
 - [ ] P2 — snapshot replication, interpolation, net-input → `AIControls` path.
 - [ ] P3 — shared waves/items/shop + per-player points + scaling.
 - [ ] P4 — disconnect/pause broadcast/player list/chat; `--host --headless`.

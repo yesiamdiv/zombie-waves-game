@@ -8,6 +8,8 @@
 
 typedef enum {
     GAME_STATE_MENU,
+    GAME_STATE_CONNECTING,   /* client: transport/join handshake in flight */
+    GAME_STATE_LOBBY,        /* pre-match: roster shown, waiting for host start */
     GAME_STATE_PLAYING,
     GAME_STATE_PAUSED,
     GAME_STATE_SHOP,
@@ -20,6 +22,12 @@ typedef struct {
     float title_pulse;
     float menu_timer;
     bool quit_requested;
+    /* Co-op entries (P1e). "Join Co-op" opens a minimal address field; the
+     * confirmed target is handed to main.c to start the net session. */
+    bool editing_address;
+    char join_address[64];
+    bool host_requested;
+    bool join_requested;
 } MainMenu;
 
 typedef struct {
@@ -58,5 +66,10 @@ void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int 
 void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int screen_h, TTF_Font *font);
 void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventory *inv,
                     int screen_w, int screen_h, TTF_Font *font);
+
+/* Centered text helper shared with main.c lobby overlays. */
+void menu_draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
+                             const char *text, float x, float y,
+                             SDL_FColor color);
 
 #endif

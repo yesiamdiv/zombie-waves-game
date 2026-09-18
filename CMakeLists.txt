@@ -28,14 +28,31 @@ FetchContent_Declare(
 set(SDLTTF_SAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL_ttf)
 
+# ENet (v1.3.18): UDP transport for the multiplayer layer. Shared by both the
+# game core (NetServer/NetClient) and the standalone spike. Pulled before the
+# core library so its include dir can be propagated to every consumer.
+FetchContent_Declare(
+    ENet
+    GIT_REPOSITORY https://github.com/lsalzman/enet.git
+    GIT_TAG        v1.3.18
+    GIT_SHALLOW    TRUE
+)
+set(ENET_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ENET_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ENET_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ENET_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(ENET_BUILTIN_NAT OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(ENet)
+
 # Core game logic library (everything except the entry point)
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
      "src/core/*.c" "src/ecs/*.c" "src/graphics/*.c"
      "src/world/*.c" "src/systems/*.c" "src/ui/*.c" "src/items/*.c"
-     "src/events/*.c" "src/ai/*.c" "src/weapons/*.c" "src/players.c")
+     "src/events/*.c" "src/ai/*.c" "src/weapons/*.c" "src/net/*.c"
+     "src/players.c")
 add_library(zombie_core STATIC ${CORE_SOURCES})
-target_include_directories(zombie_core PUBLIC src)
-target_link_libraries(zombie_core PUBLIC SDL3::SDL3 SDL3_ttf::SDL3_ttf)
+target_include_directories(zombie_core PUBLIC src "${enet_SOURCE_DIR}/include")
+target_link_libraries(zombie_core PUBLIC SDL3::SDL3 SDL3_ttf::SDL3_ttf enet)
 
 add_executable(${PROJECT_NAME} src/main.c)
 target_link_libraries(${PROJECT_NAME} PRIVATE zombie_core)
@@ -51,24 +68,17 @@ target_link_libraries(zombie_tests PRIVATE zombie_core)
 # ---------------------------------------------------------------------------
 option(ENABLE_NET_SPIKE "Build the ENet loopback connectivity/codec spike" ON)
 if(ENABLE_NET_SPIKE)
-    FetchContent_Declare(
-        ENet
-        GIT_REPOSITORY https://github.com/lsalzman/enet.git
-        GIT_TAG        v1.3.18
-        GIT_SHALLOW    TRUE
-    )
-    set(ENET_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-    set(ENET_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(ENET_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(ENET_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-    set(ENET_BUILTIN_NAT OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(ENet)
-
     add_executable(zombie_net_spike tests/net_spike.c)
     target_link_libraries(zombie_net_spike PRIVATE enet)
     target_include_directories(zombie_net_spike PRIVATE "${enet_SOURCE_DIR}/include")
 
     add_test(NAME net_spike COMMAND zombie_net_spike 127.0.0.1 50910 1.5 3)
+
+    # Loopback handshake integration test: real NetServer + 3 NetClients in one
+    # process (join, roster broadcast, version-mismatch reject, disconnect).
+    add_executable(zombie_net_test tests/net_test.c)
+    target_link_libraries(zombie_net_test PRIVATE zombie_core)
+    add_test(NAME net_loopback COMMAND zombie_net_test)
 endif()
 
 if(UNIX AND NOT APPLE)

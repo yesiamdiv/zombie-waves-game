@@ -24,6 +24,9 @@
 #include "ai/ai_driver.h"
 #include "game_mode.h"
 #include "players.h"
+#include "net/net.h"
+#include "net/net_server.h"
+#include "net/net_client.h"
 
 #define WINDOW_W 1280
 #define WINDOW_H 720
@@ -90,12 +93,24 @@ typedef struct {
     float item_spawn_timer;
     int last_announced_wave;
     const char *event_log_path;
+
+    /* Multiplayer session (P1). A session is either hosting a listen-server
+     * or joining one; both are driven by CLI flags for now (menu wiring is
+     * P1e). */
+    bool net_host_mode;
+    uint16_t net_port;
+    char net_join_addr[64];
+    char net_player_name[NET_NAME_CAP];
+    uint32_t net_seed;          /* 0 = derive from RNG at host time */
+    NetServer net_server;
+    NetClient net_client;
 } Game;
 
 /* Defaults to full-health start; -1 disables the HP override. */
 static Game game = {
     .player_hp_pct = -1.0f,
     .mode = GAME_MODE_SINGLE,
+    .net_port = NET_DEFAULT_PORT,
 };
 
 /* Set by the SIGINT/SIGTERM handler so headless runs can be stopped cleanly
@@ -117,7 +132,11 @@ static void reset_game(void) {
 
     /* Single-player: the local player occupies slot 0. */
     Vec2 spawn = world_get_spawn_point(&game.world);
-    if (player_respawn(game.players, &game.ecs, 0, "Player", &COLOR_BLUE, spawn) < 0) {
+    const char *local_name = game.net_host_mode
+                                 ? game.net_player_name
+                                 : "Player";
+    if (player_respawn(game.players, &game.ecs, 0, local_name,
+                       &COLOR_BLUE, spawn) < 0) {
         LOG_FATAL("Failed to spawn local player");
         return;
     }
@@ -149,6 +168,64 @@ static void set_game_over(void) {
                   game.waves.wave_number, game.waves.total_kills);
     LOG_INFO("GAME OVER - Score: %d, Wave: %d, Kills: %d",
              score, game.waves.wave_number, game.waves.total_kills);
+}
+
+/* Start the multiplayer session requested on the CLI: --host listens and
+ * enters the lobby immediately; --join connects and enters CONNECTING until
+ * the handshake resolves. Returns false if the session cannot begin. */
+static bool begin_net_session(void) {
+    if (!game.net_host_mode && game.net_join_addr[0] == '\0') return true;
+    if (game.mode == GAME_MODE_SINGLE) {
+        LOG_INFO("Multiplayer requested; defaulting mode to multi-tdm");
+        game.mode = GAME_MODE_MULTI_TDM;
+    }
+    if (game.net_player_name[0] == '\0') {
+        snprintf(game.net_player_name, sizeof(game.net_player_name), "Player");
+    }
+
+    if (game.net_host_mode) {
+        uint32_t seed = game.net_seed != 0 ? game.net_seed : (uint32_t)rand();
+        LOG_INFO("NET: hosting lobby on port %u as '%s' (seed=%u)",
+                 (unsigned)game.net_port, game.net_player_name, seed);
+        if (net_server_host(&game.net_server, game.net_port,
+                            game.net_player_name, seed,
+                            NET_WORLD_GEN_VERSION) != 0) {
+            LOG_ERROR("Failed to host lobby on port %u",
+                      (unsigned)game.net_port);
+            return false;
+        }
+        game.state = GAME_STATE_LOBBY;
+    } else {
+        char ip[64];
+        uint16_t port;
+        if (net_parse_host_port(game.net_join_addr, ip, sizeof(ip), &port) != 0) {
+            LOG_ERROR("Bad join address '%s' (expected ip[:port])",
+                      game.net_join_addr);
+            return false;
+        }
+        if (net_client_init(&game.net_client) != 0 ||
+            net_client_connect(&game.net_client, ip, port,
+                               game.net_player_name) != 0) {
+            LOG_ERROR("Failed to start join to %s", game.net_join_addr);
+            return false;
+        }
+        game.state = GAME_STATE_CONNECTING;
+    }
+    return true;
+}
+
+/* Leave a live net session and drop back to the main menu (idempotent). */
+static void leave_net_session(void) {
+    if (game.net_host_mode) {
+        if (game.net_server.state != NET_SERVER_OFFLINE) {
+            LOG_INFO("NET: leaving lobby (stopping host)");
+            net_server_shutdown(&game.net_server);
+        }
+    } else {
+        if (game.net_client.state != NET_CLIENT_OFFLINE) {
+            net_client_shutdown(&game.net_client);
+        }
+    }
 }
 
 static bool init(void) {
@@ -224,7 +301,7 @@ static bool init(void) {
     return true;
 }
 
-static void shutdown(void) {
+static void shutdown_game(void) {
     LOG_INFO("Shutting down...");
 
     event_bus_shutdown(g_events);
@@ -243,10 +320,42 @@ static void update(float dt) {
     switch (game.state) {
         case GAME_STATE_MENU: {
             GameState next = menu_update(&game.main_menu, &game.input, dt);
-            if (next == GAME_STATE_PLAYING) {
-                reset_game();
-                game.state = GAME_STATE_PLAYING;
-                LOG_INFO("Game started from menu");
+            switch (next) {
+                case GAME_STATE_PLAYING:
+                    reset_game();
+                    game.state = GAME_STATE_PLAYING;
+                    LOG_INFO("Game started from menu");
+                    break;
+                case GAME_STATE_LOBBY:
+                    if (game.main_menu.host_requested) {
+                        game.main_menu.host_requested = false;
+                        game.net_host_mode = true;
+                        if (game.net_player_name[0] == '\0') {
+                            snprintf(game.net_player_name, sizeof(game.net_player_name),
+                                     "Host");
+                        }
+                        if (!begin_net_session()) {
+                            game.state = GAME_STATE_MENU;
+                        }
+                    }
+                    break;
+                case GAME_STATE_CONNECTING:
+                    if (game.main_menu.join_requested) {
+                        game.main_menu.join_requested = false;
+                        game.net_host_mode = false;
+                        snprintf(game.net_join_addr, sizeof(game.net_join_addr),
+                                 "%s", game.main_menu.join_address);
+                        if (game.net_player_name[0] == '\0') {
+                            snprintf(game.net_player_name, sizeof(game.net_player_name),
+                                     "Player");
+                        }
+                        if (!begin_net_session()) {
+                            game.state = GAME_STATE_MENU;
+                        }
+                    }
+                    break;
+                default:
+                    break;
             }
             if (game.input.quit_requested || game.main_menu.quit_requested) {
                 game.running = false;
@@ -254,7 +363,78 @@ static void update(float dt) {
             break;
         }
 
+        case GAME_STATE_CONNECTING: {
+            net_client_update(&game.net_client);
+            const NetClient *c = &game.net_client;
+            if (c->state == NET_CLIENT_CONNECTED) {
+                game.state = GAME_STATE_LOBBY;
+                LOG_INFO("Connected to '%s' (%s) - entering lobby", c->host_name,
+                         c->host_addr);
+            } else if (c->state == NET_CLIENT_REJECTED) {
+                LOG_ERROR("Join to %s rejected by host: %s",
+                          c->host_addr, net_reject_reason_name(c->reject_reason));
+                net_client_shutdown(&game.net_client);
+                game.state = GAME_STATE_MENU;
+            } else if (c->state == NET_CLIENT_OFFLINE) {
+                LOG_ERROR("Join to %s failed", c->host_addr);
+                game.state = GAME_STATE_MENU;
+            }
+            if (input_key_pressed(&game.input, SDL_SCANCODE_ESCAPE) ||
+                game.input.quit_requested) {
+                net_client_shutdown(&game.net_client);
+                game.state = GAME_STATE_MENU;
+                LOG_INFO("Join attempt cancelled");
+            }
+            break;
+        }
+
+        case GAME_STATE_LOBBY: {
+            if (game.net_host_mode) {
+                net_server_update(&game.net_server);
+                /* Host starts the match; clients must wait for the P2
+                 * snapshot stream before gameplay can begin. */
+                if (input_key_pressed(&game.input, SDL_SCANCODE_RETURN) ||
+                    input_key_pressed(&game.input, SDL_SCANCODE_SPACE)) {
+                    reset_game();
+                    game.state = GAME_STATE_PLAYING;
+                    LOG_INFO("Match starting from lobby (%s)",
+                             game_mode_name(game.mode));
+                }
+            } else {
+                const NetClient *c = &game.net_client;
+                if (c->state == NET_CLIENT_REJECTED) {
+                    LOG_ERROR("Rejected by host: %s",
+                              net_reject_reason_name(c->reject_reason));
+                    net_client_shutdown(&game.net_client);
+                    game.state = GAME_STATE_MENU;
+                } else if (c->state == NET_CLIENT_OFFLINE || c->server_stopped) {
+                    LOG_ERROR("Connection to host (%s) lost", c->host_addr);
+                    net_client_shutdown(&game.net_client);
+                    game.state = GAME_STATE_MENU;
+                } else {
+                    /* Non-destructive pump: ignore a handshake while already
+                     * connected (re-broadcasts, late roster updates). */
+                    net_client_update(&game.net_client);
+                }
+            }
+            if (input_key_pressed(&game.input, SDL_SCANCODE_ESCAPE) ||
+                game.input.quit_requested) {
+                leave_net_session();
+                game.state = GAME_STATE_MENU;
+                LOG_INFO("Left lobby");
+            }
+            break;
+        }
+
         case GAME_STATE_PLAYING: {
+            /* P1: keep the net layer serviced during play so leaves/disconnects
+             * are observed (P2 adds real snapshot replication). */
+            if (game.net_host_mode) {
+                net_server_update(&game.net_server);
+            } else if (game.net_client.host) {
+                net_client_update(&game.net_client);
+            }
+
             if (input_key_pressed(&game.input, SDL_SCANCODE_ESCAPE)) {
                 game.state = GAME_STATE_PAUSED;
                 pause_menu_init(&game.pause_menu);
@@ -418,6 +598,112 @@ static void update(float dt) {
     }
 }
 
+static void render_connecting(void) {
+    SDL_SetRenderDrawColorFloat(game.renderer, 0.05f, 0.05f, 0.08f, 1.0f);
+    SDL_RenderClear(game.renderer);
+
+    int win_w, win_h;
+    SDL_GetWindowSize(game.window, &win_w, &win_h);
+    float cx = win_w * 0.5f;
+
+    SDL_FColor title = {1.0f, 0.85f, 0.2f, 1.0f};
+    menu_draw_text_centered(game.renderer, game.font_large, "CONNECTING",
+                            cx, win_h * 0.35f, title);
+
+    SDL_FColor sub = {0.6f, 0.65f, 0.7f, 0.9f};
+    menu_draw_text_centered(game.renderer, game.font,
+                            game.net_client.status, cx, win_h * 0.45f, sub);
+
+    SDL_FColor hint = {0.35f, 0.35f, 0.4f, 0.7f};
+    menu_draw_text_centered(game.renderer, game.font,
+                            "ESC: Cancel", cx, win_h * 0.7f, hint);
+}
+
+static void render_lobby(void) {
+    SDL_SetRenderDrawColorFloat(game.renderer, 0.05f, 0.05f, 0.08f, 1.0f);
+    SDL_RenderClear(game.renderer);
+
+    int win_w, win_h;
+    SDL_GetWindowSize(game.window, &win_w, &win_h);
+    float cx = win_w * 0.5f;
+
+    SDL_FColor title_color = {1.0f, 0.85f, 0.2f, 1.0f};
+    menu_draw_text_centered(game.renderer, game.font_large,
+                            game.net_host_mode ? "LOBBY - HOSTING" : "LOBBY",
+                            cx, win_h * 0.1f, title_color);
+
+    char buf[192];
+    SDL_FColor sub = {0.6f, 0.65f, 0.7f, 0.9f};
+
+    if (game.net_host_mode) {
+        snprintf(buf, sizeof(buf), "Mode: %s   |   Port: %u   |   Seed: %u",
+                 game_mode_name(game.mode),
+                 (unsigned)game.net_server.port, game.net_server.seed);
+    } else {
+        snprintf(buf, sizeof(buf),
+                 "Mode: %s   |   Host: %s   |   Seed: %u",
+                 game_mode_name(game.mode), game.net_client.host_name,
+                 game.net_client.seed);
+    }
+    menu_draw_text_centered(game.renderer, game.font, buf, cx, win_h * 0.2f, sub);
+
+    /* Roster rows: slot, color swatch (as text), name, rtt. */
+    char row[192];
+    float row_y = win_h * 0.32f;
+    const float row_h = 32.0f;
+
+    if (game.net_host_mode) {
+        NetPlayerInfo roster[NET_MAX_PLAYERS];
+        int n = net_server_build_player_list(&game.net_server, roster,
+                                             NET_MAX_PLAYERS);
+        for (int i = 0; i < n; i++) {
+            SDL_FColor col = net_slot_color(roster[i].slot);
+            char rtt[24];
+            ENetPeer *peer = game.net_server.slot_peers[roster[i].slot];
+            if (peer) {
+                snprintf(rtt, sizeof(rtt), "%d ms",
+                         (int)peer->roundTripTime);
+            } else {
+                snprintf(rtt, sizeof(rtt), "(local)");
+            }
+            snprintf(row, sizeof(row), "%u. %s", roster[i].slot,
+                     roster[i].name);
+            menu_draw_text_centered(game.renderer, game.font, row,
+                                    cx - 60.0f, row_y, col);
+            menu_draw_text_centered(game.renderer, game.font, rtt,
+                                    cx + 120.0f, row_y, sub);
+            row_y += row_h;
+        }
+    } else {
+        for (int i = 0; i < game.net_client.roster_count; i++) {
+            const NetPlayerInfo *p = &game.net_client.roster[i];
+            SDL_FColor col = net_slot_color(p->slot);
+            snprintf(row, sizeof(row), "%u. %s%s", p->slot, p->name,
+                     p->slot == game.net_client.slot ? "  (you)" : "");
+            menu_draw_text_centered(game.renderer, game.font, row,
+                                    cx - 60.0f, row_y, col);
+            row_y += row_h;
+        }
+        int rtt = net_client_rtt_ms(&game.net_client);
+        if (rtt >= 0) {
+            snprintf(row, sizeof(row), "Ping to host: %d ms", rtt);
+            menu_draw_text_centered(game.renderer, game.font, row,
+                                    cx, row_y + row_h * 0.5f, sub);
+        }
+    }
+
+    SDL_FColor hint = {0.35f, 0.35f, 0.4f, 0.7f};
+    if (game.net_host_mode) {
+        menu_draw_text_centered(game.renderer, game.font,
+                                "ENTER: Start match  |  ESC: Leave lobby",
+                                cx, win_h * 0.85f, hint);
+    } else {
+        menu_draw_text_centered(game.renderer, game.font,
+                                "Waiting for host to start the match  |  ESC: Leave",
+                                cx, win_h * 0.85f, hint);
+    }
+}
+
 static void render(void) {
     if (game.headless) return;
 
@@ -432,6 +718,14 @@ static void render(void) {
     switch (game.state) {
         case GAME_STATE_MENU:
             menu_draw(game.renderer, &game.main_menu, win_w, win_h, game.font_large);
+            break;
+
+        case GAME_STATE_CONNECTING:
+            render_connecting();
+            break;
+
+        case GAME_STATE_LOBBY:
+            render_lobby();
             break;
 
         case GAME_STATE_PLAYING:
@@ -572,6 +866,28 @@ static void parse_args(int argc, char *argv[]) {
             float m = (float)atof(arg + 20);
             if (m < 0.0f) m = 0.0f;
             g_zombie_speed_mult = m;
+        } else if (strcmp(arg, "--host") == 0) {
+            game.net_host_mode = true;
+        } else if (strncmp(arg, "--port=", 7) == 0) {
+            long p = strtol(arg + 7, NULL, 10);
+            if (p <= 0 || p > 65535) {
+                LOG_WARN("Bad --port value '%s'; using default %u",
+                         arg + 7, (unsigned)NET_DEFAULT_PORT);
+                game.net_port = NET_DEFAULT_PORT;
+            } else {
+                game.net_port = (uint16_t)p;
+            }
+        } else if (strcmp(arg, "--join") == 0 && i + 1 < argc) {
+            snprintf(game.net_join_addr, sizeof(game.net_join_addr), "%s",
+                     argv[++i]);
+            game.net_host_mode = false;
+        } else if (strncmp(arg, "--join=", 7) == 0) {
+            snprintf(game.net_join_addr, sizeof(game.net_join_addr), "%s",
+                     arg + 7);
+            game.net_host_mode = false;
+        } else if (strncmp(arg, "--name=", 7) == 0) {
+            snprintf(game.net_player_name, sizeof(game.net_player_name), "%s",
+                     arg + 7);
         } else if (strcmp(arg, "--help") == 0) {
             printf("%s\n", "Usage: open_world_zombie_waves [options]");
             printf("%s\n", "  --headless            run with no window/renderer (fast, deterministic)");
@@ -585,6 +901,10 @@ static void parse_args(int argc, char *argv[]) {
             printf("%s\n", "  --points=<n>          start with n shop points (debug/playtest)");
             printf("%s\n", "  --player-damage-mult=<f>  zombie melee damage multiplier (debug/playtest)");
             printf("%s\n", "  --zombie-speed-mult=<f>   zombie move-speed multiplier (debug/playtest)");
+            printf("%s\n", "  --host                    host a LAN lobby (multiplayer)");
+            printf("%s\n", "  --join <ip>[:port]        join a hosted lobby (multiplayer)");
+            printf("%s\n", "  --port=<n>                host listen port (default 5123)");
+            printf("%s\n", "  --name=<name>             player name when hosting/joining");
             exit(0);
         } else if (ai_script_requested && game.ai.mode != AI_MODE_SCRIPT &&
                    arg[0] != '-') {
@@ -626,6 +946,14 @@ int main(int argc, char *argv[]) {
 
     if (!init()) {
         LOG_FATAL("Initialization failed!");
+        return 1;
+    }
+
+    /* Kick off any requested multiplayer session (--host/--join). Falls back to
+     * the main menu when neither flag is present. */
+    if (!begin_net_session()) {
+        LOG_FATAL("Could not start the multiplayer session");
+        shutdown_game();
         return 1;
     }
 
@@ -689,6 +1017,6 @@ int main(int argc, char *argv[]) {
         LOG_INFO("Interrupt received; shutting down cleanly");
     }
 
-    shutdown();
+    shutdown_game();
     return 0;
 }

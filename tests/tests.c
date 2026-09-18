@@ -13,6 +13,8 @@
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
 #include "config.h"
+#include "net/net.h"
+#include "net/net_codec.h"
 
 /* Normal-play default; the game binary overrides via debug flags. */
 float g_zombie_damage_mult = 1.0f;
@@ -955,6 +957,130 @@ static void test_grenade_detonation(void) {
 
 /* ---------------------------------------------------------------- End Weapons */
 
+static void test_net_codec(void) {
+    LOG_INFO("--- Test: wire codec byte-exact round trips ---");
+
+    /* Header encode/decode + checksum. */
+    {
+        uint8_t wire[NET_HDR_SIZE];
+        NetHeader in = {NET_WIRE_VERSION, NET_PKT_JOIN, 0x1234, 0, 0};
+        CHECK(net_hdr_encode(wire, &in) == 0);
+        NetHeader out;
+        CHECK(net_hdr_decode(&out, wire) == 0);
+        CHECK(out.version == NET_WIRE_VERSION);
+        CHECK(out.kind == NET_PKT_JOIN);
+        CHECK(out.seq == 0x1234);
+        /* Corrupt a header byte -> checksum rejects it. */
+        wire[3] ^= 0xFF;
+        CHECK(net_hdr_decode(&out, wire) != 0);
+    }
+
+    /* JOIN: name round trip (bounded to NET_NAME_MAX). */
+    {
+        char long_name[96];
+        memset(long_name, 'A', sizeof(long_name) - 1);
+        long_name[sizeof(long_name) - 1] = '\0';
+        uint8_t buf[NET_HDR_SIZE + 1 + NET_NAME_MAX + 32];
+        NetHeader jh = {NET_WIRE_VERSION, NET_PKT_JOIN, 42, 0, 0};
+        int len = net_encode_join(buf, (int)sizeof(buf), &jh, long_name);
+        CHECK(len >= NET_HDR_SIZE);
+        NetHeader h;
+        char name[NET_NAME_CAP];
+        CHECK(net_decode_join(buf, len, &h, name, NET_NAME_CAP) == 0);
+        CHECK(h.kind == NET_PKT_JOIN);
+        CHECK(h.seq == 42);
+        CHECK((int)strlen(name) == NET_NAME_MAX); /* trimmed, not truncated wire */
+        /* Normal name. */
+        NetHeader sh = {NET_WIRE_VERSION, NET_PKT_JOIN, 7, 0, 0};
+        len = net_encode_join(buf, (int)sizeof(buf), &sh, "Alice");
+        CHECK(net_decode_join(buf, len, &h, name, NET_NAME_CAP) == 0);
+        CHECK(strcmp(name, "Alice") == 0);
+    }
+
+    /* HELLO: slot + seed + world_gen + host name. */
+    {
+        uint8_t buf[NET_HDR_SIZE + 1 + 4 + 4 + 1 + NET_NAME_MAX];
+        NetHeader h = {NET_WIRE_VERSION, NET_PKT_HELLO, 0, 255, 0};
+        int len = net_encode_hello(buf, (int)sizeof(buf), &h, 3, 2026u,
+                                   NET_WORLD_GEN_VERSION, "Host-1");
+        CHECK(len > NET_HDR_SIZE);
+        NetHeader out;
+        uint8_t slot;
+        uint32_t seed, world;
+        char host_name[NET_NAME_CAP];
+        CHECK(net_decode_hello(buf, len, &out, &slot, &seed, &world,
+                               host_name, NET_NAME_CAP) == 0);
+        CHECK(slot == 3);
+        CHECK(seed == 2026u);
+        CHECK(world == NET_WORLD_GEN_VERSION);
+        CHECK(strcmp(host_name, "Host-1") == 0);
+    }
+
+    /* REJECT + LEAVE round trips. */
+    {
+        uint8_t buf[NET_HDR_SIZE + 1];
+        NetHeader h = {NET_WIRE_VERSION, NET_PKT_REJECT, 0, 0,
+                       NET_FLAG_VERSION_MISMATCH};
+        int len = net_encode_reject(buf, (int)sizeof(buf), &h, NET_REJECT_VERSION);
+        NetHeader out;
+        uint8_t reason = 0;
+        CHECK(net_decode_reject(buf, len, &out, &reason) == 0);
+        CHECK(reason == NET_REJECT_VERSION);
+        CHECK(out.flags == NET_FLAG_VERSION_MISMATCH);
+
+        NetHeader lh = {NET_WIRE_VERSION, NET_PKT_LEAVE, 0, 0, 0};
+        len = net_encode_leave(buf, (int)sizeof(buf), &lh, NET_LEAVE_HOST_STOPPED);
+        CHECK(net_decode_leave(buf, len, &out, &reason) == 0);
+        CHECK(reason == NET_LEAVE_HOST_STOPPED);
+    }
+
+    /* PLAYER_LIST: 4 entries round trip, byte-identical length. */
+    {
+        NetPlayerInfo roster[NET_MAX_PLAYERS] = {
+            {0, "Host", 0}, {1, "A", 1}, {2, "BeeBee", 2}, {3, "C-3PO", 3}
+        };
+        uint8_t buf[NET_HDR_SIZE + 1 + NET_MAX_PLAYERS * (2 + NET_NAME_MAX)];
+        int len = net_encode_player_list(buf, (int)sizeof(buf), roster,
+                                         NET_MAX_PLAYERS);
+        CHECK(len > NET_HDR_SIZE);
+        NetHeader h;
+        NetPlayerInfo out[NET_MAX_PLAYERS];
+        int n = 0;
+        CHECK(net_decode_player_list(buf, len, &h, out, NET_MAX_PLAYERS, &n) == 0);
+        CHECK(n == NET_MAX_PLAYERS);
+        for (int i = 0; i < n; i++) {
+            CHECK(out[i].slot == roster[i].slot);
+            CHECK(out[i].color == roster[i].color);
+            CHECK(strcmp(out[i].name, roster[i].name) == 0);
+        }
+        /* Re-encode the decoded list -> must match the original bytes. */
+        uint8_t again[sizeof(buf)];
+        int len2 = net_encode_player_list(again, (int)sizeof(again), out, n);
+        CHECK(len2 == len);
+        CHECK(memcmp(buf, again, (size_t)len) == 0);
+    }
+
+    /* Robustness: truncated payloads must fail cleanly, not over-read. */
+    {
+        uint8_t buf[NET_HDR_SIZE + 1 + NET_NAME_MAX];
+        NetHeader jh = {NET_WIRE_VERSION, NET_PKT_JOIN, 1, 0, 0};
+        int len = net_encode_join(buf, (int)sizeof(buf), &jh, "Bob");
+        NetHeader h;
+        char name[NET_NAME_CAP];
+        CHECK(net_decode_join(buf, NET_HDR_SIZE, &h, name, NET_NAME_CAP) != 0);
+        CHECK(net_decode_join(buf, 0, &h, name, NET_NAME_CAP) != 0);
+        CHECK(net_decode_join(buf, len - 1, &h, name, NET_NAME_CAP) != 0);
+    }
+
+    /* Convenience name helpers. */
+    CHECK(strcmp(net_pkt_kind_name(NET_PKT_HELLO), "hello") == 0);
+    CHECK(strcmp(net_reject_reason_name(NET_REJECT_VERSION), "version mismatch") == 0);
+    CHECK(strcmp(net_leave_reason_name(NET_LEAVE_HOST_STOPPED), "host stopped") == 0);
+    CHECK(net_slot_color(0).r == COLOR_BLUE.r); /* host color is blue */
+}
+
+/* ---------------------------------------------------------------- Net codec */
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -983,6 +1109,7 @@ int tests_run_all(void) {
     test_sword_spin();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
+    test_net_codec();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

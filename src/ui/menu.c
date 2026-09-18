@@ -1,5 +1,6 @@
 #include "ui/menu.h"
 #include "core/log.h"
+#include "net/net.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -15,10 +16,15 @@ static void shop_set_message(ShopMenu *menu, const char *fmt, ...) {
 
 void menu_init(MainMenu *menu) {
     menu->selected_option = 0;
-    menu->option_count = 2;
+    menu->option_count = 4;
     menu->title_pulse = 0;
     menu->menu_timer = 0;
     menu->quit_requested = false;
+    menu->editing_address = false;
+    menu->host_requested = false;
+    menu->join_requested = false;
+    snprintf(menu->join_address, sizeof(menu->join_address), "127.0.0.1:%d",
+             NET_DEFAULT_PORT);
     LOG_DEBUG("Main menu initialized");
 }
 
@@ -38,6 +44,60 @@ GameState menu_update(MainMenu *menu, InputState *input, float dt) {
     menu->title_pulse += dt * 2.0f;
     menu->menu_timer += dt;
 
+    /* Joining: capture the host address into the edit field. */
+    if (menu->editing_address) {
+        for (int s = SDL_SCANCODE_A; s <= SDL_SCANCODE_Z; s++) {
+            if (input_key_pressed(input, (SDL_Scancode)s)) {
+                char ch = (char)('a' + (s - SDL_SCANCODE_A));
+                size_t len = strlen(menu->join_address);
+                if (len + 1 < sizeof(menu->join_address)) {
+                    menu->join_address[len] = ch;
+                    menu->join_address[len + 1] = '\0';
+                }
+            }
+        }
+        for (int s = SDL_SCANCODE_0; s <= SDL_SCANCODE_9; s++) {
+            if (input_key_pressed(input, (SDL_Scancode)s)) {
+                char ch = (char)('0' + (s - SDL_SCANCODE_0));
+                size_t len = strlen(menu->join_address);
+                if (len + 1 < sizeof(menu->join_address)) {
+                    menu->join_address[len] = ch;
+                    menu->join_address[len + 1] = '\0';
+                }
+            }
+        }
+        if (input_key_pressed(input, SDL_SCANCODE_PERIOD) ||
+            input_key_pressed(input, SDL_SCANCODE_MINUS) ||
+            input_key_pressed(input, SDL_SCANCODE_SEMICOLON)) {
+            char ch = input_key_pressed(input, SDL_SCANCODE_PERIOD) ? '.'
+                    : input_key_pressed(input, SDL_SCANCODE_MINUS) ? '-'
+                    : ':';
+            size_t len = strlen(menu->join_address);
+            if (len + 1 < sizeof(menu->join_address)) {
+                menu->join_address[len] = ch;
+                menu->join_address[len + 1] = '\0';
+            }
+        }
+        if (input_key_pressed(input, SDL_SCANCODE_BACKSPACE)) {
+            size_t len = strlen(menu->join_address);
+            if (len > 0) menu->join_address[len - 1] = '\0';
+        }
+
+        if (input_key_pressed(input, SDL_SCANCODE_RETURN) ||
+            input_key_pressed(input, SDL_SCANCODE_SPACE)) {
+            if (menu->join_address[0] != '\0') {
+                menu->editing_address = false;
+                menu->join_requested = true;
+                LOG_INFO("Joining host at '%s'", menu->join_address);
+                return GAME_STATE_CONNECTING;
+            }
+        }
+        if (input_key_pressed(input, SDL_SCANCODE_ESCAPE)) {
+            menu->editing_address = false;
+        }
+        return GAME_STATE_MENU;
+    }
+
     if (input_key_pressed(input, SDL_SCANCODE_UP) || input_key_pressed(input, SDL_SCANCODE_W)) {
         menu->selected_option--;
         if (menu->selected_option < 0) menu->selected_option = menu->option_count - 1;
@@ -48,10 +108,20 @@ GameState menu_update(MainMenu *menu, InputState *input, float dt) {
     }
 
     if (input_key_pressed(input, SDL_SCANCODE_RETURN) || input_key_pressed(input, SDL_SCANCODE_SPACE)) {
-        if (menu->selected_option == 0) return GAME_STATE_PLAYING;
-        if (menu->selected_option == 1) {
-            menu->quit_requested = true;
-            return GAME_STATE_MENU;
+        switch (menu->selected_option) {
+            case 0: /* Solo */
+                return GAME_STATE_PLAYING;
+            case 1: /* Host Co-op lobby */
+                menu->host_requested = true;
+                LOG_INFO("Hosting co-op lobby from menu");
+                return GAME_STATE_LOBBY;
+            case 2: /* Join Co-op - open the address field */
+                menu->editing_address = true;
+                break;
+            case 3: /* Quit */
+            default:
+                menu->quit_requested = true;
+                return GAME_STATE_MENU;
         }
     }
 
@@ -114,6 +184,12 @@ static void draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
     SDL_DestroySurface(surface);
 }
 
+void menu_draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
+                             const char *text, float x, float y,
+                             SDL_FColor color) {
+    draw_text_centered(renderer, font, text, x, y, color);
+}
+
 void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
     /* Dark background */
     SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
@@ -131,7 +207,7 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
                        screen_w * 0.5f, screen_h * 0.3f, sub_color);
 
     /* Options */
-    const char *options[] = {"Start Game", "Quit"};
+    const char *options[] = {"Solo", "Host Co-op", "Join Co-op", "Quit"};
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -142,10 +218,33 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
         }
         char prefix[4] = "";
         if (i == menu->selected_option) snprintf(prefix, sizeof(prefix), "> ");
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
+        char buf[96];
+        if (i == 2) {
+            /* Show the current join target next to the option. */
+            snprintf(buf, sizeof(buf), "%s%s [%s]", prefix, options[i],
+                     menu->join_address);
+        } else {
+            snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
+        }
         draw_text_centered(renderer, font, buf,
                            screen_w * 0.5f, screen_h * 0.5f + i * 50.0f, opt_color);
+    }
+
+    /* Address edit field overlay. */
+    if (menu->editing_address) {
+        SDL_SetRenderDrawColorFloat(renderer, 0.2f, 0.2f, 0.25f, 0.9f);
+        SDL_RenderFillRect(renderer, &(SDL_FRect){screen_w * 0.5f - 220.0f,
+                                                 screen_h * 0.62f, 440.0f, 40.0f});
+        SDL_FColor field_color = {1.0f, 0.95f, 0.6f, 1.0f};
+        char field_buf[96];
+        snprintf(field_buf, sizeof(field_buf), "Host address: %s_",
+                 menu->join_address);
+        draw_text_centered(renderer, font, field_buf,
+                           screen_w * 0.5f, screen_h * 0.63f, field_color);
+        SDL_FColor sub = {0.6f, 0.65f, 0.7f, 0.9f};
+        draw_text_centered(renderer, font,
+                           "Type host ip:port  |  ENTER: Connect  |  ESC: Back",
+                           screen_w * 0.5f, screen_h * 0.72f, sub);
     }
 
     /* Controls hint */
