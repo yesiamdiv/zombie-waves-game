@@ -80,6 +80,35 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
     }
 }
 
+void system_render_beacons(SDL_Renderer *renderer, Camera *cam,
+                           const Player *players, int player_count) {
+    if (!renderer || !cam || !players) return;
+
+    for (int s = 0; s < player_count; s++) {
+        const Player *p = &players[s];
+        if (!p->in_use) continue;
+
+        if (!camera_is_visible(cam, p->beacon_pos, 60.0f)) continue;
+        Vec2 screen = camera_world_to_screen(cam, p->beacon_pos);
+        float z = cam->zoom;
+
+        /* Base pad: dark slab so the beacon reads against any ground. */
+        SDL_SetRenderDrawColorFloat(renderer, 0.12f, 0.12f, 0.15f, 0.85f);
+        SDL_RenderFillRect(renderer, &(SDL_FRect){
+            screen.x - 34.0f * z, screen.y - 34.0f * z, 68.0f * z, 68.0f * z});
+
+        /* Color core: the player's color - the color-coding part. */
+        SDL_SetRenderDrawColorFloat(renderer, p->color.r, p->color.g, p->color.b, 0.9f);
+        SDL_RenderFillRect(renderer, &(SDL_FRect){
+            screen.x - 24.0f * z, screen.y - 24.0f * z, 48.0f * z, 48.0f * z});
+
+        /* Bright center so the marker is visible from a distance. */
+        SDL_SetRenderDrawColorFloat(renderer, 1.0f, 1.0f, 1.0f, 1.0f);
+        SDL_RenderFillRect(renderer, &(SDL_FRect){
+            screen.x - 7.0f * z, screen.y - 7.0f * z, 14.0f * z, 14.0f * z});
+    }
+}
+
 void system_animation(World *ecs, float dt) {
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
         if (!ecs->alive[i]) continue;

@@ -91,7 +91,7 @@ static void draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
 }
 
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
-              const struct Player *local,
+              const struct Player *local, bool multi,
               int screen_w, int screen_h, TTF_Font *font) {
     char buf[128];
 
@@ -133,6 +133,15 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     SDL_FColor wave_color = {1.0f, 0.9f, 0.3f, 1.0f};
     snprintf(buf, sizeof(buf), "Wave: %d", waves->wave_number);
     draw_text(renderer, font, buf, 20.0f, 50.0f, wave_color);
+
+    /* Player-colored name tag (multiplayer): ties this HUD to the slot's
+     * beacon color so spectators/players can tell whose view they are on. */
+    if (multi && local && local->name[0] != '\0') {
+        SDL_FColor name_color = local->color;
+        name_color.a = 0.9f;
+        snprintf(buf, sizeof(buf), "%s", local->name);
+        draw_text(renderer, font, buf, 20.0f, 76.0f, name_color);
+    }
 
     /* Zombies remaining */
     if (waves->wave_active) {

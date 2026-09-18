@@ -31,6 +31,9 @@ typedef struct Player {
     int kills;           /* personal kill count */
     float shoot_cd;      /* per-player pistol cooldown */
     float respawn_timer; /* TDM: seconds until respawn while dead (<=0 idle) */
+    Vec2 beacon_pos;     /* player-colored spawn beacon anchor (P0.5): the
+                            visible, color-coded marker at this player's spawn
+                            point; also used as the respawn anchor in TDM */
 } Player;
 
 /* Zero every slot (does not touch the ECS). */

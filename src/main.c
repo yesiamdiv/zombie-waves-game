@@ -416,8 +416,13 @@ static void render(void) {
         case GAME_STATE_SHOP:
             world_draw(game.renderer, &game.world, &game.camera);
             system_render(&game.ecs, game.renderer, &game.camera);
+            if (game_mode_is_multi(game.mode)) {
+                system_render_beacons(game.renderer, &game.camera,
+                                      game.players, MAX_PLAYERS);
+            }
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
-                     &game.players[0], win_w, win_h, game.font);
+                     &game.players[0], game_mode_is_multi(game.mode),
+                     win_w, win_h, game.font);
 
             if (game.state == GAME_STATE_PAUSED) {
                 pause_menu_draw(game.renderer, &game.pause_menu, win_w, win_h, game.font_large);

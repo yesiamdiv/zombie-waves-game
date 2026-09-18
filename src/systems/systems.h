@@ -42,6 +42,11 @@ void system_particles(World *ecs, float dt);
 /* Render system - draws all visible sprites */
 void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam);
 
+/* Multiplayer-only: draw the color-coded spawn beacons for every in-use
+ * player slot at `slot->beacon_pos` (the respawn anchor in TDM). */
+void system_render_beacons(SDL_Renderer *renderer, Camera *cam,
+                           const Player *players, int player_count);
+
 /* Animation system */
 void system_animation(World *ecs, float dt);
 

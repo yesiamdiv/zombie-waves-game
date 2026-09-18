@@ -155,6 +155,22 @@ static void test_nearest_alive_target(void) {
     CHECK(ecs_get_velocity(&ecs, z)->vel.y < 0.0f);
 }
 
+static void test_beacon_anchor(void) {
+    LOG_INFO("--- Test: spawn beacon anchor stored per slot (P0.5) ---");
+    World ecs;
+    ecs_init(&ecs);
+
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+
+    Vec2 spawn = vec2(333.0f, 777.0f);
+    int slot = player_respawn(players, &ecs, 0, "P1", &COLOR_RED, spawn);
+    CHECK(slot == 0);
+    CHECK(players[0].beacon_pos.x == spawn.x);
+    CHECK(players[0].beacon_pos.y == spawn.y);
+    CHECK(players[0].color.r == COLOR_RED.r);
+}
+
 static void test_ecs_basics(void) {
     LOG_INFO("--- Test: ECS basics ---");
     World ecs;
@@ -845,6 +861,7 @@ int tests_run_all(void) {
     test_world_determinism();
     test_kill_credit();
     test_nearest_alive_target();
+    test_beacon_anchor();
     test_wave_system();
     test_items();
     test_entity_limit();

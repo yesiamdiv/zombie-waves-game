@@ -22,9 +22,10 @@ void hud_show_message(HUD *hud, const char *msg, float duration);
 /* Draws the HUD for ONE player slot (the local/displayed player): health from
  * `local->entity`, crosshair from `local->input`, shop info from
  * `local->inventory`. No more first-player-in-ECS guessing - in multiplayer the
- * renderer targets its own slot. */
+ * renderer targets its own slot. When `multi` is set the player's colored
+ * name tag is shown (beacon/HUD color coding). */
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
-              const struct Player *local,
+              const struct Player *local, bool multi,
               int screen_w, int screen_h, TTF_Font *font);
 
 #endif

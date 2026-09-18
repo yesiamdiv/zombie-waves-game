@@ -42,6 +42,7 @@ int player_respawn(Player *players, World *ecs, int idx, const char *slot_name,
     p->alive = true;
     p->entity = e;
     p->color = pc;
+    p->beacon_pos = pos; /* beacon marker + respawn anchor */
     if (slot_name) {
         snprintf(p->name, sizeof(p->name), "%s", slot_name);
     } else {
