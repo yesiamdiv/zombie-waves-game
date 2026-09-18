@@ -17,6 +17,7 @@ typedef enum {
 typedef struct {
     int selected_option;
     int option_count;
+    int selected_map;   /* index into the map registry */
     float title_pulse;
     float menu_timer;
     bool quit_requested;

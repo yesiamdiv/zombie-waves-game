@@ -1,5 +1,6 @@
 #include "ui/menu.h"
 #include "core/log.h"
+#include "world/map_registry.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -15,7 +16,8 @@ static void shop_set_message(ShopMenu *menu, const char *fmt, ...) {
 
 void menu_init(MainMenu *menu) {
     menu->selected_option = 0;
-    menu->option_count = 2;
+    menu->option_count = 3;
+    menu->selected_map = 0;
     menu->title_pulse = 0;
     menu->menu_timer = 0;
     menu->quit_requested = false;
@@ -47,9 +49,20 @@ GameState menu_update(MainMenu *menu, InputState *input, float dt) {
         if (menu->selected_option >= menu->option_count) menu->selected_option = 0;
     }
 
+    /* Map selector (only active on the map line) */
+    if (menu->selected_option == 1) {
+        int maps = map_registry_count();
+        if (input_key_pressed(input, SDL_SCANCODE_LEFT) || input_key_pressed(input, SDL_SCANCODE_A)) {
+            menu->selected_map = (menu->selected_map - 1 + maps) % maps;
+        }
+        if (input_key_pressed(input, SDL_SCANCODE_RIGHT) || input_key_pressed(input, SDL_SCANCODE_D)) {
+            menu->selected_map = (menu->selected_map + 1) % maps;
+        }
+    }
+
     if (input_key_pressed(input, SDL_SCANCODE_RETURN) || input_key_pressed(input, SDL_SCANCODE_SPACE)) {
         if (menu->selected_option == 0) return GAME_STATE_PLAYING;
-        if (menu->selected_option == 1) {
+        if (menu->selected_option == 2) {
             menu->quit_requested = true;
             return GAME_STATE_MENU;
         }
@@ -131,7 +144,7 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
                        screen_w * 0.5f, screen_h * 0.3f, sub_color);
 
     /* Options */
-    const char *options[] = {"Start Game", "Quit"};
+    const char *options[] = {"Start Game", NULL, "Quit"};
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -142,8 +155,13 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
         }
         char prefix[4] = "";
         if (i == menu->selected_option) snprintf(prefix, sizeof(prefix), "> ");
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
+        char buf[96];
+        if (i == 1) {
+            const MapDef *m = map_registry_get(menu->selected_map);
+            snprintf(buf, sizeof(buf), "%sMap: %-9s  <-- / -->", prefix, m->name);
+        } else {
+            snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
+        }
         draw_text_centered(renderer, font, buf,
                            screen_w * 0.5f, screen_h * 0.5f + i * 50.0f, opt_color);
     }

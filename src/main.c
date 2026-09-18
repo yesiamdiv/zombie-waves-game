@@ -16,6 +16,7 @@
 #include "world/world.h"
 #include "world/camera.h"
 #include "world/waves.h"
+#include "world/map_registry.h"
 #include "systems/systems.h"
 #include "ui/menu.h"
 #include "ui/hud.h"
@@ -131,7 +132,19 @@ static void reset_game(void) {
     LOG_INFO("=== RESETTING GAME ===");
 
     ecs_init(&game.ecs);
-    world_init(&game.world);
+    if (game.headless) {
+        /* Headless runs keep the fixed classic world so scripts/tests stay
+         * layout-stable; the map picker only applies to real gameplay. */
+        world_init(&game.world);
+    } else {
+        const MapDef *m = map_registry_get(game.main_menu.selected_map);
+        if (!world_load_map(&game.world, m)) {
+            LOG_WARN("map '%s' failed to load; using default world", m->name);
+            world_init(&game.world);
+        }
+        LOG_INFO("Starting map: %s (%dx%d, %s)", m->name,
+                 game.world.width, game.world.height, theme_name(game.world.theme));
+    }
     waves_init(&game.waves, &game.world);
     weapons_inventory_init(&game.inventory);
     game.inventory.points = game.start_points > 0 ? game.start_points : 0;
@@ -244,6 +257,8 @@ static void shutdown(void) {
     LOG_INFO("Shutting down...");
 
     event_bus_shutdown(g_events);
+
+    world_free(&game.world);
 
     if (game.font) TTF_CloseFont(game.font);
     if (game.font_large) TTF_CloseFont(game.font_large);
