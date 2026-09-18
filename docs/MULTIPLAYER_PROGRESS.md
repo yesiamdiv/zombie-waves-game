@@ -76,6 +76,26 @@ Multiplayer specifics:
       Single-player = slot 0 (SDL input mirrored in each frame); pistol cooldown
       moved to the slot. Verified: 148 tests incl. new `test_kill_credit`
       (2-player kill attribution); 2 seeded headless bot runs → identical logs.
+- [x] **Networking spike PROVEN before writing the real net layer**
+      (`tests/net_spike.c` → `zombie_net_spike`; ENet `v1.3.18` via FetchContent;
+      commit `ceb46b1`): standalone executable (no game code linked) spawns **1 server
+      host + N client hosts each bound to its OWN local UDP port** (base
+      `52001` → `52001..52004`), all on 127.0.0.1, connecting to one server port
+      (default `50910`).
+      - 16-byte packed `GamePacket` codec (`version/kind/seq/client_id/x(float)/
+        y(float)/hp(u16)/weapon/checksum`), encode + decode verified byte-for-byte;
+        checksum rejects damage.
+      - Channels as planned: ch0 reliable/ordered = server→client `HELLO`
+        handshake; ch1 unreliable/sequenced = client input up / server snapshot
+        echo down.
+      - Server identifies peers by **source socket port** (never trusts
+        client-claimed id) — same rule the real listener will use. `peer->data`
+        is only set on the connecting side (found when id arrived as 0).
+      - Deterministic per-seq payload; client recomputes expected values from the
+        echoed seq and requires exact match.
+      - Result: **PASS at 2, 3, and 4 clients** (~800–1.6k round trips each,
+        `lost=0`, `decode_err=0`, `echo_mismatch=0`), clean disconnect.
+        `ctest` passes both `core_tests` and `net_spike`.
 - [ ] *next work items below*
 
 ## In progress / next
@@ -88,13 +108,6 @@ Multiplayer specifics:
       respawn anchor (TDM); render + HUD color-coded.
 - [ ] P0.6 — Death/respawn per mode: `MULTI_RESPAWN_TIME` timer in TDM,
       `eliminated` in HARDCORE; game-over only when all players gone.
-- [ ] P0.3 — `players[]` table (per-player `InputState`, `PlayerInventory`, entity,
-      color, beacon, name) replacing the single `game.input`/`game.inventory` usage.
-- [ ] P0.4 — Generalize player systems (`zombie_ai`, `sword`, `grenades`, `rockets`,
-      `cleanup` kill-credit-by-owner) to N players.
-- [ ] P0.5 — MP spawn beacons (visual component + per-player respawn anchor).
-- [ ] P0.6 — Death/respawn: TDM fixed-timer respawn at beacon; HARDCORE permanent-out;
-      game-over condition per mode.
 - [ ] P1 — ENet fetch (`FetchContent v1.3.18`) + codec + host/join UI + handshake.
 - [ ] P2 — snapshot replication, interpolation, net-input → `AIControls` path.
 - [ ] P3 — shared waves/items/shop + per-player points + scaling.
