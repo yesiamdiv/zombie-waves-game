@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "core/mathutil.h"
 #include "graphics/sprite.h"
 
 /* ---------------------------------------------------------------------------
@@ -40,8 +41,66 @@ enum {
     NET_PKT_HELLO       = 2, /* host -> client: accept (slot, seed, world) */
     NET_PKT_REJECT      = 3, /* host -> client: explain the refusal */
     NET_PKT_PLAYER_LIST = 4, /* host -> clients: lobby roster on changes */
-    NET_PKT_LEAVE       = 5  /* either side: intentional leave (reason) */
+    NET_PKT_LEAVE       = 5, /* either side: intentional leave (reason) */
+    /* Packet kinds (channel 1 - unreliable game traffic). */
+    NET_PKT_INPUT      = 6,  /* client -> host: control state (latest-wins) */
+    NET_PKT_SNAPSHOT   = 7   /* host -> clients: 20 Hz entity world state */
 };
+
+/* Input bitmasks for NET_PKT_INPUT. move_flags holds the 4 direction bits;
+ * buttons holds context actions (shoot held / shop toggle). */
+#define NET_INPUT_MOVE_UP    0x01
+#define NET_INPUT_MOVE_DOWN  0x02
+#define NET_INPUT_MOVE_LEFT  0x04
+#define NET_INPUT_MOVE_RIGHT 0x08
+#define NET_INPUT_BTN_SHOOT   0x01
+#define NET_INPUT_BTN_SHOP    0x02
+
+/* One client->host input sample. Sent >= 30 Hz on channel 1; the host keeps
+ * only the latest per slot and maps it onto the AI-injection path. */
+typedef struct {
+    uint8_t move_flags;     /* NET_INPUT_MOVE_* */
+    uint8_t buttons;        /* NET_INPUT_BTN_* */
+    uint8_t weapon;         /* 0 = none, 1-4 = selection index */
+    float aim_x;            /* world-space aim */
+    float aim_y;
+} NetInput;
+
+/* Semantic entity kinds carried in a snapshot (client reconstructs visuals
+ * from `kind` deterministically - no sprite data crosses the wire). */
+enum {
+    NET_ENT_NONE   = 0,
+    NET_ENT_PLAYER = 1,
+    NET_ENT_ZOMBIE = 2,
+    NET_ENT_BULLET = 3,
+    NET_ENT_GRENADE = 4,
+    NET_ENT_ROCKET = 5,
+    NET_ENT_ITEM   = 6
+};
+
+#define NET_SNAP_MAX_ENTITIES 1024
+
+/* One live entity in a snapshot. Entity ids are stable ECS array indices, so
+ * the client keeps a mirror keyed by id (interpolation buffer, P2c). */
+typedef struct {
+    uint16_t id;
+    uint8_t kind;
+    Vec2 pos;
+    Vec2 vel;
+    float hp;
+    uint8_t flags;
+    uint16_t owner;         /* bullet/grenade/rocket source player, else 0 */
+} NetEntitySnap;
+
+/* 20 Hz host->client snapshot (channel 1). */
+typedef struct {
+    float sim_time;         /* host simulation clock (seconds) */
+    uint16_t wave_number;
+    uint8_t wave_active;
+    uint16_t total_kills;
+    int count;
+    NetEntitySnap entities[NET_SNAP_MAX_ENTITIES];
+} NetSnapshot;
 
 /* REJECT reasons */
 enum {

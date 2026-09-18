@@ -34,4 +34,17 @@ int net_decode_player_list(const uint8_t *buf, int len, NetHeader *h,
 int net_encode_leave(uint8_t *buf, int cap, const NetHeader *h, uint8_t reason);
 int net_decode_leave(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason);
 
+/* Channel 1 game traffic -------------------------------------------------- */
+
+/* Input sample (client -> host; latest-wins, never re-acked). */
+int net_encode_input(uint8_t *buf, int cap, const NetHeader *h,
+                     const NetInput *in);
+int net_decode_input(const uint8_t *buf, int len, NetHeader *h, NetInput *in);
+
+/* World snapshot (host -> clients). `snap->count` entities are serialized. */
+int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
+                        const NetSnapshot *snap);
+int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
+                        NetSnapshot *snap, int max_entities);
+
 #endif

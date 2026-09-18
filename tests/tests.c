@@ -1079,6 +1079,123 @@ static void test_net_codec(void) {
     CHECK(net_slot_color(0).r == COLOR_BLUE.r); /* host color is blue */
 }
 
+/* Channel 1: input sample + world snapshot byte-exact round trips. */
+static void test_net_codec_game(void) {
+    LOG_INFO("--- Test: wire codec game traffic round trips ---");
+
+    /* INPUT: controls map 1:1 to the wire (latest-wins, no reliability). */
+    {
+        uint8_t buf[NET_HDR_SIZE + 3 + 8];
+        NetHeader h = {NET_WIRE_VERSION, NET_PKT_INPUT, 300, 1, 0};
+        NetInput in = {
+            NET_INPUT_MOVE_UP | NET_INPUT_MOVE_LEFT,
+            NET_INPUT_BTN_SHOOT,
+            2,
+            -48.5f, 731.25f
+        };
+        int len = net_encode_input(buf, (int)sizeof(buf), &h, &in);
+        CHECK(len == NET_HDR_SIZE + 3 + 8);
+        NetHeader out;
+        NetInput got;
+        memset(&got, 0, sizeof(got));
+        CHECK(net_decode_input(buf, len, &out, &got) == 0);
+        CHECK(out.kind == NET_PKT_INPUT);
+        CHECK(out.seq == 300);
+        CHECK(out.from_slot == 1);
+        CHECK(got.move_flags == in.move_flags);
+        CHECK(got.buttons == in.buttons);
+        CHECK(got.weapon == in.weapon);
+        CHECK(got.aim_x == in.aim_x);
+        CHECK(got.aim_y == in.aim_y);
+        /* Re-encode -> identical bytes (byte-exact contract). */
+        uint8_t again[sizeof(buf)];
+        int len2 = net_encode_input(again, (int)sizeof(again), &out, &got);
+        CHECK(len2 == len);
+        CHECK(memcmp(buf, again, (size_t)len) == 0);
+    }
+
+    /* SNAPSHOT: header + wave state + mixed entity kinds round trip. */
+    {
+        uint8_t buf[NET_HDR_SIZE + 10 + 12 * 26];
+        NetSnapshot snap = {0};
+        snap.sim_time = 12.5f;
+        snap.wave_number = 3;
+        snap.wave_active = 1;
+        snap.total_kills = 42;
+        snap.count = 3;
+        snap.entities[0] = (NetEntitySnap){0, NET_ENT_PLAYER,
+                                           {100.0f, 200.0f}, {0.0f, 0.0f},
+                                           100.0f, 0, 0};
+        snap.entities[1] = (NetEntitySnap){88, NET_ENT_ZOMBIE,
+                                           {10.25f, -5.5f}, {30.0f, -12.0f},
+                                           44.0f, 0, 0};
+        snap.entities[2] = (NetEntitySnap){120, NET_ENT_BULLET,
+                                           {55.0f, 33.0f}, {600.0f, 400.0f},
+                                           0.0f, 0, 1};
+        NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 7, 0, 0};
+        int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
+        CHECK(len > NET_HDR_SIZE);
+        NetHeader out;
+        NetSnapshot got;
+        memset(&got, 0, sizeof(got));
+        CHECK(net_decode_snapshot(buf, len, &out, &got, NET_SNAP_MAX_ENTITIES) == 0);
+        CHECK(out.kind == NET_PKT_SNAPSHOT);
+        CHECK(out.from_slot == 0);
+        CHECK(got.sim_time == snap.sim_time);
+        CHECK(got.wave_number == 3);
+        CHECK(got.wave_active == 1);
+        CHECK(got.total_kills == 42);
+        CHECK(got.count == 3);
+        for (int i = 0; i < 3; i++) {
+            CHECK(got.entities[i].id == snap.entities[i].id);
+            CHECK(got.entities[i].kind == snap.entities[i].kind);
+            CHECK(got.entities[i].pos.x == snap.entities[i].pos.x);
+            CHECK(got.entities[i].pos.y == snap.entities[i].pos.y);
+            CHECK(got.entities[i].vel.x == snap.entities[i].vel.x);
+            CHECK(got.entities[i].vel.y == snap.entities[i].vel.y);
+            CHECK(got.entities[i].hp == snap.entities[i].hp);
+            CHECK(got.entities[i].owner == snap.entities[i].owner);
+        }
+        /* Re-encode decoded snapshot -> byte-exact. */
+        uint8_t again[sizeof(buf)];
+        int len2 = net_encode_snapshot(again, (int)sizeof(again), &out, &got);
+        CHECK(len2 == len);
+        CHECK(memcmp(buf, again, (size_t)len) == 0);
+        /* Truncated snapshot must fail, not over-read. */
+        NetSnapshot bad;
+        CHECK(net_decode_snapshot(buf, NET_HDR_SIZE + 5, &out, &bad,
+                                  NET_SNAP_MAX_ENTITIES) != 0);
+        /* count beyond the caller's buffer must be rejected. */
+        CHECK(net_decode_snapshot(buf, len, &out, &bad, 2) != 0);
+    }
+
+    /* Snapshot with many entities (interpolation sanity: 100 zombies). */
+    {
+        uint8_t buf[NET_HDR_SIZE + 10 + NET_SNAP_MAX_ENTITIES * 26];
+        NetSnapshot snap = {0};
+        snap.count = 100;
+        for (int i = 0; i < 100; i++) {
+            snap.entities[i].id = (uint16_t)i;
+            snap.entities[i].kind = NET_ENT_ZOMBIE;
+            snap.entities[i].pos.x = (float)i * 3.0f;
+            snap.entities[i].pos.y = 777.0f;
+            snap.entities[i].hp = 100.0f;
+        }
+        NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 1, 0, 0};
+        int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
+        CHECK(len > NET_HDR_SIZE);
+        NetHeader out;
+        NetSnapshot got;
+        memset(&got, 0, sizeof(got));
+        CHECK(net_decode_snapshot(buf, len, &out, &got, NET_SNAP_MAX_ENTITIES) == 0);
+        CHECK(got.count == 100);
+        for (int i = 0; i < 100; i++) {
+            CHECK(got.entities[i].id == (uint16_t)i);
+            CHECK(got.entities[i].pos.x == (float)i * 3.0f);
+        }
+    }
+}
+
 /* ---------------------------------------------------------------- Net codec */
 
 int tests_run_all(void) {
@@ -1110,6 +1227,7 @@ int tests_run_all(void) {
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
     test_net_codec();
+    test_net_codec_game();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

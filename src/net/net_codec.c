@@ -52,6 +52,21 @@ static int get_u32(const uint8_t *buf, int len, int *off, uint32_t *v) {
     return 0;
 }
 
+/* IEEE-754 f32 packed as little-endian u32 bits so cross-endian hosts/clients
+ * agree without the downstream code knowing the wire order. */
+static int put_f32(uint8_t *buf, int cap, int *off, float v) {
+    uint32_t bits;
+    memcpy(&bits, &v, sizeof(bits));
+    return put_u32(buf, cap, off, bits);
+}
+
+static int get_f32(const uint8_t *buf, int len, int *off, float *v) {
+    uint32_t bits;
+    if (get_u32(buf, len, off, &bits) != 0) return -1;
+    memcpy(v, &bits, sizeof(bits));
+    return 0;
+}
+
 /* name is stored as u8 length followed by the raw bytes (no NUL on the wire). */
 static int put_name(uint8_t *buf, int cap, int *off, const char *name) {
     size_t n = name ? strlen(name) : 0;
@@ -222,6 +237,91 @@ int net_decode_leave(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason)
     return get_u8(buf, len, &off, reason);
 }
 
+/* ---------------------------------------------------------------- INPUT */
+
+int net_encode_input(uint8_t *buf, int cap, const NetHeader *h,
+                     const NetInput *in) {
+    if (!buf || !h || !in || cap < NET_HDR_SIZE) return -1;
+    int off = 0;
+    if (net_hdr_encode(buf, h) != 0) return -1;
+    off = NET_HDR_SIZE;
+    if (put_u8(buf, cap, &off, in->move_flags) != 0) return -1;
+    if (put_u8(buf, cap, &off, in->buttons) != 0) return -1;
+    if (put_u8(buf, cap, &off, in->weapon) != 0) return -1;
+    if (put_f32(buf, cap, &off, in->aim_x) != 0) return -1;
+    if (put_f32(buf, cap, &off, in->aim_y) != 0) return -1;
+    return off;
+}
+
+int net_decode_input(const uint8_t *buf, int len, NetHeader *h, NetInput *in) {
+    if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
+    if (h->kind != NET_PKT_INPUT) return -1;
+    int off = NET_HDR_SIZE;
+    if (get_u8(buf, len, &off, &in->move_flags) != 0) return -1;
+    if (get_u8(buf, len, &off, &in->buttons) != 0) return -1;
+    if (get_u8(buf, len, &off, &in->weapon) != 0) return -1;
+    if (get_f32(buf, len, &off, &in->aim_x) != 0) return -1;
+    if (get_f32(buf, len, &off, &in->aim_y) != 0) return -1;
+    return 0;
+}
+
+/* ------------------------------------------------------------- SNAPSHOT */
+
+int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
+                        const NetSnapshot *snap) {
+    if (!buf || !h || !snap) return -1;
+    if (snap->count < 0 || snap->count > NET_SNAP_MAX_ENTITIES) return -1;
+    int off = 0;
+    if (net_hdr_encode(buf, h) != 0) return -1;
+    off = NET_HDR_SIZE;
+    if (put_f32(buf, cap, &off, snap->sim_time) != 0) return -1;
+    if (put_u16(buf, cap, &off, snap->wave_number) != 0) return -1;
+    if (put_u8(buf, cap, &off, snap->wave_active) != 0) return -1;
+    if (put_u16(buf, cap, &off, snap->total_kills) != 0) return -1;
+    if (put_u8(buf, cap, &off, (uint8_t)snap->count) != 0) return -1;
+    for (int i = 0; i < snap->count; i++) {
+        const NetEntitySnap *e = &snap->entities[i];
+        if (put_u16(buf, cap, &off, e->id) != 0) return -1;
+        if (put_u8(buf, cap, &off, e->kind) != 0) return -1;
+        if (put_f32(buf, cap, &off, e->pos.x) != 0) return -1;
+        if (put_f32(buf, cap, &off, e->pos.y) != 0) return -1;
+        if (put_f32(buf, cap, &off, e->vel.x) != 0) return -1;
+        if (put_f32(buf, cap, &off, e->vel.y) != 0) return -1;
+        if (put_f32(buf, cap, &off, e->hp) != 0) return -1;
+        if (put_u8(buf, cap, &off, e->flags) != 0) return -1;
+        if (put_u16(buf, cap, &off, e->owner) != 0) return -1;
+    }
+    return off;
+}
+
+int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
+                        NetSnapshot *snap, int max_entities) {
+    if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
+    if (h->kind != NET_PKT_SNAPSHOT) return -1;
+    int off = NET_HDR_SIZE;
+    if (get_f32(buf, len, &off, &snap->sim_time) != 0) return -1;
+    if (get_u16(buf, len, &off, &snap->wave_number) != 0) return -1;
+    if (get_u8(buf, len, &off, &snap->wave_active) != 0) return -1;
+    if (get_u16(buf, len, &off, &snap->total_kills) != 0) return -1;
+    uint8_t n;
+    if (get_u8(buf, len, &off, &n) != 0) return -1;
+    if ((int)n > max_entities) return -1;
+    snap->count = n;
+    for (int i = 0; i < n; i++) {
+        NetEntitySnap *e = &snap->entities[i];
+        if (get_u16(buf, len, &off, &e->id) != 0) return -1;
+        if (get_u8(buf, len, &off, &e->kind) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->pos.x) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->pos.y) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->vel.x) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->vel.y) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->hp) != 0) return -1;
+        if (get_u8(buf, len, &off, &e->flags) != 0) return -1;
+        if (get_u16(buf, len, &off, &e->owner) != 0) return -1;
+    }
+    return 0;
+}
+
 /* ----------------------------------------------------------------------- */
 
 const char *net_pkt_kind_name(int kind) {
@@ -231,6 +331,8 @@ const char *net_pkt_kind_name(int kind) {
         case NET_PKT_REJECT:      return "reject";
         case NET_PKT_PLAYER_LIST: return "player_list";
         case NET_PKT_LEAVE:       return "leave";
+        case NET_PKT_INPUT:       return "input";
+        case NET_PKT_SNAPSHOT:    return "snapshot";
         default:                  return "unknown";
     }
 }
