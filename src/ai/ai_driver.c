@@ -92,26 +92,22 @@ void ai_apply_controls(InputState *input, const AIControls *controls, const Came
     }
 }
 
-void ai_build_view(GameView *view, World *ecs, WaveSystem *waves) {
+void ai_build_view(GameView *view, World *ecs, WaveSystem *waves,
+                   Entity local_player) {
     ai_view_reset(view);
 
     view->zombies_alive = waves->zombies_alive;
     view->wave_number = waves->wave_number;
 
-    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
-        if (!ecs->alive[i]) continue;
-        if (!(ecs->component_masks[i] & (1u << COMP_POSITION))) continue;
-
-        Vec2 pos = ecs->positions[i].pos;
-
-        if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) {
-            view->player_alive = true;
-            view->player_pos = pos;
-            if (ecs->component_masks[i] & (1u << COMP_HEALTH)) {
-                view->player_health = ecs->healths[i].current;
-                view->player_max_health = ecs->healths[i].max;
-            }
-            continue;
+    /* Anchor the view on the driven player entity (not a scan). */
+    if (local_player != ECS_NULL_ENTITY && ecs_is_alive(ecs, local_player) &&
+        (ecs->component_masks[local_player] & (1u << COMP_PLAYER_TAG))) {
+        Vec2 pos = ecs->positions[local_player].pos;
+        view->player_alive = true;
+        view->player_pos = pos;
+        if (ecs->component_masks[local_player] & (1u << COMP_HEALTH)) {
+            view->player_health = ecs->healths[local_player].current;
+            view->player_max_health = ecs->healths[local_player].max;
         }
     }
 

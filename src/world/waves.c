@@ -2,6 +2,7 @@
 #include "events/event_bus.h"
 #include "config.h"
 #include "core/log.h"
+#include "players.h"
 #include <stdlib.h>
 
 #define SPAWN_RING_MIN 400.0f
@@ -73,18 +74,44 @@ void waves_on_zombie_killed(WaveSystem *ws) {
     LOG_DEBUG("Zombie killed (alive: %d, total kills: %d)", ws->zombies_alive, ws->total_kills);
 }
 
-/* Find a walkable spawn point in an annulus around the player so the fight
- * comes toward the player instead of at the far map edges. Falls back to a
- * fixed edge point after too many attempts. */
-static bool spawn_point_near_player(World *ecs, GameWorld *world, Vec2 *out) {
+/* Find a walkable spawn point in an annulus around the NEAREST alive player
+ * (to the world center) so the fight comes toward whoever is actually
+ * fighting instead of the far map edges. When no slot table is provided,
+ * falls back to the nearest player-tagged entity (tests / pre-slot callers).
+ * Falls back to a fixed edge point after too many attempts. */
+static bool spawn_point_near_player(World *ecs, GameWorld *world,
+                                    Player *players, int player_count,
+                                    Vec2 *out) {
+    Vec2 center = vec2(world->world_pixel_w * 0.5f, world->world_pixel_h * 0.5f);
     Vec2 player_pos = {0, 0};
     bool player_found = false;
-    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
-        if (!ecs->alive[i]) continue;
-        if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) {
-            player_pos = ecs->positions[i].pos;
-            player_found = true;
-            break;
+    float best_d = 0.0f;
+
+    if (players && player_count > 0) {
+        for (int s = 0; s < player_count; s++) {
+            const Player *p = &players[s];
+            if (!p->in_use || !p->alive) continue;
+            if (p->entity == ECS_NULL_ENTITY || !ecs_is_alive(ecs, p->entity)) continue;
+            if (!(ecs->component_masks[p->entity] & (1u << COMP_POSITION))) continue;
+            Vec2 pos = ecs_get_position(ecs, p->entity)->pos;
+            float d = vec2_distance(center, pos);
+            if (!player_found || d < best_d) {
+                player_pos = pos;
+                best_d = d;
+                player_found = true;
+            }
+        }
+    } else {
+        for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+            if (!ecs->alive[i]) continue;
+            if (!(ecs->component_masks[i] & (1u << COMP_PLAYER_TAG))) continue;
+            Vec2 pos = ecs->positions[i].pos;
+            float d = vec2_distance(center, pos);
+            if (!player_found || d < best_d) {
+                player_pos = pos;
+                best_d = d;
+                player_found = true;
+            }
         }
     }
 
@@ -154,7 +181,8 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
     return e;
 }
 
-void waves_update(WaveSystem *ws, World *ecs, GameWorld *world, float dt) {
+void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
+                  Player *players, int player_count, float dt) {
     if (ws->between_waves) {
         ws->wave_cooldown_timer += dt;
         if (ws->wave_cooldown_timer >= ws->wave_cooldown) {
@@ -187,9 +215,9 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world, float dt) {
         if (ws->spawn_timer >= ws->spawn_interval) {
             ws->spawn_timer = 0;
 
-            /* Spawn in a ring around the player when possible */
+            /* Spawn in a ring around the nearest alive player when possible */
             Vec2 spawn_pos;
-            if (!spawn_point_near_player(ecs, world, &spawn_pos)) {
+            if (!spawn_point_near_player(ecs, world, players, player_count, &spawn_pos)) {
                 /* fallback: fixed edge point */
                 int idx = rand() % ws->spawn_point_count;
                 spawn_pos = ws->spawn_points[idx];

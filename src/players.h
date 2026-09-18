@@ -19,7 +19,7 @@
  *   - remote slot (multiplayer): written by the net layer,
  *   - AI/bot slot: written through the ai_apply_controls() injection path.
  * Systems only ever read the displayed slot, never global input directly. */
-typedef struct {
+typedef struct Player {
     bool in_use;
     bool alive;          /* false while dead (respawn pending or eliminated) */
     bool eliminated;     /* hardcore mode: dead for the rest of the match */

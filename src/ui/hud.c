@@ -1,5 +1,6 @@
 #include "ui/hud.h"
 #include "core/log.h"
+#include "players.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -90,22 +91,21 @@ static void draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
 }
 
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
-              InputState *input, const PlayerInventory *inv,
+              const struct Player *local,
               int screen_w, int screen_h, TTF_Font *font) {
     char buf[128];
 
-    /* Find player */
-    Entity player = ECS_NULL_ENTITY;
-    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
-        if (!ecs->alive[i]) continue;
-        if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) {
-            player = i;
-            break;
-        }
+    /* This HUD belongs to one specific player slot (the local/displayed one).
+     * Its entity carries the health; its input drives the crosshair; its
+     * inventory supplies the shop readout. */
+    if (!local || local->entity == ECS_NULL_ENTITY ||
+        !ecs_is_alive(ecs, local->entity)) {
+        return;
     }
+    const InputState *input = &local->input;
+    const PlayerInventory *inv = &local->inventory;
 
-    if (player == ECS_NULL_ENTITY) return;
-
+    Entity player = local->entity;
     CHealth *hp = ecs_get_health(ecs, player);
 
     /* Health bar */

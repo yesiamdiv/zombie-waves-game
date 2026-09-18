@@ -31,7 +31,10 @@ void ai_driver_update(AIDriver *drv, double dt, const GameView *view, AIControls
 /* Write AIControls into the real InputState via injection (all game states). */
 void ai_apply_controls(InputState *input, const AIControls *controls, const Camera *cam);
 
-/* Build a read-only snapshot of the world for the driver to reason about. */
-void ai_build_view(GameView *view, World *ecs, WaveSystem *waves);
+/* Build a read-only snapshot of the world for the driver to reason about,
+ * anchored on the specific player entity the driver controls (so bots/AI
+ * reason about their own health/position, not "the first player in storage"). */
+void ai_build_view(GameView *view, World *ecs, WaveSystem *waves,
+                   Entity local_player);
 
 #endif

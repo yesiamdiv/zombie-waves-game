@@ -20,8 +20,10 @@ void system_collision(World *ecs, GameWorld *world);
  * Runs once per resident player slot. */
 void system_player_input(World *ecs, Player *p, Camera *cam, float dt);
 
-/* Zombie AI system - chase, attack behavior */
-void system_zombie_ai(World *ecs, float dt);
+/* Zombie AI system - chase, attack behavior. Zombies chase the NEAREST alive
+ * player (slot table when provided; raw player-entity scan otherwise) and
+ * damage exactly that target. */
+void system_zombie_ai(World *ecs, Player *players, int player_count, float dt);
 
 /* Bullet system - moves bullets, checks lifetime, deals damage */
 void system_bullets(World *ecs, GameWorld *world, float dt);

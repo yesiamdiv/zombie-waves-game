@@ -124,6 +124,37 @@ static void test_kill_credit(void) {
     CHECK(players[1].inventory.points == 0);
 }
 
+static void test_nearest_alive_target(void) {
+    LOG_INFO("--- Test: zombies target nearest alive player, retarget on death ---");
+    World ecs;
+    ecs_init(&ecs);
+
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    player_respawn(players, &ecs, 0, "P1", &COLOR_RED, vec2(700, 500));
+    player_respawn(players, &ecs, 1, "P2", &COLOR_BLUE, vec2(500, 500));
+    CHECK(players[0].entity != ECS_NULL_ENTITY);
+    CHECK(players[1].entity != ECS_NULL_ENTITY);
+
+    Entity z = waves_spawn_zombie(&ecs, vec2(500, 600));
+    CHECK(z != ECS_NULL_ENTITY);
+    CHECK(ecs_get_zombie_tag(&ecs, z)->state == ZOMBIE_CHASE);
+
+    /* P2 (500,500) is 100px away, P1 (700,500) is ~224px: nearest = P2, which
+     * is straight up from the zombie. It must NOT pick the first player in the
+     * table (slot 0 = P1). */
+    system_zombie_ai(&ecs, players, MAX_PLAYERS, 1.0f / 60.0f);
+    CVelocity *v = ecs_get_velocity(&ecs, z);
+    CHECK(v->vel.y < 0.0f);
+    CHECK(v->vel.x > -0.001f && v->vel.x < 0.001f);
+
+    /* P2 dies: the zombie must retarget the only survivor, P1 (north-east). */
+    players[1].alive = false;
+    system_zombie_ai(&ecs, players, MAX_PLAYERS, 1.0f / 60.0f);
+    CHECK(ecs_get_velocity(&ecs, z)->vel.x > 0.0f);
+    CHECK(ecs_get_velocity(&ecs, z)->vel.y < 0.0f);
+}
+
 static void test_ecs_basics(void) {
     LOG_INFO("--- Test: ECS basics ---");
     World ecs;
@@ -212,8 +243,8 @@ static void test_wave_system(void) {
     /* Simulate 5 seconds - wave 1 should start after 3s cooldown */
     float dt = 1.0f / 60.0f;
     for (int i = 0; i < 300; i++) {
-        waves_update(&waves, &ecs, &world, dt);
-        system_zombie_ai(&ecs, dt);
+        waves_update(&waves, &ecs, &world, NULL, 0, dt);
+        system_zombie_ai(&ecs, NULL, 0, dt);
         system_movement(&ecs, &world, dt);
         system_collision(&ecs, &world);
         system_cleanup(&ecs, &waves, NULL, 0);
@@ -352,7 +383,7 @@ static void test_wave_completion(void) {
     while (guard < 3000 && waves.wave_number == 1 && !waves.between_waves) {
         guard++;
 
-        waves_update(&waves, &ecs, &world, dt);
+        waves_update(&waves, &ecs, &world, NULL, 0, dt);
 
         /* Shoot every alive zombie every frame until it dies. */
         for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -449,7 +480,7 @@ static void test_wave_timeout(void) {
     int frames_ran = 0;
     int max_frames = (int)(75.0f / dt);
     while (!waves.between_waves && frames_ran < max_frames) {
-        waves_update(&waves, &ecs, &world, dt);
+        waves_update(&waves, &ecs, &world, NULL, 0, dt);
         frames_ran++;
     }
 
@@ -491,7 +522,7 @@ static void test_event_stream(void) {
         guard++;
         event_bus_tick(bus, dt);
 
-        waves_update(&waves, &ecs, &world, dt);
+        waves_update(&waves, &ecs, &world, NULL, 0, dt);
 
         for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
             if (!ecs.alive[i]) continue;
@@ -563,7 +594,7 @@ static int run_spawn_sim(Vec2 *out, int max_out) {
     float dt = 1.0f / 120.0f;
     int n = 0;
     for (int i = 0; i < 2000 && n < max_out; i++) {
-        waves_update(&waves, &ecs, &world, dt);
+        waves_update(&waves, &ecs, &world, NULL, 0, dt);
         for (uint32_t e = 0; e < ECS_MAX_ENTITIES && n < max_out; e++) {
             if (!ecs.alive[e]) continue;
             if (!(ecs.component_masks[e] & (1u << COMP_ZOMBIE_TAG))) continue;
@@ -813,6 +844,7 @@ int tests_run_all(void) {
     test_world_valid();
     test_world_determinism();
     test_kill_credit();
+    test_nearest_alive_target();
     test_wave_system();
     test_items();
     test_entity_limit();

@@ -297,14 +297,15 @@ static void update(float dt) {
                 system_grenades(&game.ecs, &game.players[s], dt);
                 system_rockets(&game.ecs, &game.players[s], &game.world, dt);
             }
-            system_zombie_ai(&game.ecs, dt);
+            system_zombie_ai(&game.ecs, game.players, MAX_PLAYERS, dt);
             system_movement(&game.ecs, &game.world, dt);
             system_collision(&game.ecs, &game.world);
             system_bullets(&game.ecs, &game.world, dt);
             system_animation(&game.ecs, dt);
             system_particles(&game.ecs, dt);
 
-            waves_update(&game.waves, &game.ecs, &game.world, dt);
+            waves_update(&game.waves, &game.ecs, &game.world,
+                         game.players, MAX_PLAYERS, dt);
 
             if (game.waves.wave_number != game.last_announced_wave &&
                 game.waves.wave_active) {
@@ -416,7 +417,7 @@ static void render(void) {
             world_draw(game.renderer, &game.world, &game.camera);
             system_render(&game.ecs, game.renderer, &game.camera);
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
-                     &game.players[0].input, &game.players[0].inventory, win_w, win_h, game.font);
+                     &game.players[0], win_w, win_h, game.font);
 
             if (game.state == GAME_STATE_PAUSED) {
                 pause_menu_draw(game.renderer, &game.pause_menu, win_w, win_h, game.font_large);
@@ -471,7 +472,7 @@ static void step_frame(float dt) {
 static void update_ai_view(float dt) {
     if (game.ai.mode == AI_MODE_NONE) return;
 
-    ai_build_view(&game.ai_view, &game.ecs, &game.waves);
+    ai_build_view(&game.ai_view, &game.ecs, &game.waves, game.players[0].entity);
     ai_driver_update(&game.ai, dt, &game.ai_view, &game.ai_controls);
 
     if (game.ai.quit_requested) {
