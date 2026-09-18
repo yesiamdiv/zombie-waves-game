@@ -148,6 +148,24 @@ static void reset_game(void) {
         LOG_FATAL("Failed to spawn local player");
         return;
     }
+    /* Multiplayer host: spawn a player entity for every joined remote slot so
+     * remote input, snapshots, and the client mirror all carry them. Each
+     * remote spawn fans out around the local player's spawn point. */
+    if (game.net_host_mode) {
+        for (int s = 1; s < MAX_PLAYERS; s++) {
+            if (!game.net_server.slot_used[s]) continue;
+            SDL_FColor col = net_slot_color(s);
+            Vec2 ps = vec2(spawn.x + (float)(s * 70), spawn.y + (float)(s * 30));
+            if (player_respawn(game.players, &game.ecs, s,
+                               game.net_server.slot_names[s][0]
+                                   ? game.net_server.slot_names[s]
+                                   : "Player",
+                               &col, ps) < 0) {
+                LOG_FATAL("Failed to spawn remote player (slot %d)", s);
+                return;
+            }
+        }
+    }
     if (game.start_points > 0) {
         game.players[0].inventory.points = game.start_points;
     }
