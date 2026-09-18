@@ -22,6 +22,7 @@
 #include "weapons/weapons.h"
 #include "events/event_bus.h"
 #include "ai/ai_driver.h"
+#include "game_mode.h"
 
 #define WINDOW_W 1280
 #define WINDOW_H 720
@@ -49,6 +50,7 @@ typedef struct {
 
     bool headless;
     bool vsync_active;
+    GameMode mode;
     float run_seconds;
     double elapsed_sim;
 
@@ -88,7 +90,10 @@ typedef struct {
 } Game;
 
 /* Defaults to full-health start; -1 disables the HP override. */
-static Game game = {.player_hp_pct = -1.0f};
+static Game game = {
+    .player_hp_pct = -1.0f,
+    .mode = GAME_MODE_SINGLE,
+};
 
 /* Set by the SIGINT/SIGTERM handler so headless runs can be stopped cleanly
  * (playtest finding B3). */
@@ -513,6 +518,17 @@ static void parse_args(int argc, char *argv[]) {
             srand((unsigned int)atoi(arg + 7));
         } else if (strcmp(arg, "--seed") == 0 && i + 1 < argc) {
             srand((unsigned int)atoi(argv[++i]));
+        } else if (strncmp(arg, "--mode=", 7) == 0) {
+            const char *m = arg + 7;
+            if (strcmp(m, "single") == 0) {
+                game.mode = GAME_MODE_SINGLE;
+            } else if (strcmp(m, "multi-tdm") == 0) {
+                game.mode = GAME_MODE_MULTI_TDM;
+            } else if (strcmp(m, "multi-hardcore") == 0) {
+                game.mode = GAME_MODE_MULTI_HARDCORE;
+            } else {
+                LOG_WARN("Unknown --mode '%s' (expected single|multi-tdm|multi-hardcore)", m);
+            }
         } else if (strncmp(arg, "--run-seconds=", 14) == 0) {
             game.run_seconds = (float)atof(arg + 14);
         } else if (strncmp(arg, "--points=", 9) == 0) {
@@ -537,6 +553,7 @@ static void parse_args(int argc, char *argv[]) {
             printf("%s\n", "  --script <file>       scripted playback (also --script-loop=N)");
             printf("%s\n", "  --events=<file>       gameplay event log path (default game_events.log)");
             printf("%s\n", "  --seed=<n>            deterministic RNG seed");
+            printf("%s\n", "  --mode=<m>            single | multi-tdm | multi-hardcore (default single)");
             printf("%s\n", "  --run-seconds=<s>     auto-exit after s simulated seconds");
             printf("%s\n", "  --player-hp=<pct>     start player at pct%% HP (0-100; debug/playtest)");
             printf("%s\n", "  --points=<n>          start with n shop points (debug/playtest)");
@@ -576,6 +593,7 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, on_sigint);
 
     parse_args(argc, argv);
+    LOG_INFO("Game mode: %s", game_mode_name(game.mode));
 
     if (!game.event_log_path) game.event_log_path = "game_events.log";
     event_bus_init(game.event_log_path);
