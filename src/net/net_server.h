@@ -25,9 +25,16 @@ typedef struct {
     char slot_names[NET_MAX_PLAYERS][NET_NAME_CAP];  /* display names */
     ENetPeer *slot_peers[NET_MAX_PLAYERS];           /* NULL for local slot */
 
+    /* Latest input received from each remote slot (P2). The host applies it
+     * to the slot's InputState every sim tick; `input_valid` tracks whether a
+     * slot has ever voiced in. Slot 0 (local) is never written here. */
+    NetInput inputs[NET_MAX_PLAYERS];
+    bool input_valid[NET_MAX_PLAYERS];
+
     uint64_t joins;
     uint64_t rejects;
     uint64_t bad_packets;
+    uint64_t rx_inputs;
     char status[96];
 } NetServer;
 
@@ -49,5 +56,9 @@ int net_server_player_count(const NetServer *s);
 
 /* Snap the current roster into `out`. Returns the count written. */
 int net_server_build_player_list(const NetServer *s, NetPlayerInfo *out, int max);
+
+/* Latest input heard from a remote slot. Returns false when the slot is the
+ * local host slot (slot 0) or has never voiced in. */
+bool net_server_get_input(const NetServer *s, int slot, NetInput *out);
 
 #endif

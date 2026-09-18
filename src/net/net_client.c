@@ -116,6 +116,17 @@ int net_client_rtt_ms(const NetClient *c) {
     return (int)c->server->roundTripTime;
 }
 
+int net_client_send_input(NetClient *c, const NetInput *in) {
+    if (!c || !c->server || c->state != NET_CLIENT_CONNECTED) return -1;
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_INPUT, c->seq++, c->slot, 0};
+    uint8_t buf[NET_HDR_SIZE + 3 + 8];
+    int len = net_encode_input(buf, (int)sizeof(buf), &h, in);
+    if (len <= 0) return -1;
+    ENetPacket *pk = enet_packet_create(buf, (size_t)len, 0);
+    if (!pk) return -1;
+    return enet_peer_send(c->server, NET_CH_SNAP, pk);
+}
+
 void net_client_update(NetClient *c) {
     if (!c || !c->host || c->state == NET_CLIENT_OFFLINE) return;
 
@@ -143,6 +154,31 @@ void net_client_update(NetClient *c) {
             }
 
             case ENET_EVENT_TYPE_RECEIVE: {
+                if (ev.channelID == NET_CH_SNAP) {
+                    /* Channel 1 game traffic: snapshots from the host. */
+                    NetHeader h;
+                    if ((int)ev.packet->dataLength < NET_HDR_SIZE ||
+                        net_hdr_decode(&h, ev.packet->data) != 0) {
+                        LOG_WARN("NET: undecodable ch1 packet from host");
+                        enet_packet_destroy(ev.packet);
+                        break;
+                    }
+                    if (h.kind == NET_PKT_SNAPSHOT) {
+                        NetSnapshot snap;
+                        if (net_decode_snapshot(ev.packet->data,
+                                                (int)ev.packet->dataLength, &h,
+                                                &snap,
+                                                NET_SNAP_MAX_ENTITIES) == 0) {
+                            c->snap = snap;
+                            c->snap_valid = true;
+                            c->snap_seq = h.seq;
+                        } else {
+                            LOG_WARN("NET: malformed snapshot from host");
+                        }
+                    }
+                    enet_packet_destroy(ev.packet);
+                    break;
+                }
                 if (ev.channelID != NET_CH_CTRL) {
                     enet_packet_destroy(ev.packet);
                     break;

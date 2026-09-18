@@ -104,6 +104,10 @@ typedef struct {
     uint32_t net_seed;          /* 0 = derive from RNG at host time */
     NetServer net_server;
     NetClient net_client;
+
+    /* P2: net input cadence + client-side weapon selection. */
+    float net_input_tx_accum;
+    uint8_t net_weapon;
 } Game;
 
 /* Defaults to full-health start; -1 disables the HP override. */
@@ -450,7 +454,9 @@ static void update(float dt) {
                 break;
             }
 
-            /* Weapon switching (1-4). Locked weapons are rejected with a hint. */
+            /* Weapon switching (1-4). Locked weapons are rejected with a hint. A
+             * render-only client has no inventory - it just queues the
+             * selection so the host applies it. */
             {
                 PlayerInventory *local_inv = &game.players[0].inventory;
                 WeaponType w = WEAPON_PISTOL;
@@ -459,11 +465,18 @@ static void update(float dt) {
                 if (input_key_pressed(&game.input, SDL_SCANCODE_2)) { w = WEAPON_SWORD;    key = SDL_SCANCODE_2; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_3)) { w = WEAPON_GRENADE;  key = SDL_SCANCODE_3; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_4)) { w = WEAPON_LAUNCHER; key = SDL_SCANCODE_4; }
-                if (key != SDL_SCANCODE_UNKNOWN && w != local_inv->current) {
-                    if (!weapons_select(local_inv, w)) {
-                        hud_show_message(&game.hud, "Weapon locked - buy it in the shop (B)", 2.0f);
+                if (key != SDL_SCANCODE_UNKNOWN) {
+                    if (game.net_host_mode) {
+                        if (w != local_inv->current) {
+                            if (!weapons_select(local_inv, w)) {
+                                hud_show_message(&game.hud, "Weapon locked - buy it in the shop (B)", 2.0f);
+                            } else {
+                                LOG_INFO("Selected weapon: %s", weapons_name(local_inv->current));
+                            }
+                        }
                     } else {
-                        LOG_INFO("Selected weapon: %s", weapons_name(local_inv->current));
+                        game.net_weapon = (uint8_t)w;
+                        LOG_INFO("Net client selected weapon: %s", weapons_name(w));
                     }
                 }
             }
@@ -756,6 +769,65 @@ static void render(void) {
     SDL_RenderPresent(game.renderer);
 }
 
+/* Host: fold each remote player's latest wire input into their slot's
+ * InputState before the systems run, so remote players ride the exact same
+ * input-injection path as bots (net input -> InputState -> systems). */
+static void apply_net_inputs(void) {
+    if (!game.net_host_mode) return;
+    for (int s = 1; s < MAX_PLAYERS; s++) {
+        if (!game.players[s].in_use) continue;
+        NetInput in;
+        if (!net_server_get_input(&game.net_server, s, &in)) continue;
+
+        Player *p = &game.players[s];
+        memset(p->input.keys, 0, sizeof(p->input.keys));
+        memset(p->input.mouse_buttons, 0, sizeof(p->input.mouse_buttons));
+        if (in.move_flags & NET_INPUT_MOVE_UP) p->input.keys[SDL_SCANCODE_W] = true;
+        if (in.move_flags & NET_INPUT_MOVE_DOWN) p->input.keys[SDL_SCANCODE_S] = true;
+        if (in.move_flags & NET_INPUT_MOVE_LEFT) p->input.keys[SDL_SCANCODE_A] = true;
+        if (in.move_flags & NET_INPUT_MOVE_RIGHT) p->input.keys[SDL_SCANCODE_D] = true;
+        p->input.mouse_world_x = in.aim_x;
+        p->input.mouse_world_y = in.aim_y;
+        p->input.world_aim = true;
+        if (in.buttons & NET_INPUT_BTN_SHOOT) p->input.mouse_buttons[0] = true;
+
+        if (in.weapon >= WEAPON_PISTOL && (int)in.weapon <= WEAPON_LAUNCHER &&
+            p->inventory.current != (WeaponType)in.weapon) {
+            weapons_select(&p->inventory, (WeaponType)in.weapon);
+        }
+    }
+}
+
+/* Client: package the local raw input into a NetInput and push it to the host
+ * at >= 30 Hz (rate-limited here; the transport is unreliable latest-wins). */
+static void send_net_input(float dt) {
+    if (game.net_host_mode || game.net_client.state != NET_CLIENT_CONNECTED) {
+        game.net_input_tx_accum = 0;
+        return;
+    }
+    game.net_input_tx_accum += dt;
+    if (game.net_input_tx_accum < (1.0f / 30.0f)) return;
+    game.net_input_tx_accum = 0;
+
+    const InputState *i = &game.input;
+    NetInput in;
+    memset(&in, 0, sizeof(in));
+    if (input_key_held(i, SDL_SCANCODE_W) || input_key_held(i, SDL_SCANCODE_UP))
+        in.move_flags |= NET_INPUT_MOVE_UP;
+    if (input_key_held(i, SDL_SCANCODE_S) || input_key_held(i, SDL_SCANCODE_DOWN))
+        in.move_flags |= NET_INPUT_MOVE_DOWN;
+    if (input_key_held(i, SDL_SCANCODE_A) || input_key_held(i, SDL_SCANCODE_LEFT))
+        in.move_flags |= NET_INPUT_MOVE_LEFT;
+    if (input_key_held(i, SDL_SCANCODE_D) || input_key_held(i, SDL_SCANCODE_RIGHT))
+        in.move_flags |= NET_INPUT_MOVE_RIGHT;
+    if (i->mouse_buttons[0]) in.buttons |= NET_INPUT_BTN_SHOOT;
+    in.weapon = game.net_weapon;
+    Vec2 aim = camera_screen_to_world(&game.camera, vec2(i->mouse_x, i->mouse_y));
+    in.aim_x = aim.x;
+    in.aim_y = aim.y;
+    net_client_send_input(&game.net_client, &in);
+}
+
 /* One simulation step. Handles input (real + injected), the AI driver,
  * game update, event log flushing, and input edge clearing. */
 static void step_frame(float dt) {
@@ -776,6 +848,11 @@ static void step_frame(float dt) {
     if (game.players[0].in_use) {
         game.players[0].input = game.input;
     }
+
+    /* Fold remote players' wire input into their slots (host), and stream the
+     * local input up (client). */
+    apply_net_inputs();
+    send_net_input(dt);
 
     update(dt);
 

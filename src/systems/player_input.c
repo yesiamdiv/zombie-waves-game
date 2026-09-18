@@ -34,11 +34,15 @@ void system_player_input(World *ecs, Player *p, Camera *cam, float dt) {
 
     vel->vel = vec2_scale(move_dir, PLAYER_SPEED);
 
-    /* Mouse world position for camera and aiming */
-    Vec2 mouse_screen = vec2(input->mouse_x, input->mouse_y);
-    Vec2 mouse_world = camera_screen_to_world(cam, mouse_screen);
-    input->mouse_world_x = mouse_world.x;
-    input->mouse_world_y = mouse_world.y;
+    /* Mouse world position for camera and aiming. Net-driven players provide
+     * world-space aim directly (their view is not covered by the host camera). */
+    if (!input->world_aim) {
+        Vec2 mouse_screen = vec2(input->mouse_x, input->mouse_y);
+        Vec2 mouse_world = camera_screen_to_world(cam, mouse_screen);
+        input->mouse_world_x = mouse_world.x;
+        input->mouse_world_y = mouse_world.y;
+    }
+    Vec2 mouse_world = vec2(input->mouse_world_x, input->mouse_world_y);
 
     /* Shooting: the pistol fires while the button is held (human hold-to-fire
      * and AI-driven) at the fire-rate cooldown. The other weapons handle their

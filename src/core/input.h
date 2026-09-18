@@ -17,6 +17,12 @@ typedef struct {
     bool mouse_pressed[5];
     bool mouse_released[5];
 
+    /* When true, `mouse_world_x/y` are authoritative and must NOT be
+     * recomputed from the screen mouse position. Set by the net layer for
+     * remote players, whose aim arrives in world space (the host camera does
+     * not cover their view). */
+    bool world_aim;
+
     bool quit_requested;
 
     /* True when an AI driver is writing to this state (for logging/debug). */

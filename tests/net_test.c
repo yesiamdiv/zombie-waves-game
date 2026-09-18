@@ -168,6 +168,30 @@ int main(void) {
         CHECK(c[i].roster_count == 3); /* 'Cara' dropped out of everyone's list */
     }
 
+    /* ------------------- channel 1 game traffic: INPUT up, latest-wins ----- */
+    NetInput in = {NET_INPUT_MOVE_UP | NET_INPUT_MOVE_RIGHT,
+                   NET_INPUT_BTN_SHOOT, 2, 123.5f, -4.25f};
+    for (int i = 0; i < 2; i++) {
+        if (c[i].state == NET_CLIENT_CONNECTED) {
+            CHECK(net_client_send_input(&c[i], &in) == 0);
+        }
+    }
+    for (int i = 0; i < 2; i++) {
+        service(&server, c, 2);
+    }
+    CHECK(server.rx_inputs >= 2);
+    NetInput got;
+    CHECK(net_server_get_input(&server, 1, &got));
+    CHECK(got.move_flags == in.move_flags);
+    CHECK(got.buttons == in.buttons);
+    CHECK(got.weapon == in.weapon);
+    CHECK(got.aim_x == in.aim_x);
+    CHECK(got.aim_y == in.aim_y);
+    CHECK(net_server_get_input(&server, 2, &got));
+    CHECK(got.move_flags == in.move_flags);
+    /* Slot 0 (the local host) never has remote input. */
+    CHECK(!net_server_get_input(&server, 0, &got));
+
     /* ------------------------------------------------------------ teardown */
     for (int i = 0; i < 3; i++) net_client_shutdown(&c[i]);
     net_server_shutdown(&server);

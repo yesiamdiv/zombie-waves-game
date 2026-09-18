@@ -109,6 +109,13 @@ int net_server_build_player_list(const NetServer *s, NetPlayerInfo *out, int max
     return n;
 }
 
+bool net_server_get_input(const NetServer *s, int slot, NetInput *out) {
+    if (!s || slot < 1 || slot >= NET_MAX_PLAYERS) return false;
+    if (!s->input_valid[slot]) return false;
+    if (out) *out = s->inputs[slot];
+    return true;
+}
+
 static void broadcast_player_list(NetServer *s) {
     NetPlayerInfo roster[NET_MAX_PLAYERS];
     int n = net_server_build_player_list(s, roster, NET_MAX_PLAYERS);
@@ -159,6 +166,32 @@ void net_server_update(NetServer *s) {
             }
 
             case ENET_EVENT_TYPE_RECEIVE: {
+                if (ev.channelID == NET_CH_SNAP) {
+                    /* Game traffic (channel 1): the only client->host kind in
+                     * P2 is INPUT - keep the latest per slot, latest-wins. */
+                    NetHeader h;
+                    NetInput in;
+                    if ((int)ev.packet->dataLength < NET_HDR_SIZE ||
+                        net_hdr_decode(&h, ev.packet->data) != 0 ||
+                        h.kind != NET_PKT_INPUT ||
+                        net_decode_input(ev.packet->data,
+                                         (int)ev.packet->dataLength,
+                                         &h, &in) != 0) {
+                        s->bad_packets++;
+                        enet_packet_destroy(ev.packet);
+                        break;
+                    }
+                    int slot = peer_slot(ev.peer);
+                    if (slot >= 1 && slot < NET_MAX_PLAYERS) {
+                        s->inputs[slot] = in;
+                        s->input_valid[slot] = true;
+                        s->rx_inputs++;
+                    } else {
+                        s->bad_packets++;
+                    }
+                    enet_packet_destroy(ev.packet);
+                    break;
+                }
                 if (ev.channelID != NET_CH_CTRL) {
                     s->bad_packets++;
                     enet_packet_destroy(ev.packet);

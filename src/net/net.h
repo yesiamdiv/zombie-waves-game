@@ -61,7 +61,7 @@ enum {
 typedef struct {
     uint8_t move_flags;     /* NET_INPUT_MOVE_* */
     uint8_t buttons;        /* NET_INPUT_BTN_* */
-    uint8_t weapon;         /* 0 = none, 1-4 = selection index */
+    uint8_t weapon;         /* WEAPON_* enum value (0..3); static while held */
     float aim_x;            /* world-space aim */
     float aim_y;
 } NetInput;

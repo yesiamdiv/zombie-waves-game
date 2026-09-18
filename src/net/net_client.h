@@ -30,6 +30,12 @@ typedef struct {
     NetPlayerInfo roster[NET_MAX_PLAYERS];
     int roster_count;
 
+    /* Latest snapshot (P2). `snap_valid` becomes true after the first
+     * snapshot; interpolation (`snap_frame`) lives at the mirror layer. */
+    NetSnapshot snap;
+    bool snap_valid;
+    uint32_t snap_seq;
+
     uint16_t seq;
     bool left;                   /* intentional leave (LEAVE sent) */
     bool server_stopped;         /* host disconnected / left */
@@ -55,5 +61,9 @@ void net_client_update(NetClient *c);
 
 /* Round trip to the host in ms, or -1 when not connected. */
 int net_client_rtt_ms(const NetClient *c);
+
+/* Send one input sample to the host (channel 1, unreliable latest-wins).
+ * Returns 0/-1 (ignored while not connected to a host). */
+int net_client_send_input(NetClient *c, const NetInput *in);
 
 #endif
