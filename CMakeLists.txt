@@ -44,6 +44,33 @@ target_link_libraries(${PROJECT_NAME} PRIVATE zombie_core)
 add_executable(zombie_tests tests/tests.c)
 target_link_libraries(zombie_tests PRIVATE zombie_core)
 
+# ---------------------------------------------------------------------------
+# Networking spike: standalone ENet loopback connectivity + packet codec proof
+# (see docs/MULTIPLAYER_PLAN.md). Independent of the game code on purpose so
+# the transport layer is validated before the real net code is written.
+# ---------------------------------------------------------------------------
+option(ENABLE_NET_SPIKE "Build the ENet loopback connectivity/codec spike" ON)
+if(ENABLE_NET_SPIKE)
+    FetchContent_Declare(
+        ENet
+        GIT_REPOSITORY https://github.com/lsalzman/enet.git
+        GIT_TAG        v1.3.18
+        GIT_SHALLOW    TRUE
+    )
+    set(ENET_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ENET_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(ENET_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(ENET_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(ENET_BUILTIN_NAT OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(ENet)
+
+    add_executable(zombie_net_spike tests/net_spike.c)
+    target_link_libraries(zombie_net_spike PRIVATE enet)
+    target_include_directories(zombie_net_spike PRIVATE "${enet_SOURCE_DIR}/include")
+
+    add_test(NAME net_spike COMMAND zombie_net_spike 127.0.0.1 50910 1.5 3)
+endif()
+
 if(UNIX AND NOT APPLE)
     target_link_libraries(zombie_core PUBLIC m)
 endif()
