@@ -22,6 +22,15 @@ void system_player_input(World *ecs, InputState *input, Camera *cam, float dt,
 /* Zombie AI system - chase, attack behavior */
 void system_zombie_ai(World *ecs, float dt);
 
+/* Damage-induced player slowdown: throttles movement briefly after a hit so
+ * the player cannot instantly escape a zombie that has landed a blow. */
+#define PLAYER_HURT_SLOW_DURATION 0.35f
+#define PLAYER_HURT_SLOW_FACTOR   0.45f
+
+/* Apply a zombie melee hit to the player: damage, knockback, and a brief
+ * movement slow. Emits the playtest events like the old zombie_ai path. */
+void zombie_damage_player(World *ecs, Entity zombie, Vec2 origin);
+
 /* Bullet system - moves bullets, checks lifetime, deals damage */
 void system_bullets(World *ecs, GameWorld *world, float dt);
 

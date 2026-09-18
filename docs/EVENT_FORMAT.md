@@ -48,7 +48,7 @@ Fields:
 | `ENTITY_DEATH`    | `-`/`grenade`/`rocket` | `x,y` death pos; `a` explosion radius (grenades) |
 | `WAVE_START`      | `-`       | `a` wave number; `b` zombies to spawn  |
 | `WAVE_END`        | `-`       | `a` wave number; `b` total kills so far |
-| `PLAYER_HEALTH`   | `player`  | `a` health after the change; `b` max health; `ia` health before the change. Emitted on zombie melee damage (`zombie_ai`) and on `ITEM_HEALTH` pickup heal (`items`) |
+| `PLAYER_HEALTH`   | `player`  | `a` health after the change; `b` max health; `ia` health before the change. Emitted on zombie melee/contact damage (`zombie_ai`/`collision`) and on `ITEM_HEALTH` pickup heal (`items`) |
 | `ITEM_PICKUP`     | `item`    | `a` item type (0=health 1=ammo 2=speed); `b` value |
 | `POINTS`          | `player`  | `a` accumulated points; `b` points awarded this kill |
 | `SHOP_PURCHASE`   | `player`  | `a` weapon index (1=sword 2=grenade 3=launcher); `b` cost; `ia` pack quantity |

@@ -37,6 +37,13 @@ Sprite sprite_none(void);
 
 void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, float scale, float rotation, float alpha);
 
+/* Draw a filled blade quad pivoted at (x, y): the handle sits on (x, y) and
+ * the blade extends `length` world units along `angle`. Used by the sweeping
+ * sword so the pivot is the inner-circle point, not the sprite center. */
+void sprite_draw_blade(SDL_Renderer *renderer, float x, float y, float angle,
+                       float length, float width, float scale,
+                       SDL_FColor color, float alpha);
+
 SDL_FColor color_rgb(float r, float g, float b);
 SDL_FColor color_rgba(float r, float g, float b, float a);
 SDL_FColor color_hex(Uint32 hex);

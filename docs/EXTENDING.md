@@ -24,7 +24,7 @@ src/
 │   ├── player_input.c  Player movement + shooting + weapon selection
 │   ├── zombie_ai.c     Chase / attack AI
 │   ├── bullets.c       Bullet lifetime + bounds
-│   ├── sword.c         Rotating sword (sword tag update)
+│   ├── sword.c         Sweeping sword (handle/tip arc, segment hit test)
 │   ├── grenades.c      Grenade flight + fuse detonation (AoE)
 │   ├── rockets.c       Launcher rocket flight + pierce + lifetime
 │   ├── particles.c     Particle update + fade
@@ -91,6 +91,12 @@ System execution order matters:
 player_input -> sword -> zombie_ai -> movement -> collision -> bullets -> grenades -> rockets -> particles -> cleanup
 ```
 
+Melee notes: zombies land damage through the attack state-machine **and** direct
+contact (`collision.c`) — skimming through a zombie is punished. Both paths go
+through `zombie_damage_player()`, which knocks the player back and applies a
+brief movement slow (`PLAYER_HURT_SLOW_DURATION` in `systems.h`), consumed in
+`player_input.c`.
+
 ## Weapon Shop (`src/weapons/weapons.h/c`)
 
 Killing zombies earns points (`POINTS_PER_KILL`, default 15). Press `B` in
@@ -99,7 +105,7 @@ game to open the paused shop menu and spend them:
 | Row | Weapon        | Cost    | Notes                                          |
 |-----|---------------|---------|------------------------------------------------|
 | 1   | Pistol        | free    | Default; infinite ammo                         |
-| 2   | Sword         | 150     | Rotates around player while click held         |
+| 2   | Sword         | 150     | 360° sweep while click held (handle pivots on an inner circle, tip on an outer circle) |
 | 3   | Grenades x5   | 75      | AoE (radius 90, dmg 120); refill pack buys +5  |
 | 4   | Launcher      | 450     | Piercing rocket (dmg 120); starts +5 ammo      |
 | 5   | Launcher ammo | 150     | Refill pack buys +5 rockets                    |

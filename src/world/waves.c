@@ -119,15 +119,15 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
     ecs_add_component(ecs, e, COMP_ZOMBIE_TAG);
 
     *ecs_get_position(ecs, e) = (CPosition){{pos.x, pos.y}};
-    *ecs_get_velocity(ecs, e) = (CVelocity){{0, 0}, 80.0f};
+    *ecs_get_velocity(ecs, e) = (CVelocity){{0, 0}, 130.0f};
     *ecs_get_health(ecs, e) = (CHealth){100.0f, 100.0f};
     *ecs_get_collider(ecs, e) = (CCollider){12.0f, false};
     *ecs_get_zombie_tag(ecs, e) = (CZombieTag){
         .state = ZOMBIE_CHASE,
         .attack_timer = 0,
-        .attack_cooldown = 1.0f,
+        .attack_cooldown = 0.75f,
         .detection_range = ZOMBIE_DETECTION_RANGE,
-        .attack_range = 20.0f,
+        .attack_range = 30.0f,
         .hurt_timer = 0
     };
 

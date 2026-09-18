@@ -628,6 +628,84 @@ static void test_sword_spin(void) {
     CHECK(!alive);
 }
 
+static void test_sword_sweep_hits(void) {
+    LOG_INFO("--- Test: Sword sweep hits along the blade ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world;
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    PlayerInventory inv;
+    weapons_inventory_init(&inv);
+    inv.points = 1000;
+    weapons_buy_sword(&inv);
+    weapons_select(&inv, WEAPON_SWORD);
+
+    /* A zombie sitting mid-blade (inner circle 26 -> outer 58) must be hit
+     * by the sweeping blade, not just the single orbital point. */
+    Vec2 zpos = vec2_add(spawn, vec2(42.0f, 0.0f));
+    Entity zombie = waves_spawn_zombie(&ecs, zpos);
+    CHECK(zombie != ECS_NULL_ENTITY);
+    float hp_before = ecs_get_health(&ecs, zombie)->current;
+
+    InputState input;
+    input_init(&input);
+    input.mouse_buttons[0] = true;
+    input.mouse_world_x = spawn.x + 100.0f;
+    input.mouse_world_y = spawn.y;
+
+    int frames = 0;
+    while (frames < 120 && ecs_get_health(&ecs, zombie)->current >= hp_before) {
+        system_sword(&ecs, &input, &inv, 1.0f / 60.0f);
+        frames++;
+    }
+    CHECK(ecs_get_health(&ecs, zombie)->current < hp_before);
+}
+
+static void test_zombie_contact_and_slow(void) {
+    LOG_INFO("--- Test: Zombie contact damage & player slow ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world;
+    world_init(&world);
+
+    Vec2 player_pos = {150.0f, 150.0f};
+    Entity player = spawn_player(&ecs, player_pos);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    /* A zombie overlapping the player: skimming through must no longer be
+     * free; contact deals damage and slows the player. */
+    Entity zombie = waves_spawn_zombie(&ecs, vec2(157.0f, 150.0f));
+    CHECK(zombie != ECS_NULL_ENTITY);
+
+    float hp_before = ecs_get_health(&ecs, player)->current;
+    system_collision(&ecs, &world);
+
+    CHECK(ecs_get_health(&ecs, player)->current < hp_before);
+    CHECK(ecs_get_player_tag(&ecs, player)->slow_timer > 0.0f);
+
+    /* Cooldown gating: an immediate second contact must not double-hit. */
+    float hp_after_first = ecs_get_health(&ecs, player)->current;
+    system_collision(&ecs, &world);
+    CHECK(ecs_get_health(&ecs, player)->current == hp_after_first);
+
+    /* While slowed, held movement input moves the player at reduced speed. */
+    Camera cam;
+    camera_init(&cam, 800, 600);
+    InputState input;
+    input_init(&input);
+    input.keys[SDL_SCANCODE_D] = true;
+
+    system_player_input(&ecs, &input, &cam, 1.0f / 60.0f, NULL);
+    CVelocity *pvel = ecs_get_velocity(&ecs, player);
+    CHECK(pvel->vel.x > 0.0f);
+    CHECK(pvel->vel.x < 200.0f);   /* 200 max speed throttled by the hit slow */
+}
+
 static void test_rocket_damage_and_destruction(void) {
     LOG_INFO("--- Test: Rocket pierce & out-of-bounds destruction ---");
     World ecs;
@@ -752,6 +830,8 @@ int tests_run_all(void) {
     test_wave_timeout();
     test_weapons_inventory();
     test_sword_spin();
+    test_sword_sweep_hits();
+    test_zombie_contact_and_slow();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
 

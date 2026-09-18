@@ -59,6 +59,32 @@ Sprite sprite_circle(float radius, SDL_FColor color) {
     return s;
 }
 
+void sprite_draw_blade(SDL_Renderer *renderer, float x, float y, float angle,
+                       float length, float width, float scale,
+                       SDL_FColor color, float alpha) {
+    if (length <= 0.0f || width <= 0.0f) return;
+
+    float len = length * scale;
+    float half_w = width * scale * 0.5f;
+    Vec2 dir = vec2_from_angle(angle, 1.0f);
+    Vec2 perp = vec2(-dir.y, dir.x);
+
+    Vec2 handle = vec2(x, y);
+    Vec2 tip = vec2_add(handle, vec2_scale(dir, len));
+    Vec2 off = vec2_scale(perp, half_w);
+
+    SDL_FColor c = color;
+    c.a = alpha;
+    SDL_Vertex verts[4] = {
+        {.position = {(handle.x - off.x), (handle.y - off.y)}, .color = c, .tex_coord = {0, 0}},
+        {.position = {(handle.x + off.x), (handle.y + off.y)}, .color = c, .tex_coord = {1, 0}},
+        {.position = {(tip.x + off.x), (tip.y + off.y)},       .color = c, .tex_coord = {1, 1}},
+        {.position = {(tip.x - off.x), (tip.y - off.y)},       .color = c, .tex_coord = {0, 1}},
+    };
+    const int indices[6] = {0, 1, 2, 0, 2, 3};
+    SDL_RenderGeometry(renderer, NULL, verts, 4, indices, 6);
+}
+
 void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, float scale, float rotation, float alpha) {
     if (!sprite || sprite->shape == SPRITE_SHAPE_NONE) return;
 
