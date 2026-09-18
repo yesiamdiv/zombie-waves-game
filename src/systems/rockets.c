@@ -1,4 +1,5 @@
 #include "systems/systems.h"
+#include "graphics/sprite.h"
 #include "events/event_bus.h"
 #include "core/log.h"
 
@@ -44,9 +45,15 @@ static void fire_rocket(World *ecs, Entity player, const InputState *input) {
         .damage = LAUNCHER_DAMAGE,
         .lifetime = ROCKET_LIFETIME
     };
+    Sprite rs = sprite_circle(ROCKET_RADIUS, COLOR_ORANGE);
+    SDL_Texture *rocket_tex = sprite_tex("textures/entities/rocket.png");
+    if (rocket_tex) {
+        rs = sprite_texture(rocket_tex);
+        rs.color = COLOR_WHITE;
+    }
     *ecs_get_sprite(ecs, r) = (CSprite){
-        .sprite = sprite_circle(ROCKET_RADIUS, COLOR_ORANGE),
-        .scale = 1.0f,
+        .sprite = rs,
+        .scale = 0.3125f,   /* 32px art -> 10 world units diameter */
         .base_alpha = 1.0f
     };
 

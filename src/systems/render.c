@@ -22,7 +22,8 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
             const CSwordTag *sword = &ecs->sword_tags[i];
             float length = sword->outer_radius - sword->radius;
             float width = spr->sprite.as.rect.w > 0.0f ? spr->sprite.as.rect.w : 8.0f;
-            sprite_draw_blade(renderer, screen.x, screen.y, sword->angle,
+            sprite_draw_blade(renderer, spr->sprite.texture,
+                              screen.x, screen.y, sword->angle,
                               length, width, cam->zoom,
                               spr->sprite.color, spr->base_alpha);
             continue;

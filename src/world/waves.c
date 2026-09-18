@@ -1,5 +1,6 @@
 #include "world/waves.h"
 #include "events/event_bus.h"
+#include "graphics/sprite.h"
 #include "config.h"
 #include "core/log.h"
 #include <stdlib.h>
@@ -143,9 +144,17 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
     }
 
     float size = 10.0f + (float)(rand() % 6);
+    Sprite zs = sprite_circle(size, color);
+    SDL_Texture *zombie_tex = sprite_tex("textures/entities/zombie.png");
+    if (zombie_tex) {
+        /* 32px art drawn at 2*size world units matches the previous circle
+         * diameter; tint keeps the per-variant palette. */
+        zs = sprite_texture(zombie_tex);
+        zs.color = color;
+    }
     *ecs_get_sprite(ecs, e) = (CSprite){
-        .sprite = sprite_circle(size, color),
-        .scale = 1.0f,
+        .sprite = zs,
+        .scale = size / 16.0f,
         .base_alpha = 1.0f
     };
     ecs_get_collider(ecs, e)->radius = size;

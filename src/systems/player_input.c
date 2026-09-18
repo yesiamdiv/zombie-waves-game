@@ -1,4 +1,5 @@
 #include "systems/systems.h"
+#include "graphics/sprite.h"
 #include "world/waves.h"
 #include "events/event_bus.h"
 #include "core/log.h"
@@ -95,9 +96,15 @@ bool pistol_selected = (!inv) || (inv->unlocked[WEAPON_PISTOL] &&
             };
 
             SDL_FColor bullet_color = {1.0f, 0.9f, 0.3f, 1.0f};
+            Sprite bul = sprite_circle(4.0f, bullet_color);
+            SDL_Texture *bullet_tex = sprite_tex("textures/entities/bullet.png");
+            if (bullet_tex) {
+                bul = sprite_texture(bullet_tex);
+                bul.color = bullet_color;
+            }
             *ecs_get_sprite(ecs, bullet) = (CSprite){
-                .sprite = sprite_circle(4.0f, bullet_color),
-                .scale = 1.0f,
+                .sprite = bul,
+                .scale = 1.0f,   /* 8px art -> 8 world units */
                 .base_alpha = 1.0f
             };
 

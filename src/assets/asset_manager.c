@@ -72,6 +72,9 @@ SDL_Texture *asset_manager_get(AssetManager *am, const char *name) {
         return NULL;
     }
 
+    /* Pixel art must stay chunky when scaled; nearest keeps it crisp. */
+    SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+
     AssetEntry *e = (AssetEntry *)malloc(sizeof(AssetEntry));
     if (!e) {
         SDL_DestroyTexture(tex);

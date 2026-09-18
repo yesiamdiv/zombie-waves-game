@@ -1,5 +1,6 @@
 #include "items/items.h"
 #include "events/event_bus.h"
+#include "graphics/sprite.h"
 #include "core/log.h"
 #include <stdlib.h>
 
@@ -41,10 +42,24 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
             name = "Unknown";
     }
 
+    const char *item_tex = NULL;
+    switch (type) {
+        case ITEM_HEALTH:      item_tex = "textures/entities/medkit.png"; break;
+        case ITEM_AMMO:        item_tex = "textures/entities/ammo.png"; break;
+        case ITEM_SPEED_BOOST: item_tex = "textures/entities/speed.png"; break;
+        default: break;
+    }
+    Sprite is = sprite_rect(8.0f, 8.0f, color);
+    SDL_Texture *pickup_tex = sprite_tex(item_tex);
+    if (pickup_tex) {
+        is = sprite_texture(pickup_tex);
+        is.color = COLOR_WHITE;
+    }
+
     *ecs_get_item_tag(ecs, e) = (CItemTag){.type = type, .value = value, .bob_timer = 0};
     *ecs_get_sprite(ecs, e) = (CSprite){
-        .sprite = sprite_rect(8.0f, 8.0f, color),
-        .scale = 1.0f,
+        .sprite = is,
+        .scale = 0.25f,   /* 32px art -> 8 world units */
         .base_alpha = 1.0f
     };
 

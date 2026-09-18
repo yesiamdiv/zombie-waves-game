@@ -5,6 +5,10 @@
 #include <stdbool.h>
 #include "core/mathutil.h"
 
+/* Resolve a texture through the global asset manager; NULL in headless
+ * builds or when the art is missing. */
+SDL_Texture *sprite_tex(const char *path);
+
 typedef enum {
     SPRITE_SHAPE_NONE = 0,
     SPRITE_SHAPE_RECT,
@@ -45,10 +49,13 @@ Sprite sprite_none(void);
 
 void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, float scale, float rotation, float alpha);
 
-/* Draw a filled blade quad pivoted at (x, y): the handle sits on (x, y) and
- * the blade extends `length` world units along `angle`. Used by the sweeping
- * sword so the pivot is the inner-circle point, not the sprite center. */
-void sprite_draw_blade(SDL_Renderer *renderer, float x, float y, float angle,
+/* Draw a blade quad pivoted at (x, y): the handle sits on (x, y) and the
+ * blade extends `length` world units along `angle`. Used by the sweeping sword
+ * so the pivot is the inner-circle point, not the sprite center. If `tex` is
+ * non-NULL the quad is textured (tinted by `color`), otherwise it is filled
+ * with `color`. */
+void sprite_draw_blade(SDL_Renderer *renderer, SDL_Texture *tex,
+                       float x, float y, float angle,
                        float length, float width, float scale,
                        SDL_FColor color, float alpha);
 

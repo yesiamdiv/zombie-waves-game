@@ -1,5 +1,6 @@
 #include "systems/systems.h"
 #include "events/event_bus.h"
+#include "graphics/sprite.h"
 #include "core/log.h"
 #include <math.h>
 
@@ -63,9 +64,15 @@ static Entity spawn_sword(World *ecs, Entity player, float aim_angle) {
         .damage = SWORD_DAMAGE,
         .hit_interval = SWORD_HIT_INTERVAL
     };
+    Sprite blade = sprite_rect(SWORD_WIDTH, SWORD_TIP_RADIUS - SWORD_RADIUS,
+                               COLOR_LIGHT_BLUE);
+    blade.texture = sprite_tex("textures/entities/sword_blade.png");
+    if (blade.texture) {
+        blade.shape = SPRITE_SHAPE_TEXTURE;
+        blade.color = COLOR_WHITE;
+    }
     *ecs_get_sprite(ecs, s) = (CSprite){
-        .sprite = sprite_rect(SWORD_WIDTH, SWORD_TIP_RADIUS - SWORD_RADIUS,
-                              COLOR_LIGHT_BLUE),
+        .sprite = blade,
         .scale = 1.0f,
         .base_alpha = 0.95f
     };

@@ -118,9 +118,16 @@ static Entity create_player(World *ecs, Vec2 pos) {
     *ecs_get_health(ecs, e) = (CHealth){200.0f, 200.0f};
     *ecs_get_collider(ecs, e) = (CCollider){14.0f, false};
 
+    Sprite ps = sprite_rect(16.0f, 16.0f, COLOR_BLUE);
+    SDL_Texture *player_tex = sprite_tex("textures/entities/player.png");
+    if (player_tex) {
+        /* 32px art at scale 0.5 renders as the original 16x16 world unit. */
+        ps = sprite_texture(player_tex);
+        ps.color = (SDL_FColor){0.3f, 0.4f, 1.0f, 1.0f};  /* blue soldier */
+    }
     *ecs_get_sprite(ecs, e) = (CSprite){
-        .sprite = sprite_rect(16.0f, 16.0f, COLOR_BLUE),
-        .scale = 1.0f,
+        .sprite = ps,
+        .scale = 0.5f,
         .base_alpha = 1.0f
     };
 

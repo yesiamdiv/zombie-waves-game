@@ -18,6 +18,7 @@ from PIL import Image
 TILE_BASE = 16
 DEFAULT_SCALE = 4
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "tiles")
+ENT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "entities")
 
 
 def render(grid, palette, scale):
@@ -131,6 +132,137 @@ def make(name, grid, palette, scale):
     return path
 
 
+# ---- entity pixel art ----
+# All entity art is IRGB filled with light base tones + dark outlines so the
+# game can tint it at runtime (color mod) without washing out the silhouette.
+
+def canvas(w, h, ch="."):
+    return [[ch for _ in range(w)] for _ in range(h)]
+
+
+def disc(grid, cx, cy, rx, ry, ch):
+    for y in range(len(grid)):
+        for x in range(len(grid[0])):
+            if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0:
+                grid[y][x] = ch
+
+
+def frame(grid, ch):
+    h, w = len(grid), len(grid[0])
+    for x in range(w):
+        grid[0][x] = grid[h - 1][x] = ch
+    for y in range(h):
+        grid[y][0] = grid[y][w - 1] = ch
+
+
+def rect(grid, x0, y0, x1, y1, ch):
+    for y in range(max(0, y0), min(len(grid), y1 + 1)):
+        for x in range(max(0, x0), min(len(grid[0]), x1 + 1)):
+            grid[y][x] = ch
+
+
+def body_any(w, h, seed, outline="K", base="w"):
+    g = canvas(w, h)
+    rng = random.Random(seed)
+    disc(g, w // 2, h // 2, w * 0.34, h * 0.42, base)
+    for _ in range(seed):
+        x = w // 2 + rng.randint(-int(w * 0.3), int(w * 0.3))
+        y = h // 2 + rng.randint(-int(h * 0.3), int(h * 0.3))
+        if g[y][x] == base:
+            g[y][x] = outline if rng.random() < 0.5 else "s"
+    return g
+
+
+def make_entity(name, grid, palette, scale=DEFAULT_SCALE):
+    img = render(grid, palette, scale)
+    path = os.path.join(ENT_DIR, name + ".png")
+    img.save(path)
+    print("wrote", os.path.abspath(path), img.size)
+    return path
+
+
+def entity_player():
+    g = body_any(32, 32, 7)
+    # head + shoulders read at small scale
+    rect(g, 11, 5, 20, 11, "w")     # head
+    rect(g, 13, 7, 18, 9, "K")      # visor
+    rect(g, 9, 12, 22, 15, "w")     # shoulders
+    rect(g, 10, 18, 14, 27, "w")    # left arm
+    rect(g, 17, 18, 21, 27, "w")    # right arm
+    rect(g, 3, 12, 8, 24, "w")      # held rifle
+    rect(g, 4, 13, 7, 23, "K")      # rifle barrel
+    return g, {".": (0, 0, 0), "K": (34, 34, 38), "w": (232, 232, 238),
+               "s": (150, 152, 160)}
+
+
+def entity_zombie():
+    g = body_any(32, 32, 11)
+    disc(g, 16, 12, 5, 6, "w")     # head, slumped
+    disc(g, 14, 12, 2, 2, "K")     # eye hole
+    rect(g, 9, 6, 20, 8, "w")      # arms reaching up
+    rect(g, 12, 9, 17, 10, "K")    # open mouth
+    rect(g, 23, 14, 25, 27, "w")   # right arm
+    return g, {".": (0, 0, 0), "K": (30, 30, 34), "w": (215, 210, 205),
+               "s": (140, 140, 150)}
+
+
+def entity_bullet():
+    g = canvas(8, 8)
+    disc(g, 4, 4, 3, 3, "w")
+    disc(g, 4, 4, 2, 2, "w")
+    return g, {".": (0, 0, 0), "w": (245, 242, 220)}
+
+
+def entity_grenade():
+    g = canvas(32, 32)
+    disc(g, 16, 18, 10, 10, "g")
+    disc(g, 13, 15, 4, 4, "h")
+    rect(g, 15, 6, 16, 9, "K")     # pin
+    return g, {".": (0, 0, 0), "K": (60, 54, 48), "g": (66, 96, 56),
+               "h": (96, 134, 82)}
+
+
+def entity_rocket():
+    g = canvas(32, 32)
+    disc(g, 16, 16, 6, 9, "o")
+    disc(g, 14, 10, 3, 3, "h")
+    rect(g, 8, 10, 10, 22, "r")    # left fin
+    rect(g, 22, 10, 24, 22, "r")   # right fin
+    disc(g, 16, 22, 5, 3, "r")
+    return g, {".": (0, 0, 0), "o": (228, 124, 44), "h": (246, 184, 96),
+               "r": (150, 74, 32)}
+
+
+def entity_pickup(cross=False, stripes=False, bolt=False):
+    g = canvas(32, 32)
+    rect(g, 4, 8, 27, 27, "w")
+    rect(g, 7, 10, 24, 25, "w")
+    frame(g, "K")
+    if cross:
+        rect(g, 13, 12, 18, 23, "R")
+        rect(g, 10, 15, 21, 20, "R")
+    if stripes:  # diagonal ammo bands
+        for i in range(8):
+            rect(g, 6 + i, 27 - i - 3, 8 + i, 29 - i - 3, "Y")
+    if bolt:     # lightning
+        pts = [(16, 10), (11, 19), (14, 19), (12, 26), (19, 16), (16, 16)]
+        for ch, (x, y) in zip("B" * 6, pts):
+            g[y][x] = "B"
+        rect(g, 12, 20, 20, 21, "B")
+    return g, {".": (0, 0, 0), "K": (40, 40, 44), "w": (238, 238, 242),
+               "R": (214, 68, 62), "Y": (214, 178, 60), "B": (88, 140, 224)}
+
+
+def entity_blade():
+    g = canvas(40, 16)
+    rect(g, 0, 6, 6, 9, "b")       # handle
+    rect(g, 7, 4, 8, 11, "K")      # crossguard
+    rect(g, 9, 7, 39, 8, "S")      # blade steel
+    rect(g, 12, 5, 37, 6, "H")     # shine
+    return g, {".": (0, 0, 0), "b": (120, 78, 44), "K": (60, 58, 54),
+               "S": (176, 194, 206), "H": (226, 236, 244)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scale", type=int, default=DEFAULT_SCALE)
@@ -139,6 +271,7 @@ def main():
     args = ap.parse_args()
 
     os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(ENT_DIR, exist_ok=True)
 
     specs = []
     # ---- grassland ----
@@ -186,6 +319,21 @@ def main():
     specs.append(("city_road", g, p))
 
     paths = [make(name, g, p, args.scale) for name, g, p in specs]
+
+    entity_specs = [
+        ("player", entity_player),
+        ("zombie", entity_zombie),
+        ("bullet", entity_bullet),
+        ("grenade", entity_grenade),
+        ("rocket", entity_rocket),
+        ("medkit", lambda: entity_pickup(cross=True)),
+        ("ammo", lambda: entity_pickup(stripes=True)),
+        ("speed", lambda: entity_pickup(bolt=True)),
+        ("sword_blade", entity_blade),
+    ]
+    for name, fn in entity_specs:
+        g, p = fn()
+        paths.append(make_entity(name, g, p, 1))
 
     if args.verify:
         for p in paths:

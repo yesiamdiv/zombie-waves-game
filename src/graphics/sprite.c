@@ -1,5 +1,11 @@
 #include "graphics/sprite.h"
 #include "core/log.h"
+#include "assets/asset_manager.h"
+
+SDL_Texture *sprite_tex(const char *path) {
+    AssetManager *am = asset_manager_global();
+    return am ? asset_manager_get(am, path) : NULL;
+}
 
 const SDL_FColor COLOR_RED        = {1.0f, 0.2f, 0.2f, 1.0f};
 const SDL_FColor COLOR_GREEN      = {0.2f, 0.9f, 0.2f, 1.0f};
@@ -76,7 +82,8 @@ Sprite sprite_texture_rect(SDL_Texture *texture, SDL_FRect src) {
     return s;
 }
 
-void sprite_draw_blade(SDL_Renderer *renderer, float x, float y, float angle,
+void sprite_draw_blade(SDL_Renderer *renderer, SDL_Texture *tex,
+                       float x, float y, float angle,
                        float length, float width, float scale,
                        SDL_FColor color, float alpha) {
     if (length <= 0.0f || width <= 0.0f) return;
@@ -90,16 +97,25 @@ void sprite_draw_blade(SDL_Renderer *renderer, float x, float y, float angle,
     Vec2 tip = vec2_add(handle, vec2_scale(dir, len));
     Vec2 off = vec2_scale(perp, half_w);
 
-    SDL_FColor c = color;
-    c.a = alpha;
+    SDL_FColor vc = color;
+    vc.a = alpha;
+    if (tex) {
+        SDL_SetTextureColorMod(tex, (Uint8)(color.r * 255.0f),
+                               (Uint8)(color.g * 255.0f),
+                               (Uint8)(color.b * 255.0f));
+        vc = (SDL_FColor){1.0f, 1.0f, 1.0f, alpha};
+    }
     SDL_Vertex verts[4] = {
-        {.position = {(handle.x - off.x), (handle.y - off.y)}, .color = c, .tex_coord = {0, 0}},
-        {.position = {(handle.x + off.x), (handle.y + off.y)}, .color = c, .tex_coord = {1, 0}},
-        {.position = {(tip.x + off.x), (tip.y + off.y)},       .color = c, .tex_coord = {1, 1}},
-        {.position = {(tip.x - off.x), (tip.y - off.y)},       .color = c, .tex_coord = {0, 1}},
+        {.position = {(handle.x - off.x), (handle.y - off.y)}, .color = vc, .tex_coord = {0, 0}},
+        {.position = {(handle.x + off.x), (handle.y + off.y)}, .color = vc, .tex_coord = {1, 0}},
+        {.position = {(tip.x + off.x), (tip.y + off.y)},       .color = vc, .tex_coord = {1, 1}},
+        {.position = {(tip.x - off.x), (tip.y - off.y)},       .color = vc, .tex_coord = {0, 1}},
     };
     const int indices[6] = {0, 1, 2, 0, 2, 3};
-    SDL_RenderGeometry(renderer, NULL, verts, 4, indices, 6);
+    SDL_RenderGeometry(renderer, tex, verts, 4, indices, 6);
+    if (tex) {
+        SDL_SetTextureColorMod(tex, 255, 255, 255);
+    }
 }
 
 void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, float scale, float rotation, float alpha) {
