@@ -25,6 +25,8 @@
 #include "net/net.h"
 #include "net/net_server.h"
 #include "net/net_client.h"
+#include "net/net_mirror.h"
+#include "events/event_bus.h"
 #include "core/log.h"
 
 #define TEST_PORT 51240
@@ -221,6 +223,35 @@ int main(void) {
         CHECK(c[i].snap.entities[1].id == 303);
         CHECK(c[i].snap.entities[1].kind == NET_ENT_ZOMBIE);
         CHECK(c[i].snap.entities[1].hp == 25.0f);
+    }
+
+    /* ------------------ channel 0 relay: EVENTS down (reliable) ------------ */
+    NetRelayedEvent ev[2] = {
+        {GE_ENTITY_DEATH, GEK_ZOMBIE, 303, 300.0f, 400.0f, 0.0f, 0.0f},
+        {GE_WAVE_START, GEK_NONE, 0, 0.0f, 0.0f, 4.0f, 12.0f},
+    };
+    net_server_broadcast_events(&server, ev, 2);
+    for (int i = 0; i < 2; i++) {
+        service(&server, c, 2);
+    }
+    CHECK(server.events_sent == 1);
+    for (int i = 0; i < 2; i++) {
+        if (c[i].state != NET_CLIENT_CONNECTED) continue;
+        CHECK(c[i].dead_count == 1);
+        CHECK(c[i].dead_ids[0] == 303);
+        CHECK(c[i].has_pending_wave);
+        CHECK(c[i].pending_wave == 4 && c[i].pending_wave_count == 12);
+        /* Draining removes the zombie from the client's mirror ahead of the
+         * next snapshot: entity 303 must vanish while 101 survives. */
+        NetMirror mm;
+        net_mirror_reset(&mm);
+        uint16_t dead[1] = {c[i].dead_ids[0]};
+        net_mirror_push_removing(&mm, &c[i].snap, dead, c[i].dead_count);
+        NetEntitySnap se;
+        CHECK(!net_mirror_sample(&mm, 303, 0.5f, &se));
+        CHECK(net_mirror_sample(&mm, 101, 0.5f, &se));
+        c[i].dead_count = 0;
+        c[i].has_pending_wave = false;
     }
 
     /* ------------------------------------------------------------ teardown */

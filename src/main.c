@@ -953,6 +953,55 @@ static void broadcast_snapshots(float dt) {
     if (n > 0) net_server_broadcast_snapshot(&game.net_server, &snap);
 }
 
+/* Host: relay a curated subset of gameplay events (§6.3) every frame on ch0
+ * (reliable/ordered). Entity deaths let clients tidy the mirror ahead of the
+ * next snapshot; wave starts feed the client HUD. Runs BEFORE the event bus
+ * flush drains the ring. */
+static void relay_net_events(void) {
+    if (!game.net_host_mode || !g_events) return;
+    static Uint64 last_relay_sid = 0;
+    NetRelayedEvent batch[NET_EVENTS_MAX_BATCH];
+    int n = 0;
+    int count = g_events->count;
+    for (int i = 0; i < count && n < NET_EVENTS_MAX_BATCH; i++) {
+        const GameEvent *ev = &g_events->ring[(g_events->head + i) % EV_MAX_EVENTS];
+        if (ev->sid <= last_relay_sid) continue;
+        if (ev->sid > last_relay_sid) last_relay_sid = ev->sid;
+        if (ev->type == GE_ENTITY_DEATH || ev->type == GE_WAVE_START ||
+            ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL) {
+            batch[n++] = (NetRelayedEvent){
+                (uint8_t)ev->type, (uint8_t)ev->kind,
+                (uint16_t)ev->entity,
+                ev->x, ev->y, ev->a, ev->b
+            };
+        }
+    }
+    if (n > 0) {
+        net_server_broadcast_events(&game.net_server, batch, n);
+    }
+}
+
+/* Client: pull the pending death list + wave flag into the mirror/HUD, then
+ * reset the transient queues for the next frame's drain. */
+static void drain_net_events(void) {
+    NetClient *c = &game.net_client;
+    if (game.net_host_mode) return;
+    if (c->state != NET_CLIENT_CONNECTED) return;
+
+    if (c->dead_count > 0) {
+        net_mirror_push_removing(&game.net_mirror, NULL, c->dead_ids,
+                                 c->dead_count);
+        c->dead_count = 0;
+    }
+    if (c->has_pending_wave) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Wave %d - %d zombies incoming!",
+                 c->pending_wave, c->pending_wave_count);
+        hud_show_message(&game.hud, msg, 3.0f);
+        c->has_pending_wave = false;
+    }
+}
+
 /* One simulation step. Handles input (real + injected), the AI driver,
  * game update, event log flushing, and input edge clearing. */
 static void step_frame(float dt) {
@@ -981,6 +1030,7 @@ static void step_frame(float dt) {
 
     update(dt);
     drain_mirror();
+    drain_net_events();
     broadcast_snapshots(dt);
 
     if (g_events) {
@@ -988,6 +1038,8 @@ static void step_frame(float dt) {
         if (game.state == GAME_STATE_PLAYING) {
             event_bus_samples(g_events, &game.ecs, 0, 0);
         }
+        /* Relay to remote clients BEFORE the flush drains the ring. */
+        relay_net_events();
         event_bus_flush(g_events);
     }
 

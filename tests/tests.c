@@ -1339,6 +1339,54 @@ static void test_net_mirror_interp(void) {
     CHECK(net_mirror_newer_time(&m) == 2.0f);
 }
 
+/* Relayed-event codec round trip + mirror death-removal (§6.3). */
+static void test_net_events_codec(void) {
+    LOG_INFO("--- Test: net_events codec + mirror removal ---");
+    NetRelayedEvent ev[3] = {
+        {GE_ENTITY_DEATH, GEK_ZOMBIE, 42, 100, 200, 0, 0},
+        {GE_PLAYER_HEALTH, GEK_PLAYER, 7, 0, 0, 88.0f, 200.0f},
+        {GE_WAVE_START, GEK_NONE, 0, 0, 0, 2.0f, 8.0f},
+    };
+    uint8_t buf[NET_EVENTS_MAX_BYTES];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_EVENTS, 9, 0, 0};
+    int len = net_encode_events(buf, (int)sizeof(buf), &h, ev, 3);
+    CHECK(len > NET_HDR_SIZE);
+    NetHeader oh;
+    NetRelayedEvent got[NET_EVENTS_MAX_BATCH];
+    int n = 0;
+    CHECK(net_decode_events(buf, len, &oh, got, NET_EVENTS_MAX_BATCH, &n) == 0);
+    CHECK(n == 3);
+    CHECK(oh.kind == NET_PKT_EVENTS && oh.seq == 9);
+    CHECK(got[0].type == GE_ENTITY_DEATH && got[0].id == 42);
+    CHECK(got[0].x == 100.0f && got[0].y == 200.0f);
+    CHECK(got[1].type == GE_PLAYER_HEALTH && got[1].a == 88.0f);
+    CHECK(got[2].type == GE_WAVE_START && got[2].a == 2.0f && got[2].b == 8.0f);
+    CHECK(net_decode_events(buf, NET_HDR_SIZE + 1, &oh, got, 4, &n) == -1);
+
+    /* A relayed death removes the entity from BOTH mirror snapshots. */
+    NetMirror m;
+    net_mirror_reset(&m);
+    NetSnapshot a = {0};
+    a.sim_time = 0.0f;
+    a.count = 2;
+    a.entities[0] = (NetEntitySnap){42, NET_ENT_ZOMBIE, {0, 0}, {0, 0}, 50.0f, 0, 0};
+    a.entities[1] = (NetEntitySnap){7, NET_ENT_PLAYER, {1, 1}, {0, 0}, 100.0f, 0, 0};
+    net_mirror_push(&m, &a);
+    NetSnapshot b = {0};
+    b.sim_time = 0.05f;
+    b.count = 2;
+    b.entities[0] = (NetEntitySnap){42, NET_ENT_ZOMBIE, {10, 0}, {0, 0}, 12.0f, 0, 0};
+    b.entities[1] = (NetEntitySnap){7, NET_ENT_PLAYER, {2, 2}, {0, 0}, 100.0f, 0, 0};
+    uint16_t dead[1] = {42};
+    net_mirror_push_removing(&m, &b, dead, 1);
+    CHECK(m.newer.count == 1);
+    CHECK(m.older.count == 1);
+    NetEntitySnap e;
+    CHECK(!net_mirror_sample(&m, 42, 0.5f, &e));   /* removed from both */
+    CHECK(net_mirror_sample(&m, 7, 0.5f, &e));     /* survivor stays */
+    CHECK(e.pos.x == 1.5f);
+}
+
 /* ---------------------------------------------------------------- Net codec */
 
 int tests_run_all(void) {
@@ -1373,6 +1421,7 @@ int tests_run_all(void) {
     test_net_codec_game();
     test_net_snapshot_build();
     test_net_mirror_interp();
+    test_net_events_codec();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

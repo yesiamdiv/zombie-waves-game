@@ -1,5 +1,6 @@
 #include "net_client.h"
 #include "net_codec.h"
+#include "events/event_bus.h"
 #include "core/log.h"
 #include <ctype.h>
 #include <string.h>
@@ -252,6 +253,30 @@ void net_client_update(NetClient *c) {
                                      c->roster[i].name,
                                      c->roster[i].slot == c->slot ? "you" : "");
                         }
+                    }
+                } else if (h.kind == NET_PKT_EVENTS) {
+                    NetRelayedEvent events[NET_EVENTS_MAX_BATCH];
+                    int n = 0;
+                    if (net_decode_events(ev.packet->data,
+                                          (int)ev.packet->dataLength, &h,
+                                          events, NET_EVENTS_MAX_BATCH, &n) == 0) {
+                        for (int i = 0; i < n; i++) {
+                            const NetRelayedEvent *e = &events[i];
+                            if ((e->type == GE_ENTITY_DEATH ||
+                                 e->type == GE_KILL) && e->id != 0 &&
+                                c->dead_count < NET_EVENTS_MAX_BATCH) {
+                                c->dead_ids[c->dead_count++] = e->id;
+                            } else if (e->type == GE_WAVE_START) {
+                                c->pending_wave = (int)e->a;
+                                c->pending_wave_count = (int)e->b;
+                                c->has_pending_wave = true;
+                                LOG_INFO("NET: wave %d starting - %d zombies",
+                                         c->pending_wave,
+                                         c->pending_wave_count);
+                            }
+                        }
+                    } else {
+                        LOG_WARN("NET: malformed events batch from host");
                     }
                 } else if (h.kind == NET_PKT_LEAVE) {
                     uint8_t reason;

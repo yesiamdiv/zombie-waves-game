@@ -133,6 +133,26 @@ void net_server_broadcast_snapshot(NetServer *s, const NetSnapshot *snap) {
     s->snaps_sent++;
 }
 
+void net_server_broadcast_events(NetServer *s, const NetRelayedEvent *events,
+                                 int count) {
+    if (!s || s->state != NET_SERVER_HOSTING || !events || count <= 0) return;
+    uint8_t buf[NET_EVENTS_MAX_BYTES];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_EVENTS, (uint16_t)s->events_sent,
+                   0, 0};
+    int len = net_encode_events(buf, (int)sizeof(buf), &h, events, count);
+    if (len <= 0) return;
+    for (int i = 1; i < NET_MAX_PLAYERS; i++) {
+        if (s->slot_peers[i]) {
+            ENetPacket *pk = enet_packet_create(buf, (size_t)len,
+                                                ENET_PACKET_FLAG_RELIABLE);
+            if (pk && enet_peer_send(s->slot_peers[i], NET_CH_CTRL, pk) != 0) {
+                enet_packet_destroy(pk);
+            }
+        }
+    }
+    s->events_sent++;
+}
+
 static void broadcast_player_list(NetServer *s) {
     NetPlayerInfo roster[NET_MAX_PLAYERS];
     int n = net_server_build_player_list(s, roster, NET_MAX_PLAYERS);

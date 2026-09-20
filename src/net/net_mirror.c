@@ -16,6 +16,27 @@ void net_mirror_push(NetMirror *m, const NetSnapshot *snap) {
     m->has_newer = true;
 }
 
+void net_mirror_push_removing(NetMirror *m, const NetSnapshot *snap,
+                              const uint16_t *dead, int ndead) {
+    if (snap) net_mirror_push(m, snap);
+    if (!m || !dead || ndead <= 0) return;
+
+    for (int which = 0; which < 2; which++) {
+        NetSnapshot *s = which == 0 ? &m->older : &m->newer;
+        if (!s->count) continue;
+        int w = 0;
+        for (int i = 0; i < s->count; i++) {
+            uint16_t id = s->entities[i].id;
+            bool drop = false;
+            for (int j = 0; j < ndead; j++) {
+                if (dead[j] == id) { drop = true; break; }
+            }
+            if (!drop) s->entities[w++] = s->entities[i];
+        }
+        s->count = w;
+    }
+}
+
 bool net_mirror_ready(const NetMirror *m) {
     return m && m->has_newer;
 }

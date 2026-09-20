@@ -36,6 +36,7 @@ typedef struct {
     uint64_t bad_packets;
     uint64_t rx_inputs;
     uint64_t snaps_sent;
+    uint64_t events_sent;
     char status[96];
 } NetServer;
 
@@ -64,5 +65,10 @@ bool net_server_get_input(const NetServer *s, int slot, NetInput *out);
 
 /* Encode and send a 20 Hz snapshot to every remote peer (unreliable ch1). */
 void net_server_broadcast_snapshot(NetServer *s, const NetSnapshot *snap);
+
+/* Encode and send a relayed GE_* event batch to every remote peer (ch0,
+ * reliable/ordered - deaths/waves must not be lost). */
+void net_server_broadcast_events(NetServer *s, const NetRelayedEvent *events,
+                                 int count);
 
 #endif

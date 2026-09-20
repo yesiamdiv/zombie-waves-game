@@ -213,6 +213,19 @@ Multiplayer specifics:
     sent=20/40/60… peers=1", client "snapshot seq=… count=1/2", "Match started
     (first snapshot from host)", mirror seq=20/40/… host_sim matches, wave+count
     replicate as zombies spawn. 546 tests; ctest 3/3; SP determinism byte-identical.
+  - P2d — events relay (`NET_PKT_EVENTS=8`, ch0 reliable/ordered batches up to
+    `NET_EVENTS_MAX_BATCH=48`). Host scans the event-bus ring BEFORE the flush
+    drains it and relays a curated subset (GE_ENTITY_DEATH, GE_KILL — zombie
+    deaths actually emit GE_KILL — GE_WAVE_START, GE_PLAYER_HEALTH) to every
+    peer; client ch0 handler queues dead entity ids + wave start; `drain_net_events`
+    applies `net_mirror_push_removing()` (strips dead ids from BOTH mirror bases)
+    and shows a "Wave N - M zombies incoming!" HUD message. Codec
+    `NET_EVENTS_MAX_BYTES = NET_HDR_SIZE + 1 + 48*20`. Two-process verified:
+    client logs "NET: wave 1 starting - 8 zombies". **Debugging note:** the first
+    relay scan used `idx = (head - count) % MAX` which read PREVIOUS-session stale
+    slots (a count=1 frame scanned the prior frame's entry and skipped its real
+    event); fixed to scan `ring[(head + i) % EV_MAX_EVENTS]` with `i < count`.
+    560 tests; ctest 3/3; SP determinism byte-identical.
 - [ ] *next work items below*
 - [ ] P3 — shared waves/items/shop + per-player points + scaling.
 - [ ] P4 — disconnect/pause broadcast/player list/chat; `--host --headless`.

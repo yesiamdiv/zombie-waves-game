@@ -47,7 +47,9 @@ enum {
     NET_PKT_LEAVE       = 5, /* either side: intentional leave (reason) */
     /* Packet kinds (channel 1 - unreliable game traffic). */
     NET_PKT_INPUT      = 6,  /* client -> host: control state (latest-wins) */
-    NET_PKT_SNAPSHOT   = 7   /* host -> clients: 20 Hz entity world state */
+    NET_PKT_SNAPSHOT   = 7,  /* host -> clients: 20 Hz entity world state */
+    /* Reliable helper traffic (channel 0, after the handshake). */
+    NET_PKT_EVENTS     = 8   /* host -> clients: curated GE_* event batches */
 };
 
 /* Input bitmasks for NET_PKT_INPUT. move_flags holds the 4 direction bits;
@@ -113,6 +115,21 @@ typedef struct {
 #define NET_SNAP_ENTRY_BYTES 26  /* NetEntitySnap wire size */
 #define NET_SNAP_MAX_BYTES \
     (NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES)
+
+/* One relayed gameplay event (subset of GE_*, §6.3). Payload semantics follow
+ * the local emitters: DEATH -> id/kind/pos; PLAYER_HEALTH -> id, a=hp after,
+ * b=hp max; WAVE_START -> a=wave, b=zombies_to_spawn. */
+typedef struct {
+    uint8_t type;    /* GameEventType */
+    uint8_t kind;    /* EventKind */
+    uint16_t id;     /* entity id (0 when none) */
+    float x, y;
+    float a, b;
+} NetRelayedEvent;
+
+#define NET_EVENTS_MAX_BATCH 48
+#define NET_EVENTS_MAX_BYTES \
+    (NET_HDR_SIZE + 1 + NET_EVENTS_MAX_BATCH * 20)
 
 /* Snapshot builder: iterate the live ECS world, push all semantic entities
  * into `out` for broadcast, and stamp the slot->entity map. Must be called on

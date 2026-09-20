@@ -47,4 +47,10 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
 int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
                         NetSnapshot *snap, int max_entities);
 
+/* Relayed gameplay events (host -> clients, ch0, reliable batch). */
+int net_encode_events(uint8_t *buf, int cap, const NetHeader *h,
+                      const NetRelayedEvent *events, int count);
+int net_decode_events(const uint8_t *buf, int len, NetHeader *h,
+                      NetRelayedEvent *events, int cap, int *count);
+
 #endif

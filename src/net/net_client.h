@@ -37,6 +37,14 @@ typedef struct {
     uint32_t snap_seq;
     uint32_t last_mirror_seq;    /* last snapshot drained into the mirror */
 
+    /* Relayed GE_* events (P2, ch0). Deaths tidy the mirror ahead of the next
+     * snapshot; wave starts feed the client HUD. Cleared after each drain. */
+    uint16_t dead_ids[NET_EVENTS_MAX_BATCH];
+    int dead_count;
+    int pending_wave;
+    int pending_wave_count;
+    bool has_pending_wave;
+
     uint16_t seq;
     bool left;                   /* intentional leave (LEAVE sent) */
     bool server_stopped;         /* host disconnected / left */

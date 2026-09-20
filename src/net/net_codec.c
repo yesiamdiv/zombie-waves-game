@@ -265,6 +265,50 @@ int net_decode_input(const uint8_t *buf, int len, NetHeader *h, NetInput *in) {
     return 0;
 }
 
+/* -------------------------------------------------------------- EVENTS */
+
+int net_encode_events(uint8_t *buf, int cap, const NetHeader *h,
+                      const NetRelayedEvent *events, int count) {
+    if (!buf || !h || !events || cap < NET_HDR_SIZE) return -1;
+    if (count < 0 || count > NET_EVENTS_MAX_BATCH) return -1;
+    int off = 0;
+    if (net_hdr_encode(buf, h) != 0) return -1;
+    off = NET_HDR_SIZE;
+    if (put_u8(buf, cap, &off, (uint8_t)count) != 0) return -1;
+    for (int i = 0; i < count; i++) {
+        if (put_u8(buf, cap, &off, events[i].type) != 0) return -1;
+        if (put_u8(buf, cap, &off, events[i].kind) != 0) return -1;
+        if (put_u16(buf, cap, &off, events[i].id) != 0) return -1;
+        if (put_f32(buf, cap, &off, events[i].x) != 0) return -1;
+        if (put_f32(buf, cap, &off, events[i].y) != 0) return -1;
+        if (put_f32(buf, cap, &off, events[i].a) != 0) return -1;
+        if (put_f32(buf, cap, &off, events[i].b) != 0) return -1;
+    }
+    return off;
+}
+
+int net_decode_events(const uint8_t *buf, int len, NetHeader *h,
+                      NetRelayedEvent *events, int cap, int *count) {
+    if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
+    if (h->kind != NET_PKT_EVENTS) return -1;
+    int off = NET_HDR_SIZE;
+    uint8_t n;
+    if (get_u8(buf, len, &off, &n) != 0) return -1;
+    if ((int)n > cap) return -1;
+    for (int i = 0; i < n; i++) {
+        NetRelayedEvent *e = &events[i];
+        if (get_u8(buf, len, &off, &e->type) != 0) return -1;
+        if (get_u8(buf, len, &off, &e->kind) != 0) return -1;
+        if (get_u16(buf, len, &off, &e->id) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->x) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->y) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->a) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->b) != 0) return -1;
+    }
+    *count = n;
+    return 0;
+}
+
 /* ------------------------------------------------------------- SNAPSHOT */
 
 int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
