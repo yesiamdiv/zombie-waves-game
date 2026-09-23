@@ -500,7 +500,7 @@ static void test_wave_completion(void) {
     CHECK(player != ECS_NULL_ENTITY);
 
     /* Force a small, fast wave so the test is quick and deterministic. */
-    waves_start_next_wave(&waves);
+    waves_start_next_wave(&waves, 1);
     waves.zombies_to_spawn = 4;
     waves.spawn_interval = 0.05f;
 
@@ -598,7 +598,7 @@ static void test_wave_timeout(void) {
     /* A single zombie that is never killed (no collision/cleanup run) must
      * not stall the wave forever: the 60s WAVE_MAX_DURATION safety net
      * force-ends it (playtest B1). */
-    waves_start_next_wave(&waves);
+    waves_start_next_wave(&waves, 1);
     waves.zombies_to_spawn = 1;
     waves.spawn_interval = 0.01f;
 
@@ -638,7 +638,7 @@ static void test_event_stream(void) {
                                             world.world_pixel_h * 0.5f));
     CHECK(player != ECS_NULL_ENTITY);
 
-    waves_start_next_wave(&waves);
+    waves_start_next_wave(&waves, 1);
     waves.zombies_to_spawn = 4;
     waves.spawn_interval = 0.05f;
 
@@ -713,7 +713,7 @@ static int run_spawn_sim(Vec2 *out, int max_out) {
                                             world.world_pixel_h * 0.5f));
     if (player == ECS_NULL_ENTITY) return -1;
 
-    waves_start_next_wave(&waves);
+    waves_start_next_wave(&waves, 1);
     waves.zombies_to_spawn = DET_MAX_SPAWNS;
     waves.spawn_interval = 0.01f;
 

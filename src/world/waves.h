@@ -30,7 +30,11 @@ void waves_init(WaveSystem *ws, GameWorld *world);
 void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
                   struct Player *players, int player_count, float dt);
 Entity waves_spawn_zombie(World *ecs, Vec2 pos);
-void waves_start_next_wave(WaveSystem *ws);
+/* Start the next wave. `player_count` drives difficulty scaling (R13):
+ * larger groups face more zombies + slightly faster spawns earned per alive
+ * player. A player_count of 1 (single-player / tests) MUST be budget-identical
+ * to the legacy formula so SP determinism (D1/D5) is preserved exactly. */
+void waves_start_next_wave(WaveSystem *ws, int player_count);
 void waves_on_zombie_killed(WaveSystem *ws);
 
 #endif

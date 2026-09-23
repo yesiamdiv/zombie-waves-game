@@ -17,6 +17,13 @@
  * force-completed so a stuck/unkillable zombie can never soft-lock the game. */
 #define WAVE_MAX_DURATION 60.0f
 
+/* R13/D3: difficulty scales with player count (tune later). Each extra
+ * player above the 1st adds a few more zombies to the wave budget and a
+ * slightly faster spawn cadence. These are only applied when player_count > 1
+ * (see waves_start_next_wave), so single-player stays byte-identical. */
+#define WAVE_PER_PLAYER_BONUS 2
+#define WAVE_PLAYER_INTERVAL_STEP 0.05f
+
 void waves_init(WaveSystem *ws, GameWorld *world) {
     memset(ws, 0, sizeof(WaveSystem));
 
@@ -49,13 +56,23 @@ void waves_init(WaveSystem *ws, GameWorld *world) {
     LOG_INFO("Wave system initialized");
 }
 
-void waves_start_next_wave(WaveSystem *ws) {
+void waves_start_next_wave(WaveSystem *ws, int player_count) {
     ws->wave_number++;
     ws->zombies_per_wave = 5 + ws->wave_number * 3;
     ws->zombies_to_spawn = ws->zombies_per_wave;
     ws->zombies_spawned = 0;
     ws->spawn_timer = 0;
     ws->spawn_interval = fmaxf(0.3f, 2.0f - ws->wave_number * 0.1f);
+    /* R13/D3: difficulty scales with player count. Larger groups face more
+     * zombies and a slightly faster spawn cadence, but ONLY for player_count > 1:
+     * single-player (player_count == 1) MUST be byte-identical to the legacy
+     * budget above, so SP determinism (D1/D5) is preserved exactly. */
+    if (player_count > 1) {
+        ws->zombies_per_wave += (player_count - 1) * WAVE_PER_PLAYER_BONUS;
+        ws->zombies_to_spawn = ws->zombies_per_wave;
+        ws->spawn_interval = fmaxf(0.3f, ws->spawn_interval -
+                                   (player_count - 1) * WAVE_PLAYER_INTERVAL_STEP);
+    }
     ws->wave_active = true;
     ws->between_waves = false;
     ws->difficulty_multiplier = 1.0f + (ws->wave_number - 1) * 0.15f;
@@ -187,7 +204,7 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
         ws->wave_cooldown_timer += dt;
         if (ws->wave_cooldown_timer >= ws->wave_cooldown) {
             ws->wave_cooldown_timer = 0;
-            waves_start_next_wave(ws);
+            waves_start_next_wave(ws, player_count);
         }
         return;
     }
