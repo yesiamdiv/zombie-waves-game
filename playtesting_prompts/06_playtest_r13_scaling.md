@@ -1,8 +1,10 @@
 # 06 - Playtest: R13/D3 difficulty scaling with player count
 
-Date: 2026-09-24 · Worktree: `open-world-zombie-waves-multiplayer`
-Commit under test: `17a2bfb` (feature/multiplayer — R13/D3 wave budget scales
-with `player_count`; first real multi-player scaling change).
+Date: 2026-09-25 · Worktree: `open-world-zombie-waves-multiplayer`
+Commit under test: `f8891ec` (feature/multiplayer — merge of `main` +
+`feature/multiplayer`, union resolution. R13/D3 wave budget scales with
+`player_count`; SP wave-1 remains byte-identical to main: 8 zombies /
+1.90s interval / 1.00 difficulty).
 
 > **TREE GUARD (read first):** you are testing the **`-multiplayer`** worktree.
 > If your shell lands you in `.../open-world-zombie-waves` (no `-multiplayer`
