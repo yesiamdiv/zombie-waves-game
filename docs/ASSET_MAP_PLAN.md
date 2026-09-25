@@ -12,7 +12,9 @@ runtime-loadable pixel art so any asset can be swapped without code changes.
   from 2D pixel grids, committed under `assets/textures/`. Replaceable later.
 - Maps: ASCII `.map` files under `assets/maps/` (arbitrary sizes).
 - Textures: load via `SDL_image` added through `FetchContent`.
-- Map selection: a "Map:" line on the main menu, cycled with arrow keys.
+- Map selection: a dedicated map-select screen off the main menu (the "Map:"
+  inline-cycling design was replaced in implementation with a full screen that
+  lists maps and previews the highlighted one).
 
 ## Asset pipeline
 - Add `SDL_image` to CMakeLists (`IMG_LoadTexture`).
@@ -51,8 +53,10 @@ runtime-loadable pixel art so any asset can be swapped without code changes.
 - Exposes `map_count()`, `map_by_index(i)`, `map_apply_active(index)`.
 
 ## UI (`src/ui/menu.c`)
-- Main menu gains "Map: <name>"; left/right arrows cycle. `reset_game()` picks
-  the active map.
+- Main menu gains a "Start Game" entry that opens a dedicated **Map Select**
+  screen (`GAME_STATE_MAP_SELECT`): lists the registered maps (W/S or arrows,
+  ENTER plays, ESC backs out), shows the highlighted map as a mini-map preview
+  panel + its theme/size. `reset_game()` picks the active map.
 
 ## Entities
 - Player, zombies, bullet, grenade, rocket, medkit, ammo, speed boost, sword
@@ -68,7 +72,7 @@ runtime-loadable pixel art so any asset can be swapped without code changes.
 1. SDL_image + AssetManager + sprite texture path.
 2. Themes + textured tile rendering.
 3. Map parser + registry + `world_init_map` + spawn marker.
-4. Menu map picker + `reset_game` wiring.
+4. Menu map picker + `reset_game` wiring (implemented as the map-select screen).
 5. Entity textures (py art tool) + replaceable art.
 6. Tests, EXTENDING.md docs, build verification.
 

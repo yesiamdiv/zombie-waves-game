@@ -5,9 +5,11 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include "core/input.h"
 #include "weapons/weapons.h"
+#include "world/world.h"
 
 typedef enum {
     GAME_STATE_MENU,
+    GAME_STATE_MAP_SELECT,
     GAME_STATE_PLAYING,
     GAME_STATE_PAUSED,
     GAME_STATE_SHOP,
@@ -17,11 +19,17 @@ typedef enum {
 typedef struct {
     int selected_option;
     int option_count;
-    int selected_map;   /* index into the map registry */
     float title_pulse;
     float menu_timer;
     bool quit_requested;
 } MainMenu;
+
+typedef struct {
+    int selected_option;
+    int option_count;
+    float title_pulse;
+    GameWorld thumb;   /* parsed preview of the highlighted map */
+} MapSelectMenu;
 
 typedef struct {
     int selected_option;
@@ -45,16 +53,20 @@ typedef struct {
 } GameOverScreen;
 
 void menu_init(MainMenu *menu);
+void map_select_init(MapSelectMenu *menu);
+void map_select_free(MapSelectMenu *menu);
 void pause_menu_init(PauseMenu *menu);
 void gameover_init(GameOverScreen *go, int score, int wave, int kills);
 void shop_menu_init(ShopMenu *menu);
 
 GameState menu_update(MainMenu *menu, InputState *input, float dt);
+GameState map_select_update(MapSelectMenu *menu, InputState *input);
 GameState pause_menu_update(PauseMenu *menu, InputState *input);
 GameState gameover_update(GameOverScreen *go, InputState *input);
 GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv);
 
 void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_h, TTF_Font *font);
+void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, int screen_h, TTF_Font *font);
 void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int screen_h, TTF_Font *font);
 void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int screen_h, TTF_Font *font);
 void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventory *inv,

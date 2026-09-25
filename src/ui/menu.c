@@ -16,12 +16,32 @@ static void shop_set_message(ShopMenu *menu, const char *fmt, ...) {
 
 void menu_init(MainMenu *menu) {
     menu->selected_option = 0;
-    menu->option_count = 3;
-    menu->selected_map = 0;
+    menu->option_count = 2;
     menu->title_pulse = 0;
     menu->menu_timer = 0;
     menu->quit_requested = false;
     LOG_DEBUG("Main menu initialized");
+}
+
+static void map_select_load_thumb(MapSelectMenu *menu) {
+    world_free(&menu->thumb);
+    const MapDef *def = map_registry_get(menu->selected_option);
+    if (def && world_load_map(&menu->thumb, def)) {
+        LOG_DEBUG("Map preview loaded: %s", def->name);
+    }
+}
+
+void map_select_init(MapSelectMenu *menu) {
+    menu->selected_option = 0;
+    menu->option_count = map_registry_count();
+    menu->title_pulse = 0;
+    menu->thumb = (GameWorld){0};
+    map_select_load_thumb(menu);
+    LOG_DEBUG("Map select initialized with %d maps", menu->option_count);
+}
+
+void map_select_free(MapSelectMenu *menu) {
+    world_free(&menu->thumb);
 }
 
 void pause_menu_init(PauseMenu *menu) {
@@ -49,26 +69,44 @@ GameState menu_update(MainMenu *menu, InputState *input, float dt) {
         if (menu->selected_option >= menu->option_count) menu->selected_option = 0;
     }
 
-    /* Map selector (only active on the map line) */
-    if (menu->selected_option == 1) {
-        int maps = map_registry_count();
-        if (input_key_pressed(input, SDL_SCANCODE_LEFT) || input_key_pressed(input, SDL_SCANCODE_A)) {
-            menu->selected_map = (menu->selected_map - 1 + maps) % maps;
-        }
-        if (input_key_pressed(input, SDL_SCANCODE_RIGHT) || input_key_pressed(input, SDL_SCANCODE_D)) {
-            menu->selected_map = (menu->selected_map + 1) % maps;
-        }
-    }
-
     if (input_key_pressed(input, SDL_SCANCODE_RETURN) || input_key_pressed(input, SDL_SCANCODE_SPACE)) {
-        if (menu->selected_option == 0) return GAME_STATE_PLAYING;
-        if (menu->selected_option == 2) {
+        if (menu->selected_option == 0) return GAME_STATE_MAP_SELECT;
+        if (menu->selected_option == 1) {
             menu->quit_requested = true;
             return GAME_STATE_MENU;
         }
     }
 
     return GAME_STATE_MENU;
+}
+
+GameState map_select_update(MapSelectMenu *menu, InputState *input) {
+    menu->title_pulse += 1.0f / 60.0f * 2.0f;
+
+    int prev = menu->selected_option;
+    if (input_key_pressed(input, SDL_SCANCODE_UP) || input_key_pressed(input, SDL_SCANCODE_W)) {
+        menu->selected_option--;
+        if (menu->selected_option < 0) menu->selected_option = menu->option_count - 1;
+    }
+    if (input_key_pressed(input, SDL_SCANCODE_DOWN) || input_key_pressed(input, SDL_SCANCODE_S)) {
+        menu->selected_option++;
+        if (menu->selected_option >= menu->option_count) menu->selected_option = 0;
+    }
+    if (menu->selected_option != prev) {
+        map_select_load_thumb(menu);
+    }
+
+    if (input_key_pressed(input, SDL_SCANCODE_ESCAPE) ||
+        input_key_pressed(input, SDL_SCANCODE_B)) {
+        return GAME_STATE_MENU;
+    }
+
+    if (input_key_pressed(input, SDL_SCANCODE_RETURN) ||
+        input_key_pressed(input, SDL_SCANCODE_SPACE)) {
+        return GAME_STATE_PLAYING;
+    }
+
+    return GAME_STATE_MAP_SELECT;
 }
 
 GameState pause_menu_update(PauseMenu *menu, InputState *input) {
@@ -144,7 +182,7 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
                        screen_w * 0.5f, screen_h * 0.3f, sub_color);
 
     /* Options */
-    const char *options[] = {"Start Game", NULL, "Quit"};
+    const char *options[] = {"Start Game", "Quit"};
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -156,12 +194,7 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
         char prefix[4] = "";
         if (i == menu->selected_option) snprintf(prefix, sizeof(prefix), "> ");
         char buf[96];
-        if (i == 1) {
-            const MapDef *m = map_registry_get(menu->selected_map);
-            snprintf(buf, sizeof(buf), "%sMap: %-9s  <-- / -->", prefix, m->name);
-        } else {
-            snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
-        }
+        snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
         draw_text_centered(renderer, font, buf,
                            screen_w * 0.5f, screen_h * 0.5f + i * 50.0f, opt_color);
     }
@@ -174,6 +207,90 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
     SDL_FColor run_note = {0.3f, 0.3f, 0.35f, 0.6f};
     draw_text_centered(renderer, font, "Weapon purchases reset each run",
                        screen_w * 0.5f, screen_h * 0.90f, run_note);
+}
+
+static SDL_FColor tile_preview_color(TileType t, ThemeID theme) {
+    const Theme *th = theme_get(theme);
+    switch (t) {
+        case TILE_WALL:  return th->wall_color;
+        case TILE_WATER: return th->water_color;
+        case TILE_ROAD:  return th->road_color;
+        case TILE_SPAWN: return (SDL_FColor){0.3f, 0.9f, 0.3f, 1.0f};
+        case TILE_GROUND:
+        default:         return th->ground_color;
+    }
+}
+
+void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
+    /* Dark background */
+    SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
+    SDL_RenderClear(renderer);
+
+    float pulse = 0.8f + sinf(menu->title_pulse) * 0.2f;
+    SDL_FColor title_color = {pulse, pulse, 0.9f, 1.0f};
+    draw_text_centered(renderer, font, "SELECT MAP",
+                       screen_w * 0.5f, screen_h * 0.1f, title_color);
+
+    /* Map list (left). */
+    float list_x = screen_w * 0.32f;
+    float row_y = screen_h * 0.24f;
+    const float row_h = 42.0f;
+    for (int i = 0; i < menu->option_count; i++) {
+        const MapDef *def = map_registry_get(i);
+        if (!def) continue;
+        SDL_FColor opt_color = (i == menu->selected_option)
+            ? (SDL_FColor){1.0f, 1.0f, 0.3f, 1.0f}
+            : (SDL_FColor){0.55f, 0.55f, 0.6f, 0.8f};
+        char buf[96];
+        const char *arrow = (i == menu->selected_option) ? "> " : "  ";
+        snprintf(buf, sizeof(buf), "%s%s", arrow, def->name);
+        draw_text_centered(renderer, font, buf,
+                           list_x, row_y + i * row_h, opt_color);
+
+        if (i == menu->selected_option) {
+            char detail[128];
+            const Theme *defth = theme_get(def->theme);
+            snprintf(detail, sizeof(detail), "Theme: %s  |  Size: %dx%d tiles",
+                     defth->name, menu->thumb.width, menu->thumb.height);
+            draw_text_centered(renderer, font, detail,
+                               list_x, row_y + 22.0f + i * row_h,
+                               (SDL_FColor){0.4f, 0.4f, 0.5f, 0.7f});
+        }
+    }
+
+    SDL_FColor hint = {0.3f, 0.3f, 0.35f, 0.6f};
+    draw_text_centered(renderer, font,
+                       "W/S or Arrows: Select map  |  ENTER: Play  |  ESC: Back",
+                       screen_w * 0.5f, screen_h * 0.9f, hint);
+
+    /* Mini-map preview of the highlighted map (right panel). */
+    GameWorld *w = &menu->thumb;
+    if (w->width > 0 && w->height > 0 && w->tiles) {
+        float panel_w = screen_w * 0.30f;
+        float panel_h = screen_h * 0.52f;
+        float panel_x = screen_w * 0.66f;
+        float panel_y = screen_h * 0.24f;
+
+        SDL_SetRenderDrawColorFloat(renderer, 0.12f, 0.12f, 0.16f, 1.0f);
+        SDL_RenderFillRect(renderer, &(SDL_FRect){panel_x - 8, panel_y - 8,
+                                                  panel_w + 16, panel_h + 16});
+
+        float scale = fminf(panel_w / (float)w->width,
+                            panel_h / (float)w->height);
+        float px = panel_x + (panel_w - w->width * scale) * 0.5f;
+        float py = panel_y + (panel_h - w->height * scale) * 0.5f;
+
+        for (int ty = 0; ty < w->height; ty++) {
+            for (int tx = 0; tx < w->width; tx++) {
+                SDL_FColor c = tile_preview_color(world_get_tile(w, tx, ty),
+                                                  w->theme);
+                SDL_SetRenderDrawColorFloat(renderer, c.r, c.g, c.b, 1.0f);
+                SDL_FRect cell = {px + tx * scale, py + ty * scale,
+                                  scale * 1.02f, scale * 1.02f};
+                SDL_RenderFillRect(renderer, &cell);
+            }
+        }
+    }
 }
 
 void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int screen_h, TTF_Font *font) {

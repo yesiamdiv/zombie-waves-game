@@ -191,9 +191,11 @@ To add a map:
 { "Canyon", "maps/canyon.map", THEME_DESERT },
 ```
 
-3. The main-menu map selector (`src/ui/menu.c`, option 2) picks it up
-   automatically. The parser (`world_init_from_string`) is also usable from
-   tests via `world_load_map()`.
+3. The map-select screen (`src/ui/menu.c`, Start Game -> SELECT MAP, cycled
+   with W/S or arrows, ENTER plays, ESC returns) picks it up automatically,
+   showing the map in a mini-map preview panel. The parser
+   (`world_init_from_string`) is also usable from tests via
+   `world_load_map()`.
 
 Themes (`src/world/theme.h`) bundle per-tile textures and a fallback color;
 the City map uses the largest grid (50x60) and Grassland the smallest
