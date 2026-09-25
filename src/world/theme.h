@@ -25,6 +25,8 @@ typedef struct {
     SDL_FColor water_color;
     SDL_FColor road_color;
     SDL_FColor grid_color;
+    SDL_FColor player_color;   /* entity tint applied to the player sprite */
+    SDL_FColor zombie_tints[3]; /* variant tints for zombie sprites */
 } Theme;
 
 const Theme *theme_get(ThemeID id);

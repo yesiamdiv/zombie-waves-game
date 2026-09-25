@@ -5,6 +5,7 @@
 
 #include "core/log.h"
 #include "ecs/ecs.h"
+#include "world/theme.h"
 #include "world/world.h"
 #include "world/waves.h"
 #include "world/map_registry.h"
@@ -149,7 +150,7 @@ static void test_wave_system(void) {
     CHECK(waves.zombies_spawned > 0);
 
     /* Spawn a zombie directly and test bullet damage */
-    Entity zombie = waves_spawn_zombie(&ecs, vec2(500, 500));
+    Entity zombie = waves_spawn_zombie(&ecs, vec2(500, 500), THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
 
     /* Zombies must sense the player from anywhere in the 400-600 spawn ring,
@@ -649,7 +650,7 @@ static void test_sword_sweep_hits(void) {
     /* A zombie sitting mid-blade (inner circle 26 -> outer 58) must be hit
      * by the sweeping blade, not just the single orbital point. */
     Vec2 zpos = vec2_add(spawn, vec2(42.0f, 0.0f));
-    Entity zombie = waves_spawn_zombie(&ecs, zpos);
+    Entity zombie = waves_spawn_zombie(&ecs, zpos, THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
     float hp_before = ecs_get_health(&ecs, zombie)->current;
 
@@ -680,7 +681,7 @@ static void test_zombie_contact_and_slow(void) {
 
     /* A zombie overlapping the player: skimming through must no longer be
      * free; contact deals damage and slows the player. */
-    Entity zombie = waves_spawn_zombie(&ecs, vec2(157.0f, 150.0f));
+    Entity zombie = waves_spawn_zombie(&ecs, vec2(157.0f, 150.0f), THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
 
     float hp_before = ecs_get_health(&ecs, player)->current;
@@ -720,7 +721,7 @@ static void test_rocket_damage_and_destruction(void) {
 
     /* Place a zombie directly in front of the rocket path. */
     Vec2 zpos = vec2_add(ppos, vec2(20.0f, 0.0f));
-    Entity zombie = waves_spawn_zombie(&ecs, zpos);
+    Entity zombie = waves_spawn_zombie(&ecs, zpos, THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
     float hp_before = ecs_get_health(&ecs, zombie)->current;
 
@@ -771,7 +772,7 @@ static void test_grenade_detonation(void) {
 
     /* Place a zombie near the aim point. */
     Vec2 zpos = vec2_add(ppos, vec2(40.0f, 0.0f));
-    Entity zombie = waves_spawn_zombie(&ecs, zpos);
+    Entity zombie = waves_spawn_zombie(&ecs, zpos, THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
     float hp_before = ecs_get_health(&ecs, zombie)->current;
 
@@ -810,6 +811,34 @@ static void test_grenade_detonation(void) {
 }
 
 /* ------------------------------------------------------- Map file loading */
+
+static void test_theme_registry(void) {
+    LOG_INFO("--- Test: Theme registry sanity ---");
+    CHECK(theme_count() == THEME_COUNT);
+    CHECK(theme_count() >= 4);
+
+    for (int id = 0; id < THEME_COUNT; id++) {
+        const Theme *t = theme_get((ThemeID)id);
+        CHECK(t != NULL);
+        CHECK(t->name != NULL && t->name[0] != '\0');
+        for (int i = 0; i < 3; i++) {
+            CHECK(t->ground[i] != NULL && t->ground[i][0] != '\0');
+        }
+        CHECK(t->wall != NULL && t->wall[0] != '\0');
+        CHECK(t->water != NULL && t->water[0] != '\0');
+        CHECK(t->road != NULL && t->road[0] != '\0');
+        CHECK(t->ground_color.a == 1.0f);
+        CHECK(t->player_color.a == 1.0f);
+        for (int i = 0; i < 3; i++) {
+            CHECK(t->zombie_tints[i].a == 1.0f);
+        }
+        CHECK(theme_name((ThemeID)id) == t->name);
+    }
+
+    /* Out-of-range id clamps to a valid theme. */
+    CHECK(theme_get((ThemeID)THEME_COUNT) != NULL);
+    CHECK(theme_get((ThemeID)-1) != NULL);
+}
 
 static void test_map_parser(void) {
     LOG_INFO("--- Test: Map ASCII parser ---");
@@ -918,6 +947,7 @@ int tests_run_all(void) {
     test_zombie_contact_and_slow();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
+    test_theme_registry();
     test_map_parser();
     test_map_registry_loads();
 

@@ -14,6 +14,10 @@ static const Theme themes[THEME_COUNT] = {
         .water_color  = {0.227f, 0.424f, 0.659f, 1.0f},
         .road_color   = {0.251f, 0.247f, 0.231f, 1.0f},
         .grid_color   = {0.149f, 0.200f, 0.169f, 1.0f},
+        .player_color = {0.3f, 0.4f, 1.0f, 1.0f},   /* blue soldier */
+        .zombie_tints = {{0.3f, 0.6f, 0.2f, 1.0f},  /* green */
+                         {0.5f, 0.4f, 0.2f, 1.0f},  /* brown */
+                         {0.4f, 0.2f, 0.3f, 1.0f}}, /* purple */
     },
     [THEME_DESERT] = {
         .name = "Desert",
@@ -28,6 +32,10 @@ static const Theme themes[THEME_COUNT] = {
         .water_color  = {0.251f, 0.463f, 0.502f, 1.0f},
         .road_color   = {0.675f, 0.580f, 0.408f, 1.0f},
         .grid_color   = {0.561f, 0.478f, 0.322f, 1.0f},
+        .player_color = {0.85f, 0.6f, 0.35f, 1.0f}, /* tan desert trooper */
+        .zombie_tints = {{0.72f, 0.55f, 0.3f, 1.0f},  /* sand */
+                         {0.62f, 0.42f, 0.24f, 1.0f}, /* rust brown */
+                         {0.5f, 0.32f, 0.35f, 1.0f}}, /* mauve */
     },
     [THEME_SNOW] = {
         .name = "Snow",
@@ -42,6 +50,10 @@ static const Theme themes[THEME_COUNT] = {
         .water_color  = {0.376f, 0.502f, 0.667f, 1.0f},
         .road_color   = {0.588f, 0.620f, 0.659f, 1.0f},
         .grid_color   = {0.745f, 0.784f, 0.847f, 1.0f},
+        .player_color = {0.6f, 0.75f, 1.0f, 1.0f},    /* ice-blue arctic */
+        .zombie_tints = {{0.6f, 0.68f, 0.72f, 1.0f},  /* pale grey */
+                         {0.5f, 0.6f, 0.55f, 1.0f},   /* frost green */
+                         {0.68f, 0.7f, 0.8f, 1.0f}},  /* blue-white */
     },
     [THEME_CITY] = {
         .name = "City",
@@ -56,6 +68,10 @@ static const Theme themes[THEME_COUNT] = {
         .water_color  = {0.235f, 0.259f, 0.290f, 1.0f},
         .road_color   = {0.204f, 0.196f, 0.192f, 1.0f},
         .grid_color   = {0.204f, 0.196f, 0.184f, 1.0f},
+        .player_color = {0.3f, 0.45f, 0.7f, 1.0f},   /* urban blue */
+        .zombie_tints = {{0.45f, 0.5f, 0.4f, 1.0f},  /* concrete */
+                         {0.55f, 0.4f, 0.3f, 1.0f},  /* brick */
+                         {0.4f, 0.35f, 0.5f, 1.0f}}, /* asphalt */
     },
 };
 

@@ -26,7 +26,7 @@ typedef struct {
 
 void waves_init(WaveSystem *ws, GameWorld *world);
 void waves_update(WaveSystem *ws, World *ecs, GameWorld *world, float dt);
-Entity waves_spawn_zombie(World *ecs, Vec2 pos);
+Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme);
 void waves_start_next_wave(WaveSystem *ws);
 void waves_on_zombie_killed(WaveSystem *ws);
 

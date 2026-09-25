@@ -119,12 +119,13 @@ static Entity create_player(World *ecs, Vec2 pos) {
     *ecs_get_health(ecs, e) = (CHealth){200.0f, 200.0f};
     *ecs_get_collider(ecs, e) = (CCollider){14.0f, false};
 
-    Sprite ps = sprite_rect(16.0f, 16.0f, COLOR_BLUE);
+    SDL_FColor player_color = theme_get(game.world.theme)->player_color;
+    Sprite ps = sprite_rect(16.0f, 16.0f, player_color);
     SDL_Texture *player_tex = sprite_tex("textures/entities/player.png");
     if (player_tex) {
         /* 32px art at scale 0.5 renders as the original 16x16 world unit. */
         ps = sprite_texture(player_tex);
-        ps.color = (SDL_FColor){0.3f, 0.4f, 1.0f, 1.0f};  /* blue soldier */
+        ps.color = player_color;
     }
     *ecs_get_sprite(ecs, e) = (CSprite){
         .sprite = ps,
