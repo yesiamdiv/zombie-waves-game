@@ -13,7 +13,7 @@ typedef enum {
     SPRITE_SHAPE_NONE = 0,
     SPRITE_SHAPE_RECT,
     SPRITE_SHAPE_CIRCLE,
-    SPRITE_SHAPE_TEXTURE,  /* future use */
+    SPRITE_SHAPE_TEXTURE,  /* rendered via SDL_RenderTextureRotated */
     SPRITE_SHAPE_COUNT
 } SpriteShape;
 
