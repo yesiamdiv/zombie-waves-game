@@ -40,17 +40,18 @@ runtime-loadable pixel art so any asset can be swapped without code changes.
 
 ## Worlds / maps (`src/world/world.{h,c}`)
 - `GameWorld` gains a `ThemeID` and a precomputed spawn tile.
-- `world_init_map(world, const MapDef*)`; `MapDef { name, theme, tiles_x,
-  tiles_y }`. ASCII chars: `.` ground, `#` wall, `~` water, `+` road,
-  `S` spawn marker (fallback: center walkable search).
-- `world_draw` draws theme tile textures (grid-culled like today) with a subtle
-  overlay to break tiling repetition.
+- `world_load_map(world, const MapDef*)`; `MapDef { name, file, theme }`.
+  ASCII chars: `.` ground, `#` wall, `~` water, `+` road, `S` spawn marker
+  (fallback: center walkable search).
+- `world_draw` draws theme tile textures (grid-culled like today), alternating
+  the three ground variants to break tiling repetition, with a subtle grid
+  overlay drawn in the theme grid color.
 - `world_init()` kept as the default-map wrapper so existing tests pass.
 
 ## Map registry (`src/world/map_registry.{h,c}`)
-- Static table: default grass 50x50 (classic layout), desert 60x60, snow 40x40,
-  city 50x50. Layouts live in `.map` files; registry names/themes/sizes.
-- Exposes `map_count()`, `map_by_index(i)`, `map_apply_active(index)`.
+- Static table: grass 46x34, desert 60x52, snow 34x34, city 50x60. Layouts
+  live in `.map` files; the registry maps display name + file + theme.
+- Exposes `map_registry_count()`, `map_registry_get(index)`.
 
 ## UI (`src/ui/menu.c`)
 - Main menu gains a "Start Game" entry that opens a dedicated **Map Select**
@@ -71,7 +72,7 @@ runtime-loadable pixel art so any asset can be swapped without code changes.
 ## Phases
 1. SDL_image + AssetManager + sprite texture path.
 2. Themes + textured tile rendering.
-3. Map parser + registry + `world_init_map` + spawn marker.
+3. Map parser + registry + `world_load_map` + spawn marker.
 4. Menu map picker + `reset_game` wiring (implemented as the map-select screen).
 5. Entity textures (py art tool) + replaceable art.
 6. Tests, EXTENDING.md docs, build verification.
