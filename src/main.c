@@ -1132,10 +1132,59 @@ static void step_frame(float dt) {
 }
 
 /* Built before the driver updates so it sees last frame's positions. */
+/* R13-N1: a render-only client has an empty local ECS - the world only exists in
+ * the snapshot mirror - so ai_build_view() over game.ecs found no zombies and the
+ * bot produced an all-zero input packet. The host therefore saw a motionless
+ * remote player. Build the client's AI view from the newest mirrored snapshot
+ * instead, which carries the same facts (player pos/hp, zombie and item
+ * positions, wave number) that the bot reasons about. */
+static void build_client_ai_view(void) {
+    GameView *v = &game.ai_view;
+    memset(v, 0, sizeof(*v));
+    v->nearest_zombie_dist = 1.0e9f;
+    v->nearest_item_dist = 1.0e9f;
+
+    const NetSnapshot *s = &game.net_mirror.newer;
+    v->wave_number = (int)s->wave_number;
+
+    int slot = game.net_client.slot;
+    if (slot < 0 || slot >= NET_MAX_PLAYERS) return;
+    uint16_t me = s->slot_entities[slot];
+
+    for (int i = 0; i < s->count; i++) {
+        const NetEntitySnap *e = &s->entities[i];
+        if (e->id == me && e->kind == NET_ENT_PLAYER) {
+            v->player_pos = e->pos;
+            v->player_health = e->hp;
+            v->player_max_health = 200.0f; /* spawn health, see players.c */
+            v->player_alive = e->hp > 0.0f;
+            continue;
+        }
+        if (e->kind == NET_ENT_ZOMBIE) {
+            float d = vec2_distance(v->player_pos, e->pos);
+            v->zombies_alive++;
+            if (d < v->nearest_zombie_dist) {
+                v->nearest_zombie_dist = d;
+                v->nearest_zombie = e->pos;
+            }
+        } else if (e->kind == NET_ENT_ITEM) {
+            float d = vec2_distance(v->player_pos, e->pos);
+            if (d < v->nearest_item_dist) {
+                v->nearest_item_dist = d;
+                v->nearest_item = e->pos;
+            }
+        }
+    }
+}
+
 static void update_ai_view(float dt) {
     if (game.ai.mode == AI_MODE_NONE) return;
 
-    ai_build_view(&game.ai_view, &game.ecs, &game.waves, game.players[0].entity);
+    if (render_only_client() && net_mirror_ready(&game.net_mirror)) {
+        build_client_ai_view();
+    } else {
+        ai_build_view(&game.ai_view, &game.ecs, &game.waves, game.players[0].entity);
+    }
     ai_driver_update(&game.ai, dt, &game.ai_view, &game.ai_controls);
 
     if (game.ai.quit_requested) {
