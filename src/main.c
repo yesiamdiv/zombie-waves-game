@@ -1011,8 +1011,12 @@ static void relay_net_events(void) {
         const GameEvent *ev = &g_events->ring[(g_events->head + i) % EV_MAX_EVENTS];
         if (ev->sid <= last_relay_sid) continue;
         if (ev->sid > last_relay_sid) last_relay_sid = ev->sid;
+        /* R13-D1: GE_POINTS/GE_DAMAGE/GE_ITEM_PICKUP must cross the wire too,
+         * or a joined client can never evidence scoring/credit in its log. */
         if (ev->type == GE_ENTITY_DEATH || ev->type == GE_WAVE_START ||
-            ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL) {
+            ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL ||
+            ev->type == GE_POINTS || ev->type == GE_DAMAGE ||
+            ev->type == GE_ITEM_PICKUP) {
             batch[n++] = (NetRelayedEvent){
                 (uint8_t)ev->type, (uint8_t)ev->kind,
                 (uint16_t)ev->entity,
