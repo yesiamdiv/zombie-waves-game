@@ -187,6 +187,46 @@ static void reset_game(void) {
     game.last_announced_wave = 0;
 }
 
+/* R13-C2 fix: keep the game's player slots reconciled with the host's net
+ * slot table. reset_game() only ever sees the peers present when the match
+ * starts, so a peer that joins mid-match (or leaves) would otherwise never get
+ * a player entity and the session would look like a "1-player" game. Call after
+ * every net_server_update() on the host. */
+static void sync_remote_player_slots(void) {
+    if (!game.net_host_mode) return;
+
+    for (int s = 1; s < MAX_PLAYERS; s++) {
+        bool occupied = game.net_server.slot_used[s];
+        if (occupied && !game.players[s].in_use) {
+            SDL_FColor col = net_slot_color(s);
+            Vec2 ps;
+            if (game.players[0].entity != ECS_NULL_ENTITY) {
+                const CPosition *p0 =
+                    ecs_get_position(&game.ecs, game.players[0].entity);
+                ps = vec2(p0->pos.x + (float)(s * 70), p0->pos.y + (float)(s * 30));
+            } else {
+                ps = vec2((float)(s * 70), (float)(s * 30));
+            }
+            if (player_respawn(game.players, &game.ecs, s,
+                               game.net_server.slot_names[s][0]
+                                   ? game.net_server.slot_names[s]
+                                   : "Player",
+                               &col, ps) >= 0) {
+                LOG_INFO("Spawned remote player entity for slot %d ('%s')",
+                         s, game.net_server.slot_names[s]);
+            } else {
+                LOG_ERROR("Failed to spawn remote player (slot %d)", s);
+            }
+        } else if (!occupied && game.players[s].in_use) {
+            if (game.players[s].entity != ECS_NULL_ENTITY) {
+                ecs_destroy_entity(&game.ecs, game.players[s].entity);
+            }
+            memset(&game.players[s], 0, sizeof(game.players[s]));
+            LOG_INFO("Released remote player slot %d (peer left)", s);
+        }
+    }
+}
+
 static void set_game_over(void) {
     game.state = GAME_STATE_GAME_OVER;
     int score = game.waves.total_kills * 100 + (game.waves.wave_number - 1) * 500;
@@ -449,6 +489,7 @@ static void update(float dt) {
         case GAME_STATE_LOBBY: {
             if (game.net_host_mode) {
                 net_server_update(&game.net_server);
+                sync_remote_player_slots();
                 /* Host starts the match; clients must wait for the P2
                  * snapshot stream before gameplay can begin. */
                 /* Host starts the match under the same semantic as the Enter/Space
@@ -501,6 +542,7 @@ static void update(float dt) {
              * are observed (P2 adds real snapshot replication). */
             if (game.net_host_mode) {
                 net_server_update(&game.net_server);
+                sync_remote_player_slots();
             } else if (game.net_client.host) {
                 net_client_update(&game.net_client);
             }
@@ -574,8 +616,10 @@ static void update(float dt) {
             system_animation(&game.ecs, dt);
             system_particles(&game.ecs, dt);
 
+            /* R13/D3: scale with the REAL occupied slot count, never MAX_PLAYERS,
+             * so single-player stays byte-identical (player_count == 1). */
             waves_update(&game.waves, &game.ecs, &game.world,
-                         game.players, MAX_PLAYERS, dt);
+                         game.players, players_active_count(game.players, MAX_PLAYERS), dt);
 
             if (game.waves.wave_number != game.last_announced_wave &&
                 game.waves.wave_active) {

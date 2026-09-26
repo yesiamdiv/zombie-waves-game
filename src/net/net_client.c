@@ -262,6 +262,16 @@ void net_client_update(NetClient *c) {
                                           events, NET_EVENTS_MAX_BATCH, &n) == 0) {
                         for (int i = 0; i < n; i++) {
                             const NetRelayedEvent *e = &events[i];
+                            /* R13-C3 fix: the client is a render-only mirror, so
+                             * without this it would never write any gameplay event
+                             * to its own log and a playtest run could not evidence
+                             * wave/kill progression. Re-emit the host's authoritative
+                             * events into the local bus verbatim (same type/kind/
+                             * entity/payload) so the client log is a faithful
+                             * record of the session. */
+                            event_emit(g_events, (GameEventType)e->type, e->id,
+                                       (EventKind)e->kind, e->x, e->y, e->a, e->b,
+                                       0, 0);
                             if ((e->type == GE_ENTITY_DEATH ||
                                  e->type == GE_KILL) && e->id != 0 &&
                                 c->dead_count < NET_EVENTS_MAX_BATCH) {

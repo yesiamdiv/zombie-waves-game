@@ -60,4 +60,9 @@ int player_respawn_slot(Player *players, World *ecs, int idx);
 int players_match_update(World *ecs, Player *players, int count, GameMode mode,
                          float dt);
 
+/* Number of slots actually in use (occupied by a live player). Use this - NOT
+ * MAX_PLAYERS - wherever a real player count is needed (e.g. wave difficulty
+ * scaling), so single-player reports 1 and stays byte-identical. */
+int players_active_count(const Player *players, int count);
+
 #endif

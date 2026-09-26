@@ -10,6 +10,14 @@ void players_reset(Player *players, int count) {
     }
 }
 
+int players_active_count(const Player *players, int count) {
+    int active = 0;
+    for (int i = 0; i < count; i++) {
+        if (players[i].in_use) active++;
+    }
+    return active;
+}
+
 /* Create a fresh player entity (position/velocity/health/sprite/collider/
  * player tag) for the given slot material. */
 static Entity spawn_player_entity(World *ecs, Vec2 pos, const SDL_FColor *color) {
