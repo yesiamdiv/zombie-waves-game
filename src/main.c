@@ -899,23 +899,20 @@ static void render(void) {
         case GAME_STATE_PAUSED:
         case GAME_STATE_SHOP:
             world_draw(game.renderer, &game.world, &game.camera);
+            /* R13-I2b: draw beacons BEFORE the entities. They used to be drawn
+             * after, so the opaque 48x48 core covered a player standing on their
+             * own spawn until they walked ~24px away. */
+            if (game_mode_is_multi(game.mode)) {
+                sync_client_beacon_slots();
+                system_render_beacons(game.renderer, &game.camera,
+                                      game.players, MAX_PLAYERS);
+            }
             if (render_only_client()) {
                 /* Render-only client: draw the interpolated snapshot mirror. */
                 system_render_mirror(game.renderer, &game.camera,
                                      &game.net_mirror, (float)game.elapsed_sim);
-                /* R13-I2a: beacons used to be host-only, so a joined player saw
-                 * no spawn markers at all. */
-                if (game_mode_is_multi(game.mode)) {
-                    sync_client_beacon_slots();
-                    system_render_beacons(game.renderer, &game.camera,
-                                          game.players, MAX_PLAYERS);
-                }
             } else {
                 system_render(&game.ecs, game.renderer, &game.camera);
-                if (game_mode_is_multi(game.mode)) {
-                    system_render_beacons(game.renderer, &game.camera,
-                                          game.players, MAX_PLAYERS);
-                }
             }
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
                      &game.players[0], !render_only_client(),
