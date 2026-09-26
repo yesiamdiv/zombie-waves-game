@@ -227,6 +227,39 @@ static void sync_remote_player_slots(void) {
     }
 }
 
+/* R13-I2a: a render-only client never ran sync_remote_player_slots(), so its
+ * player slots stayed empty and it drew no spawn beacons at all. The client runs
+ * no simulation (update() returns before the systems), so it only needs the
+ * beacon metadata - mark the roster slots in use with a NULL entity and the same
+ * deterministic beacon anchor the host used, so both sides show the same pads. */
+static void sync_client_beacon_slots(void) {
+    if (game.net_host_mode || !game.net_client.host) return;
+
+    for (int s = 0; s < MAX_PLAYERS; s++) {
+        bool on_roster = false;
+        for (int i = 0; i < game.net_client.roster_count; i++) {
+            if (game.net_client.roster[i].slot == (uint8_t)s) {
+                on_roster = true;
+                break;
+            }
+        }
+        if (!on_roster) {
+            game.players[s].in_use = false;
+            game.players[s].entity = ECS_NULL_ENTITY;
+            continue;
+        }
+        if (game.players[s].in_use && game.players[s].entity != ECS_NULL_ENTITY) {
+            continue; /* slot 0 already has a real local entity */
+        }
+        Vec2 spawn = world_get_spawn_point(&game.world);
+        game.players[s].in_use = true;
+        game.players[s].entity = ECS_NULL_ENTITY;
+        game.players[s].beacon_pos =
+            vec2(spawn.x + (float)(s * 70), spawn.y + (float)(s * 30));
+        game.players[s].color = net_slot_color(s);
+    }
+}
+
 static void set_game_over(void) {
     game.state = GAME_STATE_GAME_OVER;
     int score = game.waves.total_kills * 100 + (game.waves.wave_number - 1) * 500;
@@ -870,6 +903,13 @@ static void render(void) {
                 /* Render-only client: draw the interpolated snapshot mirror. */
                 system_render_mirror(game.renderer, &game.camera,
                                      &game.net_mirror, (float)game.elapsed_sim);
+                /* R13-I2a: beacons used to be host-only, so a joined player saw
+                 * no spawn markers at all. */
+                if (game_mode_is_multi(game.mode)) {
+                    sync_client_beacon_slots();
+                    system_render_beacons(game.renderer, &game.camera,
+                                          game.players, MAX_PLAYERS);
+                }
             } else {
                 system_render(&game.ecs, game.renderer, &game.camera);
                 if (game_mode_is_multi(game.mode)) {
