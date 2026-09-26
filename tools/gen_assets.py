@@ -24,10 +24,13 @@ ENT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "e
 def render(grid, palette, scale):
     h = len(grid)
     w = len(grid[0])
-    img = Image.new("RGB", (w, h))
+    img = Image.new("RGBA", (w, h))
     for y, row in enumerate(grid):
         for x, ch in enumerate(row):
-            img.putpixel((x, y), palette[ch])
+            if ch == ".":
+                img.putpixel((x, y), (0, 0, 0, 0))
+            else:
+                img.putpixel((x, y), (*palette[ch], 255))
     return img.resize((w * scale, h * scale), Image.NEAREST)
 
 
@@ -52,8 +55,11 @@ def ground(base, speck=(45, 90, 40), light=(230, 235, 190), seed=0, dark_prob=0.
 
 
 def stone_wall(colors=(120, 118, 112)):
-    """Brick-ish wall block."""
-    base, dark, bright = colors[0], colors[1], colors[2]
+    """Brick-ish wall block. `colors` is the base RGB; dark/bright variants are
+    derived so the wall reads as one material instead of flat channels."""
+    base = colors
+    dark = tuple(int(c * 0.78) for c in base)
+    bright = tuple(min(255, int(c * 1.12)) for c in base)
     grid = []
     for y in range(TILE_BASE):
         row = []

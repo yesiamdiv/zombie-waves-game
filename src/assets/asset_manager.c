@@ -74,6 +74,8 @@ SDL_Texture *asset_manager_get(AssetManager *am, const char *name) {
 
     /* Pixel art must stay chunky when scaled; nearest keeps it crisp. */
     SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+    /* Entity art has transparent backgrounds; blend so alpha actually works. */
+    SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
 
     AssetEntry *e = (AssetEntry *)malloc(sizeof(AssetEntry));
     if (!e) {
