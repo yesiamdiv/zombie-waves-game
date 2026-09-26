@@ -111,6 +111,10 @@ typedef struct {
     uint8_t net_weapon;
     float net_snap_accum;   /* host: 20 Hz snapshot cadence accumulator */
     NetMirror net_mirror;   /* client: interpolated world mirror */
+    /* R13-I1: client render clock. Trails the newest snapshot by one snapshot
+     * interval so the mirror blend stays strictly inside (0,1) and entities
+     * glide instead of jumping a full 50ms step every snapshot. */
+    float net_render_time;
     bool auto_start;        /* --auto-start: host starts immediately (headless) */
 } Game;
 
@@ -426,6 +430,41 @@ static void drain_mirror(void);
 
 /* Client: interpolated position of the local player's mirror entity (own
  * roster slot), driving the camera on render-only clients. */
+/* R13-I1: the client used its own sim clock as the mirror's render clock. That
+ * clock always runs ahead of the newest 20 Hz snapshot, so the blend factor
+ * clamped to 1.0 on essentially every frame and every entity teleported a full
+ * snapshot interval each time one arrived - the reported stutter.
+ *
+ * Drive a dedicated render clock along the HOST's snapshot timeline instead: it
+ * advances at frame rate but is held inside the mirror's [older,newer] window.
+ * Because it can never outrun the newest snapshot, t sweeps smoothly from 0 to
+ * 1 across each 50 ms interval and motion reads as continuous. It is pulled
+ * forward if it falls behind (stall, hidden tab, host pause) so the view
+ * recovers without fast-forwarding. */
+static float client_render_time(void) {
+    if (!net_mirror_ready(&game.net_mirror)) return 0.0f;
+    return game.net_render_time;
+}
+
+static void advance_client_render_clock(float dt) {
+    if (!net_mirror_ready(&game.net_mirror)) return;
+
+    const float t_new = net_mirror_newer_time(&game.net_mirror);
+    const float t_old = net_mirror_older_time(&game.net_mirror);
+
+    if (game.net_render_time <= 0.0f) {
+        game.net_render_time = t_old;
+        return;
+    }
+    game.net_render_time += dt;
+    if (game.net_render_time > t_new) {
+        game.net_render_time = t_new;   /* never outrun the newest snapshot */
+    }
+    if (game.net_render_time < t_old) {
+        game.net_render_time = t_old;   /* recover from a stall or host pause */
+    }
+}
+
 static bool client_local_pos(Vec2 *out) {
     if (!out || !net_mirror_ready(&game.net_mirror)) return false;
     int slot = game.net_client.slot;
@@ -437,7 +476,8 @@ static bool client_local_pos(Vec2 *out) {
     float t_old = net_mirror_older_time(&game.net_mirror);
     float t = 1.0f;
     if (t_new > t_old) {
-        t = ((float)game.elapsed_sim - t_old) / (t_new - t_old);
+        /* R13-I1: blend against the trailing render clock, not the raw sim clock. */
+        t = (client_render_time() - t_old) / (t_new - t_old);
         if (t < 0.0f) t = 0.0f;
         else if (t > 1.0f) t = 1.0f;
     }
@@ -625,6 +665,7 @@ static void update(float dt) {
             /* Render-only client: no local simulation. The host's snapshot
              * mirror drives the camera; the world is drawn from the mirror. */
             if (render_only_client()) {
+                advance_client_render_clock(dt);
                 Vec2 p;
                 if (client_local_pos(&p)) {
                     camera_follow(&game.camera, p, dt);
@@ -910,7 +951,7 @@ static void render(void) {
             if (render_only_client()) {
                 /* Render-only client: draw the interpolated snapshot mirror. */
                 system_render_mirror(game.renderer, &game.camera,
-                                     &game.net_mirror, (float)game.elapsed_sim);
+                                     &game.net_mirror, client_render_time());
             } else {
                 system_render(&game.ecs, game.renderer, &game.camera);
             }
