@@ -30,6 +30,11 @@ void system_collision(World *ecs, GameWorld *world) {
             CBulletTag *bullet = ecs_get_bullet_tag(ecs, a);
             if (b == bullet->owner) continue;
 
+            /* R13-I3: dropped items carry a collider but no health, so a bullet
+             * crossing one used to be destroyed for a "hit" that did nothing.
+             * Bullets pass through items (and any other non-solid collider). */
+            if (ecs_has_component(ecs, b, COMP_ITEM_TAG)) continue;
+
             Vec2 pos_a = ecs_get_position(ecs, a)->pos;
             Vec2 pos_b = ecs_get_position(ecs, b)->pos;
             float rad_a = ecs_get_collider(ecs, a)->radius;
