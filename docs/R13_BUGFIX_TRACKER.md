@@ -15,17 +15,17 @@ Single source of truth for every bug the playtester agent reported against the
 ## Status
 
 | ID | Sev | Area | Status | Commit |
-|----|-----|------|--------|--------|
+|-----|-----|------|--------|--------|
 | R13-C1 | Critical | SP wave budget | **FIXED** | `bc6d87c` |
 | R13-C2 | Critical | Remote player ghost | **FIXED** | `bc6d87c` |
 | R13-C3 | Critical | Client event log empty | **FIXED** (partial → R13-D1) | `bc6d87c` |
 | R13-M1 | Major | 2P scaling magnitude | **FIXED** (with C1) | `bc6d87c` |
-| R13-D1 | Major | `POINTS` not relayed | **FIXED** | (this series) |
-| R13-I3 | Major | Bullets die on items | **FIXED** | (this series) |
-| R13-I2a | Major | Beacons missing on client | **FIXED** | (this series) |
-| R13-I2b | Minor | Beacon hides player | **FIXED** | (this series) |
-| R13-N1 | Minor | Client bot input dropped | **FIXED** | (this series) |
-| R13-I1 | Major | Client stutter | **FIXED** | (this series) |
+| R13-D1 | Major | `POINTS` not relayed | **FIXED** | `56738c4` |
+| R13-I3 | Major | Bullets die on items | **FIXED** | `c2686a1` |
+| R13-I2a | Major | Beacons missing on client | **FIXED** | `c50a62a` |
+| R13-I2b | Minor | Beacon hides player | **FIXED** | `92a2ac2` |
+| R13-N1 | Minor | Client bot input dropped | **FIXED** | `26634b0` |
+| R13-I1 | Major | Client stutter | **FIXED** | `60033a1` |
 | R13-N2 | Minor | Legacy `main` won't compile | NOT ACTIONABLE — see below | — |
 | R13-I4 | Question | Host pause freezes client | **OPEN — needs a decision** | — |
 
@@ -61,15 +61,49 @@ Single source of truth for every bug the playtester agent reported against the
 - **R13-I2b** — beacons drew *after* the entities, and the opaque 48x48 core
   covered a player standing on their own spawn. Draw order moved: beacons first,
   then entities.
-- **R13-N1** — `send_net_input()` read the raw `game.input`, so a headless
-  `--ai=bot --join` client sent an all-zero input packet and the host saw a
-  motionless remote player. It now reads the AI driver's `ai_controls` when the
-  bot is driving.
-- **R13-I1** — the mirror lerp computed `t` against the newest snapshot and
-  clamped `t > 1` to `1`, which is true almost every frame at 20 Hz snapshots vs
-  high-fps rendering. Entities therefore jumped a full 50 ms step each snapshot
-  instead of gliding. The mirror now renders one snapshot behind the newest so
-  `t` stays inside `(0,1)`.
+- **R13-N1** — a headless `--ai=bot --join` client sent an all-zero input packet
+  and the host saw a motionless remote player. `send_net_input()` was reading the
+  right struct; the real cause was upstream: `ai_build_view()` derives the bot's
+  world view from `game.ecs`, and a render-only client has an empty local ECS
+  (the world lives only in the snapshot mirror), so the bot saw no zombies. The
+  client now builds its `GameView` from the newest mirrored snapshot, which
+  carries everything the bot reasons about. The host's own path is untouched.
+- **R13-I1** — the client mirror lerp was fed the client's own sim clock, which
+  runs ahead of the newest 20 Hz snapshot, so `t` clamped to `1.0` on nearly every
+  frame and every entity jumped a full 50 ms step per snapshot. Replaced with a
+  render clock driven along the **host's** snapshot timeline and held inside the
+  mirror's `[older, newer]` window, so `t` sweeps `0..1` and motion is
+  continuous. `client_local_pos()` shared the same broken clock for camera
+  follow, so the camera micro-jumped too; it now uses the corrected clock.
+  `NET_SNAP_HZ` deliberately stays at 20 — raising it trades bandwidth, and the
+  pinned-blend root cause is fixed without it.
+
+## Verification (all fixes applied)
+
+Run on the fixes series, `feature/multiplayer`:
+
+| Gate | Result |
+|---|---|
+| Clean Release `-Werror` build | passes, **0 warnings in project sources** |
+| `ctest` | **3/3** (`net_spike`, `net_loopback`, `core_tests`) |
+| M1 SP determinism (seed 42, two runs) | logs **byte-identical** |
+| M1 SP wave 1 | `8 zombies, interval: 1.90s, difficulty: 1.00` |
+| M2 remote entity | `Spawned remote player entity for slot 1` |
+| M3 2P scaling | wave 1/2/3 = `10z/1.85s`, `13z/1.75s`, `16z/1.65s` |
+| M2 client log | `POINTS`, `KILL`, `DAMAGE`, `WAVE_START`, `ITEM_PICKUP` all present |
+| M4 2P determinism (seed 99) | two 2P hosts produce identical wave starts |
+| R13-I1 blend factor | `t` spans `0.000 … 0.833`; **0 of 1905** frames clamped at `1.000` |
+
+The SP byte-identity gate is the important one: every fix above was required to
+leave two same-seed single-player runs `diff`-empty with wave 1 at `8 / 1.90 /
+1.00`.
+
+### Not re-verified headlessly
+
+`R13-I1` (stutter), `R13-I2a`/`R13-I2b` (beacons) and `R13-I4` (pause) are
+render-path or interactive behaviours. `render()` returns immediately under
+`--headless`, so these need an on-device two-instance run to confirm visually.
+The I1 blend factor was proven by instrumenting the clock instead.
 
 ## Not actionable
 
