@@ -59,7 +59,7 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
     *ecs_get_item_tag(ecs, e) = (CItemTag){.type = type, .value = value, .bob_timer = 0};
     *ecs_get_sprite(ecs, e) = (CSprite){
         .sprite = is,
-        .scale = 0.25f,   /* 32px art -> 8 world units */
+        .scale = 0.5f,   /* 32px art -> 16 world units, same footprint as player */
         .base_alpha = 1.0f
     };
 
