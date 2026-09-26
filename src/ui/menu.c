@@ -170,19 +170,25 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
     SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
     SDL_RenderClear(renderer);
 
+    const float lh = (float)TTF_GetFontHeight(font);
+
     /* Title */
     float pulse = 0.8f + sinf(menu->title_pulse) * 0.2f;
     SDL_FColor title_color = {pulse, 0.15f * pulse, 0.15f * pulse, 1.0f};
     draw_text_centered(renderer, font, "OPEN WORLD ZOMBIE WAVES",
-                       screen_w * 0.5f, screen_h * 0.2f, title_color);
+                       screen_w * 0.5f, screen_h * 0.18f, title_color);
 
     /* Subtitle */
     SDL_FColor sub_color = {0.5f, 0.55f, 0.6f, 0.8f};
     draw_text_centered(renderer, font, "Survive the Horde",
-                       screen_w * 0.5f, screen_h * 0.3f, sub_color);
+                       screen_w * 0.5f, screen_h * 0.18f + lh + 16.0f, sub_color);
 
-    /* Options */
+    /* Options: vertically centered as a block, spaced by font height so they
+     * never overlap regardless of window size. */
     const char *options[] = {"Start Game", "Quit"};
+    float row_h = lh + 18.0f;
+    float block_h = (float)menu->option_count * row_h;
+    float first_y = screen_h * 0.5f - block_h * 0.5f;
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -196,17 +202,17 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
         char buf[96];
         snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
         draw_text_centered(renderer, font, buf,
-                           screen_w * 0.5f, screen_h * 0.5f + i * 50.0f, opt_color);
+                           screen_w * 0.5f, first_y + i * row_h, opt_color);
     }
 
-    /* Controls hint */
+    /* Controls hints: stacked bottom-right block with breathing room. */
     SDL_FColor hint = {0.3f, 0.3f, 0.35f, 0.6f};
+    float hint_y = screen_h - lh * 3.0f - 28.0f;
     draw_text_centered(renderer, font, "WASD/Arrows: Move  |  Mouse: Aim & Shoot  |  ESC: Pause",
-                       screen_w * 0.5f, screen_h * 0.85f, hint);
+                       screen_w * 0.5f, hint_y, hint);
 
-    SDL_FColor run_note = {0.3f, 0.3f, 0.35f, 0.6f};
     draw_text_centered(renderer, font, "Weapon purchases reset each run",
-                       screen_w * 0.5f, screen_h * 0.90f, run_note);
+                       screen_w * 0.5f, hint_y + lh + 10.0f, hint);
 }
 
 static SDL_FColor tile_preview_color(TileType t, ThemeID theme) {
@@ -226,15 +232,17 @@ void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, 
     SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
     SDL_RenderClear(renderer);
 
+    const float lh = (float)TTF_GetFontHeight(font);
+
     float pulse = 0.8f + sinf(menu->title_pulse) * 0.2f;
     SDL_FColor title_color = {pulse, pulse, 0.9f, 1.0f};
     draw_text_centered(renderer, font, "SELECT MAP",
-                       screen_w * 0.5f, screen_h * 0.1f, title_color);
+                       screen_w * 0.5f, screen_h * 0.08f, title_color);
 
-    /* Map list (left). */
-    float list_x = screen_w * 0.32f;
-    float row_y = screen_h * 0.24f;
-    const float row_h = 42.0f;
+    /* Map list (left): name row + detail row, spaced by font height. */
+    float list_x = screen_w * 0.30f;
+    float row_y = screen_h * 0.20f;
+    const float row_h = lh * 2.2f;
     for (int i = 0; i < menu->option_count; i++) {
         const MapDef *def = map_registry_get(i);
         if (!def) continue;
@@ -253,7 +261,7 @@ void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, 
             snprintf(detail, sizeof(detail), "Theme: %s  |  Size: %dx%d tiles",
                      defth->name, menu->thumb.width, menu->thumb.height);
             draw_text_centered(renderer, font, detail,
-                               list_x, row_y + 22.0f + i * row_h,
+                               list_x, row_y + lh + 6.0f + i * row_h,
                                (SDL_FColor){0.4f, 0.4f, 0.5f, 0.7f});
         }
     }
@@ -261,19 +269,19 @@ void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, 
     SDL_FColor hint = {0.3f, 0.3f, 0.35f, 0.6f};
     draw_text_centered(renderer, font,
                        "W/S or Arrows: Select map  |  ENTER: Play  |  ESC: Back",
-                       screen_w * 0.5f, screen_h * 0.9f, hint);
+                       screen_w * 0.5f, screen_h - lh - 16.0f, hint);
 
     /* Mini-map preview of the highlighted map (right panel). */
     GameWorld *w = &menu->thumb;
     if (w->width > 0 && w->height > 0 && w->tiles) {
-        float panel_w = screen_w * 0.30f;
+        float panel_w = screen_w * 0.28f;
         float panel_h = screen_h * 0.52f;
-        float panel_x = screen_w * 0.66f;
-        float panel_y = screen_h * 0.24f;
+        float panel_x = screen_w * 0.64f;
+        float panel_y = screen_h * 0.22f;
 
         SDL_SetRenderDrawColorFloat(renderer, 0.12f, 0.12f, 0.16f, 1.0f);
-        SDL_RenderFillRect(renderer, &(SDL_FRect){panel_x - 8, panel_y - 8,
-                                                  panel_w + 16, panel_h + 16});
+        SDL_RenderFillRect(renderer, &(SDL_FRect){panel_x - 10, panel_y - 10,
+                                                  panel_w + 20, panel_h + 20});
 
         float scale = fminf(panel_w / (float)w->width,
                             panel_h / (float)w->height);
@@ -298,11 +306,16 @@ void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int 
     SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.0f, 0.6f);
     SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
 
+    const float lh = (float)TTF_GetFontHeight(font);
+
     SDL_FColor title_color = {1.0f, 1.0f, 1.0f, 1.0f};
     draw_text_centered(renderer, font, "PAUSED",
-                       screen_w * 0.5f, screen_h * 0.3f, title_color);
+                       screen_w * 0.5f, screen_h * 0.30f, title_color);
 
     const char *options[] = {"Resume", "Quit to Menu"};
+    float row_h = lh + 18.0f;
+    float block_h = (float)menu->option_count * row_h;
+    float first_y = screen_h * 0.5f - block_h * 0.5f;
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -315,7 +328,7 @@ void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int 
         char buf[64];
         snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
         draw_text_centered(renderer, font, buf,
-                           screen_w * 0.5f, screen_h * 0.5f + i * 50.0f, opt_color);
+                           screen_w * 0.5f, first_y + i * row_h, opt_color);
     }
 }
 
@@ -323,31 +336,35 @@ void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int
     SDL_SetRenderDrawColorFloat(renderer, 0.1f, 0.02f, 0.02f, 1.0f);
     SDL_RenderClear(renderer);
 
+    const float lh = (float)TTF_GetFontHeight(font);
+    const float row_h = lh + 14.0f;
+
     SDL_FColor title = {0.9f, 0.15f, 0.15f, 1.0f};
     draw_text_centered(renderer, font, "GAME OVER",
-                       screen_w * 0.5f, screen_h * 0.15f, title);
+                       screen_w * 0.5f, screen_h * 0.18f, title);
 
     char buf[128];
     SDL_FColor info = {0.8f, 0.8f, 0.8f, 1.0f};
+    float stat_y = screen_h * 0.38f;
 
     snprintf(buf, sizeof(buf), "Wave Reached: %d", go->final_wave);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.35f, info);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, stat_y, info);
 
     snprintf(buf, sizeof(buf), "Zombies Killed: %d", go->final_kills);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.42f, info);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, stat_y + row_h, info);
 
     snprintf(buf, sizeof(buf), "Score: %d", go->final_score);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.49f, info);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, stat_y + row_h * 2.0f, info);
 
     SDL_FColor note = {0.7f, 0.65f, 0.45f, 1.0f};
     draw_text_centered(renderer, font, "New run resets weapon purchases and points",
-                       screen_w * 0.5f, screen_h * 0.60f, note);
+                       screen_w * 0.5f, stat_y + row_h * 3.5f, note);
 
     if (go->display_timer > 1.0f) {
         float blink = 0.5f + sinf(go->display_timer * 3.0f) * 0.5f;
         SDL_FColor prompt = {blink, blink, blink, 0.8f};
         draw_text_centered(renderer, font, "Press ENTER to return to menu",
-                           screen_w * 0.5f, screen_h * 0.7f, prompt);
+                           screen_w * 0.5f, screen_h - lh - 24.0f, prompt);
     }
 }
 
@@ -449,17 +466,19 @@ void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventor
     SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.05f, 0.72f);
     SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
 
+    const float lh = (float)TTF_GetFontHeight(font);
+
     SDL_FColor title_color = {1.0f, 0.85f, 0.2f, 1.0f};
     draw_text_centered(renderer, font, "WEAPON SHOP",
-                       screen_w * 0.5f, screen_h * 0.12f, title_color);
+                       screen_w * 0.5f, screen_h * 0.10f, title_color);
 
     char buf[192];
     SDL_FColor pts = {0.6f, 1.0f, 0.4f, 1.0f};
     snprintf(buf, sizeof(buf), "Points: %d", inv->points);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.22f, pts);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.10f + lh + 14.0f, pts);
 
-    float row_y = screen_h * 0.30f;
-    const float row_h = 40.0f;
+    const float row_h = lh + 14.0f;
+    float first_y = screen_h * 0.38f - ((float)SHOP_OPTION_COUNT * row_h) * 0.5f;
 
     const char *rows[SHOP_OPTION_COUNT] = {
         "Pistol",
@@ -525,18 +544,18 @@ void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventor
 
         snprintf(buf, sizeof(buf), "%s%s%s", prefix, rows[i], status);
         draw_text_centered(renderer, font, buf,
-                           screen_w * 0.5f, row_y + i * row_h, opt_color);
+                           screen_w * 0.5f, first_y + i * row_h, opt_color);
     }
 
     if (menu->msg_timer > 0) {
         float blink = menu->msg_timer > 1.0f ? 1.0f : menu->msg_timer;
         SDL_FColor msg_color = {1.0f, 0.9f, 0.4f, blink};
         draw_text_centered(renderer, font, menu->message,
-                           screen_w * 0.5f, screen_h * 0.78f, msg_color);
+                           screen_w * 0.5f, screen_h * 0.80f, msg_color);
     }
 
     SDL_FColor hint = {0.35f, 0.35f, 0.4f, 0.7f};
     draw_text_centered(renderer, font,
                        "ENTER/SPACE: Buy/Switch  |  W/S: Navigate  |  B/ESC: Close",
-                       screen_w * 0.5f, screen_h * 0.88f, hint);
+                       screen_w * 0.5f, screen_h - lh - 16.0f, hint);
 }
