@@ -49,7 +49,7 @@ $BIN --headless --ai=bot --host --port=34901 --run-seconds=180 \
      --events=/tmp/opencode/r13_mp_host.log --seed=7 >/tmp/opencode/r13_mp_host_stdout.log 2>&1 &
 HOST_PID=$!
 
-sleep  shakes 1
+sleep 1
 $BIN --headless --ai=bot --join=127.0.0.1:34901 --run-seconds=180 \
      --events=/tmp/opencode/r13_mp_join.log --seed=7 >/tmp/opencode/r13_mp_join_stdout.log 2>&1 &
 JOIN_PID=$!
