@@ -24,14 +24,15 @@ Raised: 2026-09-29 (post-playtest code sweep) | Board: docs/FUTURE_IDEAS.md for 
 
 | Ticket | Owner | Priority | Root cause (from code sweep) | Plan (DEV) | Status |
 |--------|-------|----------|------------------------------|------------|--------|
-| **B4** HUD damage flash never triggers | DEV | High | `hud->damage_flash` is only decremented/drawn (hud.c:8,15-17,189-192); nothing sets it on player hurt. Dead overlay | Emit a red flash when `GE_PLAYER_HEALTH` shows HP loss (or direct set in hurt path); decay over ~0.3s | OPEN |
+| **B4** HUD damage flash never triggers | DEV | High | `hud->damage_flash` is only decremented/drawn (hud.c:8,15-17,189-192); nothing sets it on player hurt. Dead overlay | `hud_track_player_hp()` arms the flash on any HP drop (first call = baseline; healing never false-triggers); `hud_draw` calls it per frame | FIXED `878988c` |
 | **B5** Ammo pickup does nothing | DEV | Medium | `ITEM_AMMO` case empty in `items_check_pickup` (items.c:117-119); pistol ammo unlimited | Grant grenades/rockets when the owning weapon is unlocked; still log pickup | OPEN |
 | **B6** Camera shows void at map edges | DEV | Medium | `camera_follow` never clamps to world bounds (camera.c:14-17) | Clamp camera center to `[half-view, world-size - half-view]` in `camera_follow`; skip clamp if view bigger than world | OPEN |
 
 ## 3. Acceptance criteria (definition of done, per ticket)
 
 - **B4**: player takes a hit → red flash fades; headless check that damage path
-  sets the flash (may add a small unit test).
+  sets the flash (may add a small unit test). — **DONE**: `test_hud_damage_flash`
+  covers baseline/no-flash-on-heal/arm-on-drop/decay; overlay draws in `hud_draw`.
 - **B5**: picking up `ITEM_AMMO` with grenades/rockets unlocked adds ammo; with
   none granted it remains a safe no-op pickup (no crash).
 - **B6**: walking to a map corner keeps the whole view inside the map; camera

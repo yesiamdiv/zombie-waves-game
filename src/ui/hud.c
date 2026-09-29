@@ -8,6 +8,7 @@ void hud_init(HUD *hud) {
     hud->damage_flash = 0;
     hud->message_timer = 0;
     memset(hud->message, 0, sizeof(hud->message));
+    hud->last_player_hp = -1.0f;
     LOG_DEBUG("HUD initialized");
 }
 
@@ -24,6 +25,18 @@ void hud_update(HUD *hud, float dt) {
 void hud_show_message(HUD *hud, const char *msg, float duration) {
     strncpy(hud->message, msg, sizeof(hud->message) - 1);
     hud->message_timer = duration;
+}
+
+/* Hurt feedback (B4): track the player's current HP each frame and arm the red
+ * flash when HP drops. The old code only ever decayed/drew `damage_flash`
+ * without setting it, so the overlay was dead. Healing (medkit) raises HP, so
+ * the flash only fires on actual damage; the first call initializes the
+ * baseline without flashing. */
+void hud_track_player_hp(HUD *hud, float current_hp) {
+    if (hud->last_player_hp >= 0.0f && current_hp < hud->last_player_hp) {
+        hud->damage_flash = 1.0f;
+    }
+    hud->last_player_hp = current_hp;
 }
 
 static void draw_text(SDL_Renderer *renderer, TTF_Font *font,
@@ -107,6 +120,7 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     if (player == ECS_NULL_ENTITY) return;
 
     CHealth *hp = ecs_get_health(ecs, player);
+    hud_track_player_hp(hud, hp->current);
 
     /* Health bar */
     float bar_x = 20.0f;

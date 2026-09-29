@@ -14,6 +14,7 @@
 #include "events/event_bus.h"
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
+#include "ui/hud.h"
 #include "config.h"
 
 /* Normal-play default; the game binary overrides via debug flags. */
@@ -232,6 +233,35 @@ static void test_items(void) {
 
     event_bus_shutdown(bus);
     remove(path);
+}
+
+static void test_hud_damage_flash(void) {
+    LOG_INFO("--- Test: HUD damage flash ---");
+    HUD hud;
+    hud_init(&hud);
+
+    /* First call should establish the baseline without flashing. */
+    hud_track_player_hp(&hud, 200.0f);
+    CHECK(hud.damage_flash == 0.0f);
+
+    /* Same HP → no flash. */
+    hud_track_player_hp(&hud, 200.0f);
+    CHECK(hud.damage_flash == 0.0f);
+
+    /* HP drop → flash armed. */
+    hud_track_player_hp(&hud, 170.0f);
+    CHECK(hud.damage_flash == 1.0f);
+
+    /* Flash decays, then re-arms on another drop. */
+    hud_update(&hud, 0.1f);
+    CHECK(hud.damage_flash < 1.0f);
+    hud_track_player_hp(&hud, 140.0f);
+    CHECK(hud.damage_flash == 1.0f);
+
+    /* Healing raises HP and must not re-fire the flash. */
+    hud.damage_flash = 0.0f;
+    hud_track_player_hp(&hud, 185.0f);
+    CHECK(hud.damage_flash == 0.0f);
 }
 
 static void test_entity_limit(void) {
@@ -935,6 +965,7 @@ int tests_run_all(void) {
     test_world_valid();
     test_wave_system();
     test_items();
+    test_hud_damage_flash();
     test_entity_limit();
     test_wave_completion();
     test_script_aim_shot();

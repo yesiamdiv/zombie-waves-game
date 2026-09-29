@@ -37,3 +37,28 @@ DEV work interleaved (team structure per `AGENTS.md`).
 
 ### Blocked
 - None.
+
+---
+
+## Session 2026-09-29 (cont.) — Sprint 3 DEV: B4 DONE
+
+### PM standup — planned / in progress
+- Sprint 3 tickets: B4 (HUD damage flash), B5 (ammo pickup no-op), B6 (camera
+  pans past map edges). Each: one `fix(scope):` commit + DoD ritual.
+
+### DEV — done (B4)
+- **B4 fixed** — `fix(ui): HUD damage flash fires on player HP drop`.
+  - Added `hud_track_player_hp()` (hud.c/h): records HP per frame, arms the red
+    flash on any HP *drop*; first call sets baseline (no flash), healing never
+    false-triggers. `hud_draw` calls it each frame.
+  - Added `test_hud_damage_flash` (6 checks: baseline, same-HP, drop-arms,
+    decay, re-arm, heal-no-flash).
+- **Verification**: zero-warning build, `ctest` 1/1 pass, `zombie_tests`
+  268/268 (was 262).
+- Bugs sheet + sprint board updated.
+
+### PM — next
+- B5 (ammo pickup grants owned-weapon ammo), then B6 (camera clamp).
+
+### Blocked
+- None.

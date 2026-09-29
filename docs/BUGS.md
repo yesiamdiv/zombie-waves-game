@@ -49,13 +49,16 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
 
 ## B4. HUD damage flash never triggers
 
-- **Status**: OPEN (Sprint 3 — see `docs/SPRINT_PLAN.md`)
+- **Status**: FIXED (commit `878988c`) — *Sprint 3*
 - **Symptom**: The red hurt-flash overlay is dead — the screen gives no visual
   feedback when the player takes damage.
 - **Investigation**: `hud->damage_flash` is only initialized to 0, decremented
   in `hud_update`, and *drawn* in `hud_draw` (hud.c:8,15-17,189-192). Nothing
   ever sets it to 1.0 when HP drops, so the overlay code path is unreachable.
-- **Fix**: TBD (plan: trigger red flash on player damage and decay over ~0.3s).
+- **Fix**: Added `hud_track_player_hp()` — the HUD records HP each frame and
+  arms the flash on any HP *drop* (first call establishes the baseline without
+  flashing; medkit healing raises HP so it never false-triggers). `hud_draw`
+  now calls it with the player's current HP each frame.
 
 ## B5. Ammo pickup does nothing
 
