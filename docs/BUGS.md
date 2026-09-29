@@ -49,7 +49,7 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
 
 ## B4. HUD damage flash never triggers
 
-- **Status**: FIXED (commit `878988c`) — *Sprint 3*
+- **Status**: FIXED (commit `81f3bd3`) — *Sprint 3*
 - **Symptom**: The red hurt-flash overlay is dead — the screen gives no visual
   feedback when the player takes damage.
 - **Investigation**: `hud->damage_flash` is only initialized to 0, decremented

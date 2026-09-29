@@ -24,7 +24,7 @@ Raised: 2026-09-29 (post-playtest code sweep) | Board: docs/FUTURE_IDEAS.md for 
 
 | Ticket | Owner | Priority | Root cause (from code sweep) | Plan (DEV) | Status |
 |--------|-------|----------|------------------------------|------------|--------|
-| **B4** HUD damage flash never triggers | DEV | High | `hud->damage_flash` is only decremented/drawn (hud.c:8,15-17,189-192); nothing sets it on player hurt. Dead overlay | `hud_track_player_hp()` arms the flash on any HP drop (first call = baseline; healing never false-triggers); `hud_draw` calls it per frame | FIXED `878988c` |
+| **B4** HUD damage flash never triggers | DEV | High | `hud->damage_flash` is only decremented/drawn (hud.c:8,15-17,189-192); nothing sets it on player hurt. Dead overlay | `hud_track_player_hp()` arms the flash on any HP drop (first call = baseline; healing never false-triggers); `hud_draw` calls it per frame | FIXED `81f3bd3` |
 | **B5** Ammo pickup does nothing | DEV | Medium | `ITEM_AMMO` case empty in `items_check_pickup` (items.c:117-119); pistol ammo unlimited | Grant grenades/rockets when the owning weapon is unlocked; still log pickup | OPEN |
 | **B6** Camera shows void at map edges | DEV | Medium | `camera_follow` never clamps to world bounds (camera.c:14-17) | Clamp camera center to `[half-view, world-size - half-view]` in `camera_follow`; skip clamp if view bigger than world | OPEN |
 
