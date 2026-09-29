@@ -27,7 +27,7 @@ Single source of truth for every bug the playtester agent reported against the
 | R13-N1 | Minor | Client bot input dropped | **FIXED** | `26634b0` |
 | R13-I1 | Major | Client stutter | **FIXED** | `60033a1` |
 | R13-N2 | Minor | Legacy `main` won't compile | NOT ACTIONABLE — see below | — |
-| R13-I4 | Question | Host pause freezes client | **OPEN — needs a decision** | — |
+| R13-I4 | Question | Host pause freezes client | **FIXED** (decision below) | `a555040` |
 
 ## Fixed in `bc6d87c` (round 1)
 
@@ -100,10 +100,16 @@ leave two same-seed single-player runs `diff`-empty with wave 1 at `8 / 1.90 /
 
 ### Not re-verified headlessly
 
-`R13-I1` (stutter), `R13-I2a`/`R13-I2b` (beacons) and `R13-I4` (pause) are
+`R13-I1` (stutter), `R13-I2a`/`R13-I2b` (beacons) and `R13-I4` (pause overlay) are
 render-path or interactive behaviours. `render()` returns immediately under
 `--headless`, so these need an on-device two-instance run to confirm visually.
-The I1 blend factor was proven by instrumenting the clock instead.
+The I1 blend factor was proven by instrumenting the clock instead. R13-I4's
+*relay* is proven headlessly (see its section), but its HUD notice, frozen
+rendering and still guest ghost are not.
+
+`playtesting_prompts/08_playtest_r13_fix_verification.md` is the consolidated
+re-verification brief for the whole series, with each milestone tagged
+`[HEADLESS]` or `[GUI]`.
 
 ## Not actionable
 
@@ -145,4 +151,38 @@ the host whenever its paused state changes and relayed on the existing `GE_*`
 channel-0 path. The client already re-emits every relayed event into its local bus,
 so the client half needed no new networking — only a HUD message and input
 suppression.
+
+**Fixed in `a555040`.** The client tracks `host_paused` from the relayed event, freezes
+its own loop while set, shows a "Paused by host" / "Host resumed" HUD notice, and
+streams a **neutral** input packet so the remote player does not appear to keep acting
+in a world that is not advancing. The neutral packet keeps the normal 30 Hz cadence
+rather than bypassing the rate limiter (an earlier draft returned before the
+accumulator check and would have sent one packet per frame).
+
+Because the event rides the existing curated `GE_*` relay, there is no new packet
+kind and no wire-version bump. `GE_HOST_PAUSE` is appended to the enum, so the
+existing type byte stays stable.
+
+**Verified headlessly** with a temporary **host-only** auto-pause harness, since the
+`--script` harness cannot drive this fix: it sets *held* keys (`input.keys[]`) while
+`input_key_pressed()` reads the *press edge* array (`keys_pressed[]`), which only real
+SDL events fill — so a scripted `key Escape down` cannot open the pause menu at all.
+That harness was removed before the commit. With it in place:
+
+- host stdout: `NET: host pause state -> PAUSED (relayed)` then `-> PLAYING (relayed)`
+- client stdout: `NET: host PAUSED the session` then `host resumed the session`
+- client `--events` log: `EVT=HOST_PAUSE` ×2
+- the D1 relay is unaffected: `DAMAGE 185`, `ITEM_PICKUP 11`, `KILL 34`, `POINTS 34`,
+  `WAVE_START 3` still arrive
+
+An earlier draft of that harness was **wrong and its results were discarded**: the
+auto-pause trigger was placed in `update()` without a host guard, so it also fired in
+the *client* process. The client appeared to pause and resume in lockstep with the
+host, which looked like a successful relay, but the client was pausing itself. The
+false pass was caught only because the client decoded no `HOST_PAUSE` batch. Lesson:
+instrumentation in a shared code path must be gated on `net_host_mode`.
+
+**Still needs an on-device pass** for the parts `--headless` cannot reach: the
+"Paused by host" / "Host resumed" HUD notice, the client's frozen rendering, and the
+guest ghost holding still. Milestone M8 of `playtesting_prompts/08_playtest_r13_fix_verification.md`.
 
