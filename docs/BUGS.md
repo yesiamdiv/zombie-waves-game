@@ -46,3 +46,33 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
   player.
 - **Fix**: Pickups render at `.scale = 0.5f` (16 world units), matching the
   player's footprint. Collider left at 10 units (generous pickup radius).
+
+## B4. HUD damage flash never triggers
+
+- **Status**: OPEN (Sprint 3 — see `docs/SPRINT_PLAN.md`)
+- **Symptom**: The red hurt-flash overlay is dead — the screen gives no visual
+  feedback when the player takes damage.
+- **Investigation**: `hud->damage_flash` is only initialized to 0, decremented
+  in `hud_update`, and *drawn* in `hud_draw` (hud.c:8,15-17,189-192). Nothing
+  ever sets it to 1.0 when HP drops, so the overlay code path is unreachable.
+- **Fix**: TBD (plan: trigger red flash on player damage and decay over ~0.3s).
+
+## B5. Ammo pickup does nothing
+
+- **Status**: OPEN (Sprint 3 — see `docs/SPRINT_PLAN.md`)
+- **Symptom**: Running over the yellow ammo pickup has zero effect (pistol has
+  unlimited ammo); pickup is a dead action.
+- **Investigation**: `ITEM_AMMO` case in `items_check_pickup` (items.c:117-119)
+  is an empty branch.
+- **Fix**: TBD (plan: grant grenades/rockets when the corresponding weapon is
+  unlocked).
+
+## B6. Camera shows empty void beyond map edges
+
+- **Status**: OPEN (Sprint 3 — see `docs/SPRINT_PLAN.md`)
+- **Symptom**: Near the border walls the camera pans past the map into black
+  nothing (most visible on the small snow 34x34 map).
+- **Investigation**: `camera_follow` (camera.c:14-17) lerps toward the target
+  with no clamp against `GameWorld` bounds.
+- **Fix**: TBD (plan: clamp camera center to world bounds minus half-viewport;
+  skip clamp when the viewport exceeds the world).
