@@ -113,14 +113,36 @@ The I1 blend factor was proven by instrumenting the clock instead.
   compiles clean, so there is no separate `main` binary to compare against. The
   `8 / 1.9 / 1.0` SP baseline is asserted in-repo by M1 instead.
 
-## Open — needs a decision
+## R13-I4 — host pause freezes the client (decision)
 
-- **R13-I4 — host pause freezes the joined client.** The host is authoritative
-  and stops simulating while paused, but it keeps broadcasting frozen snapshots,
-  so the client's mirror stops advancing. The client gets no "paused by host"
-  indication and cannot unpause. Two reasonable behaviours:
-  1. **Coop pause (current, implicit):** keep it, but relay a pause flag so the
-     client shows "Host paused" and stops accepting input.
-  2. **Per-player pause:** host keeps simulating for everyone else; only the
-     pausing player freezes.
-  Pick one and it is a small change on top of the existing `GE_*` relay.
+**Observed:** when the host presses ESC to pause, the joined client's game freezes
+too. The host is authoritative, so while paused the host's `update()` only
+services the pause menu and the simulation clock stops — but the main loop still
+calls `step_frame()`, which still calls `broadcast_snapshots()`. The host therefore
+keeps streaming *frozen* snapshots, the client's mirror stops advancing, and the
+client gets no indication that anything happened. It also cannot unpause itself.
+
+The real defect is not that the client freezes; it is that the client freezes
+**silently and with no way out**.
+
+**Decision: global coop pause, with the pause state relayed to clients.**
+
+1. The session pauses for everyone. The simulation genuinely stops, so no host can
+   use pause to stall wave progression or otherwise alter shared state for
+   everyone else.
+2. The host relays its pause state, and the client raises its own pause overlay
+   showing who paused, so the freeze is explained and visible.
+
+**Rejected: per-player pause** (host keeps simulating, only the pauser freezes).
+It removes the freeze entirely, but it touches the simulation path directly next to
+the single-player byte-identity guard, and it would let a host pause mid-wave to
+manipulate shared state. It is a reasonable alternative if the user prefers it
+later — it is a small change on top of this one, since the relay plumbing is the
+same.
+
+**Implementation:** a new append-only `GameEventType`, `GE_HOST_PAUSE`, emitted by
+the host whenever its paused state changes and relayed on the existing `GE_*`
+channel-0 path. The client already re-emits every relayed event into its local bus,
+so the client half needed no new networking — only a HUD message and input
+suppression.
+
