@@ -371,7 +371,7 @@ static void update(float dt) {
             }
 
             if (game.player_entity != ECS_NULL_ENTITY) {
-                items_check_pickup(&game.ecs, game.player_entity);
+                items_check_pickup(&game.ecs, game.player_entity, &game.inventory);
             }
 
             game.item_spawn_timer += dt;

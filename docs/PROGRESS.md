@@ -62,3 +62,25 @@ DEV work interleaved (team structure per `AGENTS.md`).
 
 ### Blocked
 - None.
+
+---
+
+## Session 2026-09-29 (cont.) — Sprint 3 DEV: B5 DONE
+
+### PM standup — planned / in progress
+- B5 ticket: make `ITEM_AMMO` pickups meaningful.
+
+### DEV — done (B5)
+- **B5 fixed** — `fix(items): ammo pickup refills owned consumables`.
+  - `items_check_pickup()` now takes `PlayerInventory*`; `ITEM_AMMO` grants +1
+    grenade when grenades are unlocked, +2 rockets when the launcher is
+    unlocked (pistol-only fresh runs stay a safe no-op).
+  - Call site updated in `src/main.c`; added `test_item_ammo_pickup` (10 checks).
+- **Verification**: zero-warning build, `ctest` 1/1 pass, `zombie_tests`
+  278/278 (was 268).
+
+### PM — next
+- B6 (camera world-bounds clamp).
+
+### Blocked
+- None.

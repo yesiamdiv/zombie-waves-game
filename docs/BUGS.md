@@ -62,13 +62,15 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
 
 ## B5. Ammo pickup does nothing
 
-- **Status**: OPEN (Sprint 3 — see `docs/SPRINT_PLAN.md`)
+- **Status**: FIXED (*Sprint 3*)
 - **Symptom**: Running over the yellow ammo pickup has zero effect (pistol has
   unlimited ammo); pickup is a dead action.
 - **Investigation**: `ITEM_AMMO` case in `items_check_pickup` (items.c:117-119)
   is an empty branch.
-- **Fix**: TBD (plan: grant grenades/rockets when the corresponding weapon is
-  unlocked).
+- **Fix**: `items_check_pickup` now takes a `PlayerInventory*`; `ITEM_AMMO`
+  refills consumable stocks of owned weapons — +1 grenade when the grenade
+  weapon is unlocked, +2 rockets when the launcher is unlocked. Fresh runs
+  (pistol only) are a safe no-op.
 
 ## B6. Camera shows empty void beyond map edges
 

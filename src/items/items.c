@@ -84,7 +84,7 @@ int items_count_alive(World *ecs) {
     return count;
 }
 
-void items_check_pickup(World *ecs, Entity player) {
+void items_check_pickup(World *ecs, Entity player, PlayerInventory *inv) {
     Vec2 player_pos = ecs_get_position(ecs, player)->pos;
     float pickup_range = 20.0f;
 
@@ -115,7 +115,14 @@ void items_check_pickup(World *ecs, Entity player) {
                     break;
 
                 case ITEM_AMMO:
-                    /* In current impl unlimited ammo, could extend later */
+                    /* Pistol ammo is unlimited, so the ammo pickup is a
+                     * consumable refill instead (B5): it feeds whichever
+                     * owned weapons drain ammo. Unlocking the weapon is the
+                     * gate, so a fresh run's pickup is a safe no-op. */
+                    if (inv) {
+                        if (inv->unlocked[WEAPON_GRENADE]) inv->grenades += 1;
+                        if (inv->unlocked[WEAPON_LAUNCHER]) inv->launcher_ammo += 2;
+                    }
                     break;
 
                 case ITEM_SPEED_BOOST:

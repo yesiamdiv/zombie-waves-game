@@ -201,7 +201,7 @@ static void test_items(void) {
     CHECK(medkit != ECS_NULL_ENTITY);
     CHECK(ecs_get_item_tag(&ecs, medkit)->type == ITEM_HEALTH);
 
-    items_check_pickup(&ecs, player);
+    items_check_pickup(&ecs, player, NULL);
     CHECK(!ecs_is_alive(&ecs, medkit));
     CHECK(ecs_get_health(&ecs, player)->current > 100.0f);
 
@@ -262,6 +262,41 @@ static void test_hud_damage_flash(void) {
     hud.damage_flash = 0.0f;
     hud_track_player_hp(&hud, 185.0f);
     CHECK(hud.damage_flash == 0.0f);
+}
+
+static void test_item_ammo_pickup(void) {
+    LOG_INFO("--- Test: Ammo pickup feeds owned weapons (B5) ---");
+    World ecs;
+    ecs_init(&ecs);
+
+    Entity player = spawn_player(&ecs, vec2(100, 100));
+    CHECK(player != ECS_NULL_ENTITY);
+
+    PlayerInventory inv;
+    weapons_inventory_init(&inv);
+
+    /* Fresh run: only pistol unlocked → pickup grants nothing but is safe. */
+    Entity ammo0 = items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
+    CHECK(ammo0 != ECS_NULL_ENTITY);
+    items_check_pickup(&ecs, player, &inv);
+    CHECK(!ecs_is_alive(&ecs, ammo0));
+    CHECK(inv.grenades == 0);
+    CHECK(inv.launcher_ammo == 0);
+
+    /* After unlocking grenades + launcher, pickups feed both stocks. */
+    inv.unlocked[WEAPON_GRENADE] = true;
+    inv.unlocked[WEAPON_LAUNCHER] = true;
+    Entity ammo1 = items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
+    CHECK(ammo1 != ECS_NULL_ENTITY);
+    items_check_pickup(&ecs, player, &inv);
+    CHECK(inv.grenades == 1);
+    CHECK(inv.launcher_ammo == 2);
+
+    /* Second pickup accumulates. */
+    items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
+    items_check_pickup(&ecs, player, &inv);
+    CHECK(inv.grenades == 2);
+    CHECK(inv.launcher_ammo == 4);
 }
 
 static void test_entity_limit(void) {
@@ -966,6 +1001,7 @@ int tests_run_all(void) {
     test_wave_system();
     test_items();
     test_hud_damage_flash();
+    test_item_ammo_pickup();
     test_entity_limit();
     test_wave_completion();
     test_script_aim_shot();
