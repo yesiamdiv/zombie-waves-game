@@ -23,6 +23,9 @@ typedef enum {
     GE_INPUT,
     GE_POINTS,
     GE_SHOP_PURCHASE,
+    /* R13-I4: authoritative-host pause state, relayed so a joined client's
+     * freeze is explained instead of silent. a != 0 means paused. */
+    GE_HOST_PAUSE,
     GE_COUNT
 } GameEventType;
 

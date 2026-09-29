@@ -423,6 +423,7 @@ static void shutdown_game(void) {
 /* True when this process is a render-only net client (joins the host's sim,
  * never runs one itself). */
 static bool render_only_client(void);
+static void broadcast_host_pause(bool paused);
 
 /* Client: drain the newest received snapshot into the interpolation mirror
  * exactly once (by sequence), so frames between 20 Hz snapshots blend. */
@@ -624,6 +625,7 @@ static void update(float dt) {
                 game.state = GAME_STATE_PAUSED;
                 pause_menu_init(&game.pause_menu);
                 LOG_INFO("Game paused");
+                broadcast_host_pause(true);
                 break;
             }
 
@@ -771,9 +773,11 @@ static void update(float dt) {
             if (next == GAME_STATE_PLAYING) {
                 game.state = GAME_STATE_PLAYING;
                 LOG_INFO("Game resumed");
+                broadcast_host_pause(false);
             } else if (next == GAME_STATE_MENU) {
                 game.state = GAME_STATE_MENU;
                 LOG_INFO("Quit to menu from pause");
+                broadcast_host_pause(false);
             }
             if (game.input.quit_requested) {
                 game.running = false;
@@ -1014,6 +1018,17 @@ static void send_net_input(float dt) {
     if (game.net_input_tx_accum < (1.0f / 30.0f)) return;
     game.net_input_tx_accum = 0;
 
+    /* R13-I4: while the host has the session paused the world is not advancing,
+     * so streaming the local intent would only queue stale action. Send a neutral
+     * packet at the same 30 Hz cadence so the remote player does not appear to
+     * keep acting while the session is frozen. */
+    if (game.net_client.host_paused) {
+        NetInput idle;
+        memset(&idle, 0, sizeof(idle));
+        net_client_send_input(&game.net_client, &idle);
+        return;
+    }
+
     const InputState *i = &game.input;
     NetInput in;
     memset(&in, 0, sizeof(in));
@@ -1075,6 +1090,17 @@ static void broadcast_snapshots(float dt) {
     if (n > 0) net_server_broadcast_snapshot(&game.net_server, &snap);
 }
 
+/* R13-I4: the host is authoritative, so when it pauses the simulation genuinely
+ * stops and the client keeps receiving frozen snapshots. That freeze used to be
+ * silent and the client could not unpause. Announce the pause state on the
+ * existing GE_* relay so the client can show who paused. */
+static void broadcast_host_pause(bool paused) {
+    if (!game.net_host_mode) return;
+    event_emit(g_events, GE_HOST_PAUSE, ECS_NULL_ENTITY, GEK_NONE,
+               0, 0, paused ? 1.0f : 0.0f, 0, 0, 0);
+    LOG_INFO("NET: host pause state -> %s (relayed)", paused ? "PAUSED" : "PLAYING");
+}
+
 /* Host: relay a curated subset of gameplay events (§6.3) every frame on ch0
  * (reliable/ordered). Entity deaths let clients tidy the mirror ahead of the
  * next snapshot; wave starts feed the client HUD. Runs BEFORE the event bus
@@ -1094,7 +1120,7 @@ static void relay_net_events(void) {
         if (ev->type == GE_ENTITY_DEATH || ev->type == GE_WAVE_START ||
             ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL ||
             ev->type == GE_POINTS || ev->type == GE_DAMAGE ||
-            ev->type == GE_ITEM_PICKUP) {
+            ev->type == GE_ITEM_PICKUP || ev->type == GE_HOST_PAUSE) {
             batch[n++] = (NetRelayedEvent){
                 (uint8_t)ev->type, (uint8_t)ev->kind,
                 (uint16_t)ev->entity,
@@ -1109,6 +1135,8 @@ static void relay_net_events(void) {
 
 /* Client: pull the pending death list + wave flag into the mirror/HUD, then
  * reset the transient queues for the next frame's drain. */
+static bool g_client_was_paused;   /* R13-I4: for pause-state edge detection */
+
 static void drain_net_events(void) {
     NetClient *c = &game.net_client;
     if (game.net_host_mode) return;
@@ -1125,6 +1153,19 @@ static void drain_net_events(void) {
                  c->pending_wave, c->pending_wave_count);
         hud_show_message(&game.hud, msg, 3.0f);
         c->has_pending_wave = false;
+    }
+
+    /* R13-I4: explain the freeze. While the host is paused the simulation really
+     * is stopped, so the mirror stops advancing and the client's world appears
+     * to hang. Announce the transition and keep the message alive for as long as
+     * the pause lasts, so the state is never silent. */
+    if (c->host_paused != g_client_was_paused) {
+        g_client_was_paused = c->host_paused;
+        hud_show_message(&game.hud,
+                         c->host_paused ? "Paused by host" : "Host resumed",
+                         c->host_paused ? 1.0f : 2.0f);
+    } else if (c->host_paused) {
+        hud_show_message(&game.hud, "Paused by host", 1.0f);
     }
 }
 

@@ -21,6 +21,7 @@ static const char *event_type_names[GE_COUNT] = {
     [GE_INPUT]           = "INPUT",
     [GE_POINTS]          = "POINTS",
     [GE_SHOP_PURCHASE]   = "SHOP_PURCHASE",
+    [GE_HOST_PAUSE]      = "HOST_PAUSE",
 };
 
 static const char *event_kind_names[GEK_COUNT] = {

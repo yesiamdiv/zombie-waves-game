@@ -48,6 +48,10 @@ typedef struct {
     uint16_t seq;
     bool left;                   /* intentional leave (LEAVE sent) */
     bool server_stopped;         /* host disconnected / left */
+    /* R13-I4: authoritative host paused the session. The mirror stops advancing
+     * because the simulation really is stopped, so the client shows this instead
+     * of freezing silently. */
+    bool host_paused;
     /* Test seam: advertise a different NET_WIRE_VERSION in the JOIN so a stale
      * client build can be exercised (0 = use the real wire version). */
     uint8_t wire_version_override;

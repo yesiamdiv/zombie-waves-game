@@ -283,6 +283,10 @@ void net_client_update(NetClient *c) {
                                 LOG_INFO("NET: wave %d starting - %d zombies",
                                          c->pending_wave,
                                          c->pending_wave_count);
+                            } else if (e->type == GE_HOST_PAUSE) {
+                                c->host_paused = (e->a != 0.0f);
+                                LOG_INFO("NET: host %s the session",
+                                         c->host_paused ? "PAUSED" : "resumed");
                             }
                         }
                     } else {
