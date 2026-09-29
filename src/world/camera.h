@@ -16,6 +16,9 @@ void camera_init(Camera *cam, int viewport_w, int viewport_h);
 void camera_follow(Camera *cam, Vec2 target, float dt);
 void camera_set_position(Camera *cam, Vec2 pos);
 void camera_apply_zoom(Camera *cam, float dt);
+/* Keep the camera center inside the world so the view never pans past the
+ * border walls into the void (B6). No-op when the viewport exceeds the world. */
+void camera_clamp_world(Camera *cam, float world_w, float world_h);
 
 /* Convert between world and screen space */
 Vec2 camera_world_to_screen(Camera *cam, Vec2 world_pos);

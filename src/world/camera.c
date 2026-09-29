@@ -24,6 +24,26 @@ void camera_apply_zoom(Camera *cam, float dt) {
     cam->zoom = lerp(cam->zoom, cam->target_zoom, 3.0f * dt);
 }
 
+void camera_clamp_world(Camera *cam, float world_w, float world_h) {
+    if (!cam || world_w <= 0.0f || world_h <= 0.0f) return;
+
+    float half_w = cam->viewport_w * 0.5f / cam->zoom;
+    float half_h = cam->viewport_h * 0.5f / cam->zoom;
+
+    /* World smaller than the viewport: keep it centered rather than clamped. */
+    if (world_w <= half_w * 2.0f) {
+        cam->position.x = world_w * 0.5f;
+    } else {
+        cam->position.x = clampf(cam->position.x, half_w, world_w - half_w);
+    }
+
+    if (world_h <= half_h * 2.0f) {
+        cam->position.y = world_h * 0.5f;
+    } else {
+        cam->position.y = clampf(cam->position.y, half_h, world_h - half_h);
+    }
+}
+
 Vec2 camera_world_to_screen(Camera *cam, Vec2 world_pos) {
     Vec2 offset = vec2_sub(world_pos, cam->position);
     offset = vec2_scale(offset, cam->zoom);

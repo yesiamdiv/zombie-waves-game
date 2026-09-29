@@ -74,10 +74,12 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
 
 ## B6. Camera shows empty void beyond map edges
 
-- **Status**: OPEN (Sprint 3 — see `docs/SPRINT_PLAN.md`)
+- **Status**: FIXED (*Sprint 3*)
 - **Symptom**: Near the border walls the camera pans past the map into black
   nothing (most visible on the small snow 34x34 map).
 - **Investigation**: `camera_follow` (camera.c:14-17) lerps toward the target
   with no clamp against `GameWorld` bounds.
-- **Fix**: TBD (plan: clamp camera center to world bounds minus half-viewport;
-  skip clamp when the viewport exceeds the world).
+- **Fix**: Added `camera_clamp_world(cam, world_w, world_h)` — clamps the camera
+  center to `[half-viewport, world-size - half-viewport]`; when the world fits
+  inside the viewport it is kept centered instead. Wired into `main.c` right
+  after `camera_follow` each playing frame.

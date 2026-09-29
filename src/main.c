@@ -391,6 +391,8 @@ static void update(float dt) {
             if (game.player_entity != ECS_NULL_ENTITY &&
                 ecs_is_alive(&game.ecs, game.player_entity)) {
                 camera_follow(&game.camera, ecs_get_position(&game.ecs, game.player_entity)->pos, dt);
+                camera_clamp_world(&game.camera,
+                                   game.world.world_pixel_w, game.world.world_pixel_h);
             }
 
             hud_update(&game.hud, dt);

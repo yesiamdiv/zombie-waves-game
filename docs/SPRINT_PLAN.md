@@ -26,7 +26,7 @@ Raised: 2026-09-29 (post-playtest code sweep) | Board: docs/FUTURE_IDEAS.md for 
 |--------|-------|----------|------------------------------|------------|--------|
 | **B4** HUD damage flash never triggers | DEV | High | `hud->damage_flash` is only decremented/drawn (hud.c:8,15-17,189-192); nothing sets it on player hurt. Dead overlay | `hud_track_player_hp()` arms the flash on any HP drop (first call = baseline; healing never false-triggers); `hud_draw` calls it per frame | FIXED `81f3bd3` |
 | **B5** Ammo pickup does nothing | DEV | Medium | `ITEM_AMMO` case empty in `items_check_pickup` (items.c:117-119); pistol ammo unlimited | `items_check_pickup` gains a `PlayerInventory*`; ammo pickup refills +1 grenade (grenades unlocked) / +2 rockets (launcher unlocked) | FIXED `da515eb` |
-| **B6** Camera shows void at map edges | DEV | Medium | `camera_follow` never clamps to world bounds (camera.c:14-17) | Clamp camera center to `[half-view, world-size - half-view]` in `camera_follow`; skip clamp if view bigger than world | OPEN |
+| **B6** Camera shows void at map edges | DEV | Medium | `camera_follow` never clamps to world bounds (camera.c:14-17) | `camera_clamp_world()` clamps camera center to `[half-view, world-size - half-view]`; centers when the world fits the viewport; called after `camera_follow` | FIXED |
 
 ## 3. Acceptance criteria (definition of done, per ticket)
 
@@ -37,7 +37,9 @@ Raised: 2026-09-29 (post-playtest code sweep) | Board: docs/FUTURE_IDEAS.md for 
   none granted it remains a safe no-op pickup (no crash). — **DONE**:
   `test_item_ammo_pickup` covers pistol-only no-op and owned-weapon refill.
 - **B6**: walking to a map corner keeps the whole view inside the map; camera
-  still centers correctly on the player mid-map.
+  still centers correctly on the player mid-map. — **DONE**:
+  `test_camera_clamp_world` covers mid-map no-op, corner clamping, and the
+  world-smaller-than-viewport centering case.
 
 ## 4. Definition of done (all tickets)
 

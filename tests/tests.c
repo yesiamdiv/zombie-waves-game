@@ -15,6 +15,7 @@
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
 #include "ui/hud.h"
+#include "world/camera.h"
 #include "config.h"
 
 /* Normal-play default; the game binary overrides via debug flags. */
@@ -297,6 +298,40 @@ static void test_item_ammo_pickup(void) {
     items_check_pickup(&ecs, player, &inv);
     CHECK(inv.grenades == 2);
     CHECK(inv.launcher_ammo == 4);
+}
+
+static void test_camera_clamp_world(void) {
+    LOG_INFO("--- Test: Camera clamps to world bounds (B6) ---");
+    Camera cam;
+    camera_init(&cam, 1280, 720);   /* viewport: half 640 x 360 */
+
+    float world_w = 2944.0f;        /* 46x34 tiles @ 64px */
+    float world_h = 2176.0f;
+
+    /* Mid-world: no clamping (position is well inside). */
+    cam.position = vec2(world_w * 0.5f, world_h * 0.5f);
+    camera_clamp_world(&cam, world_w, world_h);
+    CHECK(fabsf(cam.position.x - world_w * 0.5f) < 0.001f);
+
+    /* Far corner: clamp to half-viewport margins. */
+    cam.position = vec2(0.0f, 0.0f);
+    camera_clamp_world(&cam, world_w, world_h);
+    CHECK(cam.position.x == 640.0f);
+    CHECK(cam.position.y == 360.0f);
+
+    cam.position = vec2(world_w, world_h);
+    camera_clamp_world(&cam, world_w, world_h);
+    CHECK(cam.position.x == 2944.0f - 640.0f);
+    CHECK(cam.position.y == 2176.0f - 360.0f);
+
+    /* World smaller than the viewport: keep centered, no void. */
+    Camera small;
+    camera_init(&small, 1280, 720);
+    float tiny_w = 800.0f, tiny_h = 600.0f;
+    small.position = vec2(99999.0f, -99999.0f);
+    camera_clamp_world(&small, tiny_w, tiny_h);
+    CHECK(small.position.x == 400.0f);
+    CHECK(small.position.y == 300.0f);
 }
 
 static void test_entity_limit(void) {
@@ -1002,6 +1037,7 @@ int tests_run_all(void) {
     test_items();
     test_hud_damage_flash();
     test_item_ammo_pickup();
+    test_camera_clamp_world();
     test_entity_limit();
     test_wave_completion();
     test_script_aim_shot();

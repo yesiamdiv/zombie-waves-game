@@ -84,3 +84,26 @@ DEV work interleaved (team structure per `AGENTS.md`).
 
 ### Blocked
 - None.
+
+---
+
+## Session 2026-09-29 (cont.) — Sprint 3 DEV: B6 DONE → Sprint complete
+
+### PM standup — planned / in progress
+- B6 ticket: stop the camera panning into the void past map edges.
+
+### DEV — done (B6)
+- **B6 fixed** — `fix(camera): clamp view inside world bounds`.
+  - Added `camera_clamp_world()` (camera.c/h): clamps camera center to
+    `[half-viewport, world-size - half-viewport]`, centers when the world fits
+    the viewport. Wired after `camera_follow` in `main.c` each playing frame.
+  - Added `test_camera_clamp_world` (7 checks).
+- **Verification**: zero-warning build, `ctest` 1/1 pass, `zombie_tests`
+  285/285 (was 278).
+
+### PM — review
+- Sprint 3 closed: B4 `81f3bd3`, B5 `da515eb`, B6 (this commit). All three
+  bugs from the code sweep FIXED with tests; suite grew 262 → 285.
+
+### Blocked
+- None.
