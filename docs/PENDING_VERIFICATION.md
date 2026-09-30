@@ -1,0 +1,93 @@
+# Pending verification & known-open work
+
+Written 2026-09-30 on `feature/multiplayer`, before the cross-branch merge, so
+the items survive into `main`.
+
+These are **not** regressions and **not** known-broken. They are things that are
+believed fixed or believed correct but have **not** been proven, plus two items
+deliberately left open. Nothing here blocks the merge.
+
+## Why this file exists
+
+The R13 fix series was verified almost entirely headlessly. That is a real limit,
+not a formality:
+
+- `render()` returns immediately when `game.headless` is set, so **no visual
+  change can be verified headlessly at all**.
+- The `--script` harness cannot trigger the pause menu. It sets *held* keys
+  (`input.keys[]`) while `input_key_pressed()` reads the *press-edge* array
+  (`keys_pressed[]`), which only real SDL events fill. A scripted
+  `key Escape down` is a no-op for pause.
+- On this machine `xdotool` is absent, `libXtst` is present but the XTEST
+  extension is **not** available on the XWayland display (`XTestQueryExtension`
+  returns present=0), GNOME's screenshot D-Bus API is blocked, and
+  `ffmpeg x11grab` cannot see composited Wayland windows (mean luma ~16/255).
+  So a real keypress and a real screenshot are both unavailable to an agent here.
+
+The last point is why **R13-I5 survived nine commits**: it is a visual defect,
+and every automated gate in this repo is blind to visual defects.
+
+## Verified (safe to close)
+
+Headless-verified, reproducible, in `docs/R13_BUGFIX_TRACKER.md`:
+
+- R13-C1 wave budget uses real player count — 2P waves 1-3 =
+  `10/1.85/1.00`, `13/1.75/1.15`, `16/1.65/1.30`
+- R13-C2 remote player entity spawns and is reconciled; client mirror `ents` grows
+- R13-C3 + D1 client log carries `WAVE_START`/`KILL`/`POINTS`/`DAMAGE`/`ITEM_PICKUP`;
+  `KILL == POINTS` counts align per kill
+- R13-I1 mirror clock does not pin — `host_sim` 1.04 → 85.04, 0 non-increasing
+  steps, 0 samples clamped at 1.000
+- R13-I6 mid-match joiner anchors to `world_get_spawn_point()` — spawns at
+  `(1510, 1470)` = spawn `(1440, 1440)` + `(70, 30)`
+- R13-I4 relay half — `GE_HOST_PAUSE` reaches the client and logs
+  `host PAUSED` / `host resumed` (`EVT=HOST_PAUSE` x2)
+- SP gate held throughout: Release `-Werror`, 0 project warnings, `ctest` 3/3,
+  same-seed diff-empty, wave 1 `8z/1.90s/1.00`
+
+## OPEN — real defect, deliberately left open
+
+### R13-I5 — the client renders dots, not sprites (Major, open)
+
+**Status: OPEN by decision.** Tracked in `docs/R13_BUGFIX_TRACKER.md`.
+
+The host draws entities from their own `CSprite` (players are
+`sprite_rect(16, 16, color)`). The client runs a different renderer,
+`system_render_mirror`, which never reconstructs sprite geometry — it switches
+on `NetEntitySnap.kind` and invents a circle size per kind (player 10px, zombie
+11px, bullet 3px, item 7px). Same player, two windows, two shapes.
+
+Colour is correct (`net_slot_color(0) == COLOR_BLUE`), so it is purely shape/size.
+
+**To fix:** make `system_render_mirror` call the same `sprite_rect` /
+`sprite_circle` constructors the host's spawners use, keyed off
+`NetEntitySnap.kind`. Do **not** widen the snapshot — that changes
+`NET_SNAP_ENTRY_BYTES` (26) and the wire version. Alternative considered and
+rejected; rationale is in the tracker.
+
+**Note:** R13-I2a/I2b (beacon under player) could not have caught this. On the
+client there was never a real player sprite underneath, so ordering a beacon
+under a 10px dot looks correct while the character is still missing.
+
+## UNVERIFIED — believed working, not proven
+
+Each needs a real on-device two-instance run with a human looking at the screen.
+
+| ID | What is unproven | How to check |
+|---|---|---|
+| M8 | **The client freeze itself.** Headless proves the *relay* arrives. It does not prove the client actually stops simulating/rendering or shows "Paused by host". A GUI run showed the host paused for 109 frames while the guest paused **0**, but that host was launched without `--events` and the guest logged no relayed event at all, so the run could not distinguish a real failure from a broken harness. Treated as unproven, not passing. | Two windows, host launched **with** `--events`. Press ESC on the host. Guest must freeze and show "Paused by host"; a second ESC must resume it with "Host resumed". |
+| M5-GUI | R13-N1 — the client bot acts on the snapshot mirror rather than a local ECS. The headless mirror clock is proven; the *behaviour* is not. | Guest runs `--ai=bot`; its bot must aim and shoot at zombies the host spawned. |
+| M6 | R13-I2a/I2b — the remote player is visible on the client and its beacon sits *under* the sprite, not over it. | Guest window: host's avatar readable as a character, marker beneath it. |
+| M7 | R13-I3 — dropped-item bullets render and clear on pickup. | Host or guest window: bullet visible on drop, gone after pickup. |
+
+## Known harness gaps worth fixing later
+
+- `playtesting_prompts/07_*` does not exist. `AGENTS.md` refers to `01…08`, and
+  `playtesting_prompts/findings/07_R13_interactive_device_test_2026-09-25.md` is
+  a *findings* file from a run, not a prompt that was ever committed. Either
+  write `07` or renumber `08` -> `07`.
+- A scripted ESC cannot pause (above). If scripted playtests ever need to drive
+  pause, the script harness must also populate the press-edge array, or the
+  harness needs a `key` action that pushes a real event.
+- No automation exists for a visual assertion. Everything in the M5-GUI/M6/M7
+  column depends on a human or a vision-capable agent.
