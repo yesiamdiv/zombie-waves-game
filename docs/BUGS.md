@@ -157,3 +157,46 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
   tile buffers on shutdown.
 - **Root cause (confirmed)**: No cleanup path existed for the heap tile grid.
 - **Fix**: `world_free()` frees tile memory; wired into game shutdown.
+## B12. Cross-branch merge silently dropped seven shipped features
+
+- **Status**: FIXED (commit `eda5cd9`)
+- **Symptom**: No build error and no git conflict. `feature/multiplayer` had
+  been developed against an older `main`, so features simply were not present:
+  zombie melee contact dealt no damage and no movement slow, the sword hit a
+  single point instead of sweeping a blade, and the game aborted with
+  `free(): invalid pointer` in the test suite.
+- **Root cause (confirmed)**: git only reports overlapping *edits*. Where
+  `feature/multiplayer` had reverted a file to an older state and
+  `feature/assets-maps` had not touched it, the merge silently kept the revert.
+  `CROSS_BRANCH_CONFLICTS.md` predicted 3 such traps; there were 7. Six were
+  assets features; the seventh was **`main`'s own** behaviour
+  (`CPlayerTag.slow_timer`, `zombie_damage_player()`, `PLAYER_HURT_SLOW_*`,
+  zombie-contact damage, `CZombieTag.sword_hit_timer`, `CSwordTag.outer_radius`,
+  `vec2_closest_on_segment()`, blade renderer), so leaving it out would have
+  regressed `main` rather than the assets branch.
+- **Fix**: restored all seven, keeping the multiplayer behaviour:
+  `zombie_damage_player()` takes its target explicitly so the "damage the player
+  it actually chased" fix survives alongside main's knockback and slow; the
+  sword regained per-zombie hit cooldowns so one sweep can slash several; the
+  blade sweeps inner→outer radius with a segment test. Separately,
+  `GameWorld` owns a heap `tiles` buffer and must be zero-initialized before
+  `world_init()`/`world_free()` — the multiplayer tests had dropped the `= {0}`
+  and aborted once the heap world was restored. See `MERGE_DECISIONS.md`.
+
+## B13. Joining client built the wrong world
+
+- **Status**: FIXED (commit `eda5cd9`)
+- **Symptom**: With the map-select screen added, a joining client built whichever
+  map its own never-shown picker happened to hold. If the host had chosen a
+  different map, the two windows silently disagreed about terrain, spawn point
+  and theme.
+- **Root cause (confirmed)**: the world identity sent in `NET_PKT_HELLO` was a
+  seed and a world-generation version — no map index — so the client had no way
+  to learn the host's choice.
+- **Fix**: `NET_PKT_HELLO` carries `uint8_t map_index` after `world_gen`
+  (`NET_WIRE_VERSION` 2→3, `NET_WORLD_GEN_VERSION` 1→2). `reset_game()` loads
+  the host's map when one was received; headless runs still use the fixed
+  classic world so the determinism gate holds. An out-of-range index is
+  **rejected** rather than falling back to a default world, which would keep the
+  desync. New `--map=N` flag presets the map-select index so this is testable
+  without a GUI.

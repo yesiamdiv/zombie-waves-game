@@ -145,3 +145,27 @@ into `main` this sheet is merged with whatever `main` carries.
   `[half-viewport, world-size - half-viewport]`; when the world fits inside the
   viewport it is kept centered. Called after `camera_follow` in `main.c`.
 - Covered by `test_camera_clamp_world`.
+## F13. Host-authoritative map identity in the net handshake
+
+- **Status**: SHIPPED (commit `eda5cd9`)
+- The host's map selection travels in the `HELLO` packet as a `uint8_t
+  map_index`, so a joining client builds the *host's* world rather than its own
+  unshown picker's choice. An unknown index is rejected instead of silently
+  falling back, which would desync the two instances.
+- `--map=N` presets the map-select index from the command line (applied after
+  `init()`, since `map_select_init()` resets the selection), making the host's
+  map scriptable and the handshake verifiable without driving the GUI.
+- Verified: host `--map=2` advertises `map=2`; the client logs
+  `hello ... map=2` and then builds `Snow (34x34, Snow)`, matching the host.
+
+## F14. Cross-branch merge: both engines on one branch
+
+- **Status**: SHIPPED (commit `eda5cd9`)
+- `feature/assets-maps` is merged into `feature/multiplayer`, so a single branch
+  carries the texture/theme/map engine and the multiplayer engine. `main` is an
+  ancestor of both.
+- Resolution rule: **multiplayer structure wins, assets behaviour wins** — the
+  `Player *`/`MAX_PLAYERS`/netcode shape from multiplayer, textures, themes,
+  maps, registry and pickup/camera behaviour from assets.
+- Full resolution table, including the seven silent breaks git reported no
+  conflict for, is in `MERGE_DECISIONS.md`.
