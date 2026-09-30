@@ -42,6 +42,8 @@ session and follow it.
 - `docs/SPRINT_PLAN.md` — current sprint: goals, scope, ticketed bugs/features,
   acceptance, definition of done, owner tags (PM/DEV).
 - `docs/FUTURE_IDEAS.md` — backlog of ideas not yet started.
+- `docs/FEATURES.md` — feature sheet; add an entry for each shipped feature
+  (like BUGS.md but for additions).
 - `docs/PROGRESS.md` — session log: what was found and what was done (with
   commit refs), kept as a running narrative.
 - `docs/ASSET_MAP_PLAN.md` / `docs/EXTENDING.md` — asset & API docs; keep in
