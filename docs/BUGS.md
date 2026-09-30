@@ -1,7 +1,30 @@
 # Bug Sheet
 
-Status tracking for gameplay/UI bugs reported during playtesting. Each bug
-gets a fix commit; this file records the symptom, root cause, and resolution.
+Complete tracking sheet for every bug found and fixed across the commits of
+the **assets worktree** (branch `feature/assets-maps`). This sheet is scoped to
+this worktree only; when the branch is merged into `main`, it will be merged
+with the bug sheet that `main` carries.
+
+Each bug gets a fix commit; statuses below are for the current HEAD of
+`feature/assets-maps`.
+
+## Tracking table
+
+| # | Bug | Fix commit | Status |
+|---|-----|------------|--------|
+| B1 | Main menu UI overlaps (hardcoded padding) | `19ce2a1` | FIXED |
+| B2 | Entity sprites show black where transparent (baked-black alpha) | `f8c95ac` | FIXED |
+| B3 | Dropped item sprites too small to notice | `fdb5bc8` | FIXED |
+| B4 | HUD damage flash never triggers | `81f3bd3` | FIXED |
+| B5 | Ammo pickup does nothing | `da515eb` | FIXED |
+| B6 | Camera pans past map edges into empty void | `8967a99` | FIXED |
+| B7 | Textures/maps not found when game is launched outside the repo root | `61a0b6b` | FIXED |
+| B8 | Tests can't resolve map assets when run via ctest (wrong CWD) | `0520d30` | FIXED |
+| B9 | Uninitialized stack `GameWorld` in tests (crash after heap tiles) | `4dc1740` | FIXED |
+| B10 | Stone wall generator produced flat red walls | `f8c95ac` | FIXED |
+| B11 | World tiles leaked on shutdown (missing `world_free`) | `b9b8987` | FIXED |
+
+## Detailed entries
 
 ## B1. Main menu UI overlaps (padding)
 
@@ -27,14 +50,14 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
   ...)` for all art, and background pixels were palette `(0,0,0)` *opaque
   black* — the transparent background was baked in as black. Also found a
   latent generator bug: `stone_wall()` unpacked the base color's channels
-  into separate palette entries, producing flat red walls (`(126,0,0)`).
-  `asset_manager_get()` also never set a texture blend mode, so alpha would
-  not blend even once the PNGs had it.
+  into separate palette entries, producing flat red walls `(126,0,0)`
+  (tracked separately as B10). `asset_manager_get()` also never set a texture
+  blend mode, so alpha would not blend even once the PNGs had it.
 - **Fix**: `render()` writes RGBA with `(0,0,0,0)` for the `.` background;
   `stone_wall()` derives dark/bright from the full RGB base; every loaded
   texture gets `SDL_BLENDMODE_BLEND`.
 - **Regression check**: all 33 PNGs are now RGBA; entity corners are fully
-  transparent (`(0,0,0,0)`), walls carry true material colors.
+  transparent `(0,0,0,0)`, walls carry true material colors.
 
 ## B3. Dropped item sprites too small
 
@@ -62,7 +85,7 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
 
 ## B5. Ammo pickup does nothing
 
-- **Status**: FIXED (*Sprint 3*)
+- **Status**: FIXED (commit `da515eb`) — *Sprint 3*
 - **Symptom**: Running over the yellow ammo pickup has zero effect (pistol has
   unlimited ammo); pickup is a dead action.
 - **Investigation**: `ITEM_AMMO` case in `items_check_pickup` (items.c:117-119)
@@ -74,7 +97,7 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
 
 ## B6. Camera shows empty void beyond map edges
 
-- **Status**: FIXED (*Sprint 3*)
+- **Status**: FIXED (commit `8967a99`) — *Sprint 3*
 - **Symptom**: Near the border walls the camera pans past the map into black
   nothing (most visible on the small snow 34x34 map).
 - **Investigation**: `camera_follow` (camera.c:14-17) lerps toward the target
@@ -83,3 +106,54 @@ gets a fix commit; this file records the symptom, root cause, and resolution.
   center to `[half-viewport, world-size - half-viewport]`; when the world fits
   inside the viewport it is kept centered instead. Wired into `main.c` right
   after `camera_follow` each playing frame.
+
+## B7. Textures/maps not found when launched outside the repo root
+
+- **Status**: FIXED (commit `61a0b6b`)
+- **Symptom**: Running the game from a menu shortcut, double-click, or any CWD
+  other than the repo root renders no textures and loads no maps.
+- **Root cause (confirmed)**: `asset_manager` resolved via `SDL_GetBasePath()`
+  then CWD — both pointed away from `assets/` unless launched from the repo
+  root.
+- **Fix**: CMake copies `assets/` next to the game binary in the build target
+  dir, so `SDL_GetBasePath()` resolves textures and maps regardless of the
+  launch directory.
+
+## B8. Tests can't resolve map assets when run via ctest
+
+- **Status**: FIXED (commit `0520d30`)
+- **Symptom**: `ctest` ran `zombie_tests` from the build dir with the working
+  directory set to the build dir, so `world_load_map()` failed to find
+  `assets/maps/*.map` and map tests failed/fell back unexpectedly.
+- **Fix**: ctest now runs `zombie_tests` from the source dir so map assets
+  resolve.
+
+## B9. Uninitialized stack GameWorld in tests
+
+- **Status**: FIXED (commit `4dc1740`)
+- **Symptom**: Tests that declared `GameWorld world;` on the stack crashed or
+  misread fields after the tile grid became heap-allocated.
+- **Root cause (confirmed)**: The tile grid is now `world.width x world.height`
+  heap memory; uninitialized stack `GameWorld`s carried garbage `width/height`,
+  so `world_init` wrote/read out of bounds.
+- **Fix**: All stack `GameWorld` declarations in tests are zero-initialized
+  (`GameWorld world = {0};`).
+
+## B10. Stone wall generator produced flat red walls
+
+- **Status**: FIXED (commit `f8c95ac`)
+- **Symptom**: Stone wall art rendered as a single flat red `(126,0,0)` with no
+  dark/bright shading.
+- **Root cause (confirmed)**: `stone_wall()` in `tools/gen_assets.py` unpacked
+  the base color's channels into separate palette entries instead of deriving
+  variants from the full RGB base.
+- **Fix**: `stone_wall()` derives dark/bright variants from the full base RGB;
+  walls carry true material colors.
+
+## B11. World tiles leaked on shutdown
+
+- **Status**: FIXED (commit `b9b8987`)
+- **Symptom**: With heap-allocated tile grids, repeated runs leaked the world's
+  tile buffers on shutdown.
+- **Root cause (confirmed)**: No cleanup path existed for the heap tile grid.
+- **Fix**: `world_free()` frees tile memory; wired into game shutdown.
