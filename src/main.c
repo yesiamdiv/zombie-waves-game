@@ -203,14 +203,15 @@ static void sync_remote_player_slots(void) {
         bool occupied = game.net_server.slot_used[s];
         if (occupied && !game.players[s].in_use) {
             SDL_FColor col = net_slot_color(s);
-            Vec2 ps;
-            if (game.players[0].entity != ECS_NULL_ENTITY) {
-                const CPosition *p0 =
-                    ecs_get_position(&game.ecs, game.players[0].entity);
-                ps = vec2(p0->pos.x + (float)(s * 70), p0->pos.y + (float)(s * 30));
-            } else {
-                ps = vec2((float)(s * 70), (float)(s * 30));
-            }
+            /* R13-I6: anchor to the world spawn point, exactly like the
+             * match-start spawn (main) and the beacon anchor (roster). This
+             * used to offset from players[0]'s *live* position, which dropped
+             * a mid-match joiner wherever the host happened to be standing --
+             * commonly inside the spawner structure -- and put the body
+             * somewhere its own beacon anchor was not. One anchor for all
+             * three call sites. */
+            Vec2 base = world_get_spawn_point(&game.world);
+            Vec2 ps = vec2(base.x + (float)(s * 70), base.y + (float)(s * 30));
             if (player_respawn(game.players, &game.ecs, s,
                                game.net_server.slot_names[s][0]
                                    ? game.net_server.slot_names[s]
