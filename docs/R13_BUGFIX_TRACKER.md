@@ -29,7 +29,7 @@ Single source of truth for every bug the playtester agent reported against the
 | R13-N2 | Minor | Legacy `main` won't compile | NOT ACTIONABLE — see below | — |
 | R13-I4 | Question | Host pause freezes client | **FIXED** (decision below) | `a555040` |
 | R13-I5 | Major | Client draws dots, not sprites | **OPEN — needs a decision** | — |
-| R13-I6 | Major | Remote spawns at host's feet | **OPEN** | — |
+| R13-I6 | Major | Remote spawns at host's feet | **FIXED** | `HEAD` |
 
 ## Fixed in `bc6d87c` (round 1)
 
@@ -252,3 +252,13 @@ beacon are at two different places.
 spawns, including the mid-match path. Drop the `players[0]`-relative branch
 entirely rather than keeping it as a fallback, so there is exactly one place that
 decides where a player starts.
+
+**Fixed.** The world spawn point is `(1440, 1440)`; a peer joining 25 s into a
+match now spawns at `(1510, 1470)` = spawn + `(70, 30)` instead of at the host's
+feet, and its subsequent respawn reuses that same beacon, so body and beacon
+agree. Gate: clean Release, 0 project warnings, `ctest` 3/3, same-seed SP
+diff-empty, SP wave 1 `8z/1.90s/1.00`, 2P waves 1-2 `10/1.85/1.00` and
+`13/1.75/1.15`.
+
+Note this path is unreachable from a headless join at t=0, which takes the
+match-start branch instead -- another reason it only showed up on-device.
