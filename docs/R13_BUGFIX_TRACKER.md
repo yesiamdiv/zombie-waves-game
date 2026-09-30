@@ -28,6 +28,8 @@ Single source of truth for every bug the playtester agent reported against the
 | R13-I1 | Major | Client stutter | **FIXED** | `60033a1` |
 | R13-N2 | Minor | Legacy `main` won't compile | NOT ACTIONABLE — see below | — |
 | R13-I4 | Question | Host pause freezes client | **FIXED** (decision below) | `a555040` |
+| R13-I5 | Major | Client draws dots, not sprites | **OPEN — needs a decision** | — |
+| R13-I6 | Major | Remote spawns at host's feet | **OPEN** | — |
 
 ## Fixed in `bc6d87c` (round 1)
 
@@ -186,3 +188,67 @@ instrumentation in a shared code path must be gated on `net_host_mode`.
 "Paused by host" / "Host resumed" HUD notice, the client's frozen rendering, and the
 guest ghost holding still. Milestone M8 of `playtesting_prompts/08_playtest_r13_fix_verification.md`.
 
+
+## R13-I5 — the client renders dots, not sprites (found on-device 2026-09-29)
+
+**Reported by:** the user, watching two real windows — "the player shapes are
+different for client and host".
+
+**Root cause:** the host and the client do not share a renderer.
+
+| | host | client |
+|---|---|---|
+| entry point | `system_render_entities` (`src/systems/render.c`) | `system_render_mirror` (`src/systems/render.c`) |
+| player | the entity's own `CSprite`, built by `spawn_player_entity` as `sprite_rect(16, 16, color)` | hardcoded `sprite_circle(10.0f, net_slot_color(slot))` |
+| zombie | real `CSprite` | `sprite_circle(11.0f, COLOR_GREEN)` |
+| bullet / item | real `CSprite` | `sprite_circle(3.0f)` / `sprite_circle(7.0f)` |
+
+`system_render_mirror` never reconstructs sprite geometry. It switches on
+`NetEntitySnap.kind` and invents a circle size per kind, so every entity in a
+joined client's world is a flat dot. Colour is correct — `net_slot_color(0)` is
+`COLOR_BLUE`, the same constant the host's local player uses — so the mismatch
+is purely shape and size.
+
+**Why I2a/I2b did not catch this:** those fixes made the beacon render *beneath*
+the player instead of over it, and both were only ever checked as "is the beacon
+in front". On the client there was never a real player sprite underneath to
+reveal, so ordering a beacon under a 10px circle looks like a successful fix
+while the actual character is still missing. This is the case
+`08_playtest_r13_fix_verification.md` M6 was written to catch, and the one class
+of defect I could not check myself — see "Not re-verified headlessly".
+
+**Decision: mirror the host's shape constructors client-side; do not put sprite
+geometry on the wire.** `system_render_mirror` should call the same
+`sprite_rect` / `sprite_circle` constructors that `spawn_player_entity` and the
+zombie/item spawners use, keyed off `NetEntitySnap.kind`, so both processes agree
+on shape without touching `NET_SNAP_ENTRY_BYTES` or the wire version.
+
+**Rejected: send the sprite over the snapshot.** It would keep the two renderers
+honest automatically, but it widens every snapshot entry, changes
+`NET_SNAP_ENTRY_BYTES` (26) and the wire version, and pushes render concerns into
+the netcode. Not worth it while a shared shape table is sufficient.
+
+## R13-I6 — a mid-match joiner spawns at the host's feet (found on-device 2026-09-29)
+
+**Reported by:** the user, watching two real windows — "when they are spawned for
+one of them i can see that it looks like they spawned under the spawner area".
+
+**Root cause:** three places establish a player position and they disagree on the
+anchor. Only the mid-match path is wrong.
+
+| site | anchor | |
+|---|---|---|
+| `main.c:150` local player, and `main.c:161` remote slots at match start | `world_get_spawn_point() + (s*70, s*30)` | correct |
+| `main.c:205` `sync_remote_player_slots()` — the mid-match join path | **the host's live position** `+ (s*70, s*30)` | **wrong** |
+| `main.c:261` beacon anchor for a roster slot | `world_get_spawn_point() + (s*70, s*30)` | correct |
+
+`sync_remote_player_slots()` reads `players[0]`'s current position and offsets from
+it, so a peer that joins while the host is loitering next to the spawner structure
+is materialised inside it. It is also self-inconsistent: the same slot's beacon
+anchor is set from the world spawn point, so on a mid-match join the body and its
+beacon are at two different places.
+
+**Decision:** use `world_get_spawn_point()` as the single anchor for all player
+spawns, including the mid-match path. Drop the `players[0]`-relative branch
+entirely rather than keeping it as a fallback, so there is exactly one place that
+decides where a player starts.
