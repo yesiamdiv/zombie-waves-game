@@ -24,6 +24,11 @@ typedef struct {
     uint8_t slot;                /* slot assigned by the host */
     uint32_t seed;               /* world seed to adopt (P3 sim parity) */
     uint32_t world_gen;
+    /* R13 merge: map the host is playing, learned from the HELLO. The client
+     * must load exactly this map, otherwise the two windows disagree about
+     * terrain, spawn point and theme. Valid only once CONNECTED. */
+    uint8_t map_index;
+    bool map_index_valid;
     uint8_t reject_reason;       /* when state == REJECTED */
     uint8_t flags;               /* rejection flags (version/world mismatch) */
 

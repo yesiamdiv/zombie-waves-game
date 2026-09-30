@@ -37,9 +37,22 @@ static Entity spawn_player_entity(World *ecs, Vec2 pos, const SDL_FColor *color)
     *ecs_get_collider(ecs, e) = (CCollider){14.0f, false};
 
     SDL_FColor pc = color ? *color : COLOR_BLUE;
+    /* R13 merge: restore the assets texture path. `feature/multiplayer` had
+     * reverted this to a flat rect for determinism, but textures never affect
+     * simulation - and headless falls through to the flat rect anyway because
+     * the asset manager is a no-op there. The caller-supplied color wins: in
+     * co-op that is net_slot_color(), which must match what the client's
+     * mirror draws for this slot. */
+    Sprite ps = sprite_rect(16.0f, 16.0f, pc);
+    SDL_Texture *player_tex = sprite_tex("textures/entities/player.png");
+    if (player_tex) {
+        /* 32px art at scale 0.5 renders as the original 16x16 world unit. */
+        ps = sprite_texture(player_tex);
+        ps.color = pc;
+    }
     *ecs_get_sprite(ecs, e) = (CSprite){
-        .sprite = sprite_rect(16.0f, 16.0f, pc),
-        .scale = 1.0f,
+        .sprite = ps,
+        .scale = 0.5f,
         .base_alpha = 1.0f
     };
     return e;

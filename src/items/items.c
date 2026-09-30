@@ -1,5 +1,6 @@
 #include "items/items.h"
 #include "events/event_bus.h"
+#include "graphics/sprite.h"
 #include "core/log.h"
 #include <stdlib.h>
 
@@ -41,10 +42,26 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
             name = "Unknown";
     }
 
+    /* Textured pickup with a flat-color fallback: headless runs and missing
+     * art still render a readable, correctly-sized pickup. */
+    const char *item_tex = NULL;
+    switch (type) {
+        case ITEM_HEALTH:      item_tex = "textures/entities/medkit.png"; break;
+        case ITEM_AMMO:        item_tex = "textures/entities/ammo.png"; break;
+        case ITEM_SPEED_BOOST: item_tex = "textures/entities/speed.png"; break;
+        default: break;
+    }
+    Sprite is = sprite_rect(8.0f, 8.0f, color);
+    SDL_Texture *pickup_tex = sprite_tex(item_tex);
+    if (pickup_tex) {
+        is = sprite_texture(pickup_tex);
+        is.color = COLOR_WHITE;
+    }
+
     *ecs_get_item_tag(ecs, e) = (CItemTag){.type = type, .value = value, .bob_timer = 0};
     *ecs_get_sprite(ecs, e) = (CSprite){
-        .sprite = sprite_rect(8.0f, 8.0f, color),
-        .scale = 1.0f,
+        .sprite = is,
+        .scale = 0.5f,   /* 32px art -> 16 world units, same footprint as player */
         .base_alpha = 1.0f
     };
 
@@ -69,7 +86,7 @@ int items_count_alive(World *ecs) {
     return count;
 }
 
-void items_check_pickup(World *ecs, Entity player) {
+void items_check_pickup(World *ecs, Entity player, PlayerInventory *inv) {
     Vec2 player_pos = ecs_get_position(ecs, player)->pos;
     float pickup_range = 20.0f;
 
@@ -100,7 +117,14 @@ void items_check_pickup(World *ecs, Entity player) {
                     break;
 
                 case ITEM_AMMO:
-                    /* In current impl unlimited ammo, could extend later */
+                    /* Pistol ammo is unlimited, so the ammo pickup is a
+                     * consumable refill instead (B5): it feeds whichever
+                     * owned weapons drain ammo. Unlocking the weapon is the
+                     * gate, so a fresh run's pickup is a safe no-op. */
+                    if (inv) {
+                        if (inv->unlocked[WEAPON_GRENADE]) inv->grenades += 1;
+                        if (inv->unlocked[WEAPON_LAUNCHER]) inv->launcher_ammo += 2;
+                    }
                     break;
 
                 case ITEM_SPEED_BOOST:

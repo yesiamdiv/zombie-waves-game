@@ -62,7 +62,7 @@ typedef struct {
 } CCollider;
 
 typedef struct {
-    int empty;
+    float slow_timer;   /* damage-induced movement slow remaining (seconds) */
 } CPlayerTag;
 
 typedef enum {
@@ -81,8 +81,9 @@ typedef struct {
     float attack_range;
     float hurt_timer;
     /* Entity that last damaged this zombie (a player). Used by system_cleanup
-     * to credit the correct player's inventory for the kill. */
+     * to credit the correct player's inventory for the kill (multiplayer). */
     Entity last_hit_by;
+    float sword_hit_timer;  /* per-zombie re-hit cooldown for the sword sweep */
 } CZombieTag;
 
 typedef struct {
@@ -91,15 +92,17 @@ typedef struct {
     Entity owner;
 } CBulletTag;
 
-/* Spinning sword: orbits the owner while the fire button is held. */
+/* Sweeping sword: orbits the owner while the fire button is held. The handle
+ * pivots on the `radius` circle and the blade tip sweeps the `outer_radius`
+ * circle, so the blade produces a full 360 degree slash. */
 typedef struct {
     Entity owner;
-    float radius;        /* orbit radius around the owner */
+    float radius;        /* inner orbit radius: handle pivot point */
+    float outer_radius;  /* outer orbit radius: blade tip */
     float angle;         /* current angle (radians) */
     float spin_speed;    /* radians / second */
     float damage;
-    float hit_timer;     /* time until the next hit is allowed */
-    float hit_interval;
+    float hit_interval;  /* re-hit cooldown per zombie (seconds) */
 } CSwordTag;
 
 /* Grenade: flies toward the aim point, then explodes in an area of effect. */

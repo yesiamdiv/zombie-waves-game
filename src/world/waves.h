@@ -27,9 +27,12 @@ typedef struct {
 } WaveSystem;
 
 void waves_init(WaveSystem *ws, GameWorld *world);
+/* `players`/`player_count` drive co-op difficulty scaling (R13-C1); the zombie
+ * tint comes from `world->theme`, so a themed map renders themed zombies with
+ * no extra parameter. */
 void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
                   struct Player *players, int player_count, float dt);
-Entity waves_spawn_zombie(World *ecs, Vec2 pos);
+Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme);
 /* Start the next wave. `player_count` drives difficulty scaling (R13):
  * larger groups face more zombies + slightly faster spawns earned per alive
  * player. A player_count of 1 (single-player / tests) MUST be budget-identical

@@ -49,6 +49,46 @@ static Entity nearest_alive_player(World *ecs, const Player *players,
     return best;
 }
 
+/* Shared melee hit on a player: damage, knockback away from the zombie, and a
+ * brief movement slow so the player cannot instantly escape the hit. Used by
+ * both the state-machine attack (zombie_ai, targeting the player it chased) and
+ * direct contact (collision, targeting the player it touches).
+ *
+ * `target` is passed explicitly rather than scanned for, so the hit always
+ * lands on the player the caller meant: the nearest chased player for
+ * system_zombie_ai, the overlapping player for collision. */
+void zombie_damage_player(World *ecs, Entity zombie, Entity target, Vec2 origin) {
+    if (zombie == ECS_NULL_ENTITY || !ecs_is_alive(ecs, zombie)) return;
+    if (target == ECS_NULL_ENTITY || !ecs_is_alive(ecs, target)) return;
+    if (!(ecs->component_masks[target] & (1u << COMP_HEALTH))) return;
+
+    CHealth *hp = ecs_get_health(ecs, target);
+    float prev = hp->current;
+    float dmg = ZOMBIE_ATTACK_DAMAGE * g_zombie_damage_mult;
+    hp->current = prev - dmg;
+    LOG_DEBUG("Zombie hit player! Health: %.0f", hp->current);
+
+    Vec2 ppos = ecs->positions[target].pos;
+    event_emit(g_events, GE_PLAYER_HEALTH, target, GEK_PLAYER,
+               ppos.x, ppos.y, hp->current, hp->max, (int)prev, 0);
+    event_emit(g_events, GE_DAMAGE, target, GEK_PLAYER,
+               ppos.x, ppos.y, dmg, hp->current > 0 ? hp->current : 0,
+               (int)prev, zombie);
+
+    if (ecs_has_component(ecs, target, COMP_VELOCITY)) {
+        Vec2 dir = vec2_sub(ppos, origin);
+        float len = vec2_length(dir);
+        if (len < 0.001f) dir = vec2(1, 0);
+        else dir = vec2_scale(dir, 1.0f / len);
+        CVelocity *pvel = ecs_get_velocity(ecs, target);
+        pvel->vel = vec2_add(pvel->vel, vec2_scale(dir, 200.0f));
+    }
+
+    if (ecs_has_component(ecs, target, COMP_PLAYER_TAG)) {
+        ecs_get_player_tag(ecs, target)->slow_timer = PLAYER_HURT_SLOW_DURATION;
+    }
+}
+
 void system_zombie_ai(World *ecs, Player *players, int player_count, float dt) {
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
         if (!ecs->alive[i]) continue;
@@ -98,21 +138,10 @@ void system_zombie_ai(World *ecs, Player *players, int player_count, float dt) {
                     ztag->state = ZOMBIE_CHASE;
                 } else if (ztag->attack_timer <= 0) {
                     /* Deal damage to the chosen target (the alive player this
-                     * zombie actually chased - not "the first player found"). */
-                    if (ecs_has_component(ecs, target, COMP_HEALTH)) {
-                        CHealth *hp = ecs_get_health(ecs, target);
-                        float prev = hp->current;
-                        float dmg = ZOMBIE_ATTACK_DAMAGE * g_zombie_damage_mult;
-                        hp->current = prev - dmg;
-                        LOG_DEBUG("Zombie hit player! Health: %.0f", hp->current);
-                        event_emit(g_events, GE_PLAYER_HEALTH, target, GEK_PLAYER,
-                                   ecs->positions[target].pos.x, ecs->positions[target].pos.y,
-                                   hp->current, hp->max, (int)prev, 0);
-                        event_emit(g_events, GE_DAMAGE, target, GEK_PLAYER,
-                                   ecs->positions[target].pos.x, ecs->positions[target].pos.y,
-                                   dmg, hp->current > 0 ? hp->current : 0,
-                                   (int)prev, i);
-                    }
+                     * zombie actually chased - not "the first player found").
+                     * Shared with the collision contact path, which shares the
+                     * same per-zombie attack_timer cooldown. */
+                    zombie_damage_player(ecs, i, target, pos->pos);
                     ztag->attack_timer = ztag->attack_cooldown;
                 }
                 break;

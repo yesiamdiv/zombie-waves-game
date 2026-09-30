@@ -18,10 +18,11 @@ int net_decode_join(const uint8_t *buf, int len, NetHeader *h, char *name,
                     int name_cap);
 
 int net_encode_hello(uint8_t *buf, int cap, const NetHeader *h, uint8_t slot,
-                     uint32_t seed, uint32_t world_gen, const char *host_name);
+                     uint32_t seed, uint32_t world_gen, uint8_t map_index,
+                     const char *host_name);
 int net_decode_hello(const uint8_t *buf, int len, NetHeader *h, uint8_t *slot,
-                     uint32_t *seed, uint32_t *world_gen, char *host_name,
-                     int name_cap);
+                     uint32_t *seed, uint32_t *world_gen, uint8_t *map_index,
+                     char *host_name, int name_cap);
 
 int net_encode_reject(uint8_t *buf, int cap, const NetHeader *h, uint8_t reason);
 int net_decode_reject(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason);

@@ -20,6 +20,10 @@ typedef struct {
     char host_name[NET_NAME_CAP];
     uint32_t seed;
     uint32_t world_gen;
+    /* R13 merge: map the host selected, advertised in the HELLO so every client
+     * builds the same world. Defaults to 0 (Grassland) when the host never
+     * opened the picker (e.g. --auto-start). */
+    uint8_t map_index;
 
     bool slot_used[NET_MAX_PLAYERS];                 /* host slot 0 is "used" */
     char slot_names[NET_MAX_PLAYERS][NET_NAME_CAP];  /* display names */
@@ -46,7 +50,7 @@ int net_init(void);
 /* `net_server_init` then start listening on `port`. Slot 0 becomes the host's
  * local player named `host_name`. Returns 0 or -1 (bind failure). */
 int net_server_host(NetServer *s, uint16_t port, const char *host_name,
-                    uint32_t seed, uint32_t world_gen);
+                    uint32_t seed, uint32_t world_gen, uint8_t map_index);
 void net_server_shutdown(NetServer *s);
 
 /* Pump ENet events once per frame (connection accept, handshake, roster

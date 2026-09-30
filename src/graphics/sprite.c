@@ -1,5 +1,11 @@
 #include "graphics/sprite.h"
 #include "core/log.h"
+#include "assets/asset_manager.h"
+
+SDL_Texture *sprite_tex(const char *path) {
+    AssetManager *am = asset_manager_global();
+    return am ? asset_manager_get(am, path) : NULL;
+}
 
 const SDL_FColor COLOR_RED        = {1.0f, 0.2f, 0.2f, 1.0f};
 const SDL_FColor COLOR_GREEN      = {0.2f, 0.9f, 0.2f, 1.0f};
@@ -57,6 +63,59 @@ Sprite sprite_circle(float radius, SDL_FColor color) {
     s.alpha = 1.0f;
     s.rotation = 0.0f;
     return s;
+}
+
+Sprite sprite_texture(SDL_Texture *texture) {
+    Sprite s = {0};
+    s.shape = SPRITE_SHAPE_TEXTURE;
+    s.texture = texture;
+    s.color = COLOR_WHITE;
+    s.alpha = 1.0f;
+    s.rotation = 0.0f;
+    s.src = (SDL_FRect){0, 0, 0, 0};
+    return s;
+}
+
+Sprite sprite_texture_rect(SDL_Texture *texture, SDL_FRect src) {
+    Sprite s = sprite_texture(texture);
+    s.src = src;
+    return s;
+}
+
+void sprite_draw_blade(SDL_Renderer *renderer, SDL_Texture *tex,
+                       float x, float y, float angle,
+                       float length, float width, float scale,
+                       SDL_FColor color, float alpha) {
+    if (length <= 0.0f || width <= 0.0f) return;
+
+    float len = length * scale;
+    float half_w = width * scale * 0.5f;
+    Vec2 dir = vec2_from_angle(angle, 1.0f);
+    Vec2 perp = vec2(-dir.y, dir.x);
+
+    Vec2 handle = vec2(x, y);
+    Vec2 tip = vec2_add(handle, vec2_scale(dir, len));
+    Vec2 off = vec2_scale(perp, half_w);
+
+    SDL_FColor vc = color;
+    vc.a = alpha;
+    if (tex) {
+        SDL_SetTextureColorMod(tex, (Uint8)(color.r * 255.0f),
+                               (Uint8)(color.g * 255.0f),
+                               (Uint8)(color.b * 255.0f));
+        vc = (SDL_FColor){1.0f, 1.0f, 1.0f, alpha};
+    }
+    SDL_Vertex verts[4] = {
+        {.position = {(handle.x - off.x), (handle.y - off.y)}, .color = vc, .tex_coord = {0, 0}},
+        {.position = {(handle.x + off.x), (handle.y + off.y)}, .color = vc, .tex_coord = {1, 0}},
+        {.position = {(tip.x + off.x), (tip.y + off.y)},       .color = vc, .tex_coord = {1, 1}},
+        {.position = {(tip.x - off.x), (tip.y - off.y)},       .color = vc, .tex_coord = {0, 1}},
+    };
+    const int indices[6] = {0, 1, 2, 0, 2, 3};
+    SDL_RenderGeometry(renderer, tex, verts, 4, indices, 6);
+    if (tex) {
+        SDL_SetTextureColorMod(tex, 255, 255, 255);
+    }
 }
 
 void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, float scale, float rotation, float alpha) {
@@ -126,6 +185,37 @@ void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y,
                 SDL_RenderLine(renderer, points_x[i], points_y[i],
                                points_x[i + 1], points_y[i + 1]);
             }
+            break;
+        }
+
+        case SPRITE_SHAPE_TEXTURE: {
+            if (!sprite->texture) break;
+
+            float tw = 0.0f, th = 0.0f;
+            SDL_GetTextureSize(sprite->texture, &tw, &th);
+            SDL_FRect src = sprite->src;
+            if (src.w <= 0.0f) {
+                src = (SDL_FRect){0.0f, 0.0f, tw, th};
+            }
+
+            float w = src.w * scale;
+            float h = src.h * scale;
+            float rot_deg = (rotation + sprite->rotation) * 180.0f / (float)M_PI;
+            SDL_FRect dst = {x - w * 0.5f, y - h * 0.5f, w, h};
+            SDL_FPoint center = {w * 0.5f, h * 0.5f};
+
+            SDL_SetTextureColorMod(sprite->texture,
+                (Uint8)(sprite->color.r * 255.0f),
+                (Uint8)(sprite->color.g * 255.0f),
+                (Uint8)(sprite->color.b * 255.0f));
+            SDL_SetTextureAlphaMod(sprite->texture,
+                (Uint8)(draw_alpha * 255.0f));
+
+            SDL_RenderTextureRotated(renderer, sprite->texture, &src, &dst,
+                                     rot_deg, &center, SDL_FLIP_NONE);
+
+            SDL_SetTextureAlphaMod(sprite->texture, 255);
+            SDL_SetTextureColorMod(sprite->texture, 255, 255, 255);
             break;
         }
 

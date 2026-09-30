@@ -32,7 +32,20 @@ void system_player_input(World *ecs, Player *p, Camera *cam, float dt) {
         move_dir = vec2_normalize(move_dir);
     }
 
-    vel->vel = vec2_scale(move_dir, PLAYER_SPEED);
+    /* Throttle briefly after being hit so the player cannot just sprint away
+     * from a zombie that has landed a blow (assets feature, restored by the
+     * R13 merge). Uses max_speed so the speed-boost pickup - which raises
+     * max_speed - actually takes effect. */
+    float move_speed = vel->max_speed > 0.0f ? vel->max_speed : PLAYER_SPEED;
+    if (ecs_has_component(ecs, p->entity, COMP_PLAYER_TAG)) {
+        CPlayerTag *ptag = ecs_get_player_tag(ecs, p->entity);
+        if (ptag->slow_timer > 0.0f) {
+            ptag->slow_timer -= dt;
+            move_speed *= PLAYER_HURT_SLOW_FACTOR;
+        }
+    }
+
+    vel->vel = vec2_scale(move_dir, move_speed);
 
     /* Mouse world position for camera and aiming. Net-driven players provide
      * world-space aim directly (their view is not covered by the host camera). */

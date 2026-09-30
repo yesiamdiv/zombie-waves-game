@@ -26,6 +26,18 @@ void system_player_input(World *ecs, Player *p, Camera *cam, float dt);
  * damage exactly that target. */
 void system_zombie_ai(World *ecs, Player *players, int player_count, float dt);
 
+/* Damage-induced player slowdown: throttles movement briefly after a hit so
+ * the player cannot instantly escape a zombie that has landed a blow. */
+#define PLAYER_HURT_SLOW_DURATION 0.35f
+#define PLAYER_HURT_SLOW_FACTOR   0.45f
+
+/* Apply a zombie melee hit to `target`: damage, knockback away from the
+ * zombie, and a brief movement slow so the player cannot instantly escape the
+ * hit. Shared by the zombie_ai attack state machine (which passes the player it
+ * actually chased) and by direct contact in collision.c (which passes the
+ * player it is touching). Emits the playtest events. */
+void zombie_damage_player(World *ecs, Entity zombie, Entity target, Vec2 origin);
+
 /* Bullet system - moves bullets, checks lifetime, deals damage */
 void system_bullets(World *ecs, GameWorld *world, float dt);
 

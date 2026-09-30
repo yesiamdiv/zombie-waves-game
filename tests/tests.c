@@ -5,13 +5,17 @@
 
 #include "core/log.h"
 #include "ecs/ecs.h"
+#include "world/theme.h"
 #include "world/world.h"
 #include "world/waves.h"
+#include "world/map_registry.h"
 #include "systems/systems.h"
 #include "items/items.h"
 #include "events/event_bus.h"
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
+#include "ui/hud.h"
+#include "world/camera.h"
 #include "config.h"
 #include "net/net.h"
 #include "net/net_codec.h"
@@ -105,7 +109,7 @@ static void test_kill_credit(void) {
     CHECK(players[0].kills == 0);
 
     /* Zombie standing between the two players; P1 (slot 0) shoots it dead. */
-    Entity z = waves_spawn_zombie(&ecs, vec2(500, 400));
+    Entity z = waves_spawn_zombie(&ecs, vec2(500, 400), THEME_GRASSLAND);
     CHECK(z != ECS_NULL_ENTITY);
     int safety = 0;
     while (ecs_is_alive(&ecs, z) && ecs_get_health(&ecs, z)->current > 0 && safety < 20) {
@@ -139,7 +143,7 @@ static void test_nearest_alive_target(void) {
     CHECK(players[0].entity != ECS_NULL_ENTITY);
     CHECK(players[1].entity != ECS_NULL_ENTITY);
 
-    Entity z = waves_spawn_zombie(&ecs, vec2(500, 600));
+    Entity z = waves_spawn_zombie(&ecs, vec2(500, 600), THEME_GRASSLAND);
     CHECK(z != ECS_NULL_ENTITY);
     CHECK(ecs_get_zombie_tag(&ecs, z)->state == ZOMBIE_CHASE);
 
@@ -301,7 +305,7 @@ static void test_ecs_basics(void) {
 
 static void test_world_valid(void) {
     LOG_INFO("--- Test: World generation ---");
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     CHECK(world.width == WORLD_TILES_X);
@@ -327,7 +331,7 @@ static void test_world_valid(void) {
 
 static void test_world_determinism(void) {
     LOG_INFO("--- Test: World gen determinism (multiplayer gate) ---");
-    GameWorld a, b;
+    GameWorld a = {0}, b = {0};
     world_init(&a);
     world_init(&b);
 
@@ -338,7 +342,7 @@ static void test_world_determinism(void) {
     bool same_tiles = true;
     for (int y = 0; y < a.height; y++) {
         for (int x = 0; x < a.width; x++) {
-            if (a.tiles[y][x] != b.tiles[y][x]) {
+            if (a.tiles[y * a.width + x] != b.tiles[y * b.width + x]) {
                 same_tiles = false;
                 break;
             }
@@ -355,7 +359,7 @@ static void test_world_determinism(void) {
 static void test_wave_system(void) {
     LOG_INFO("--- Test: Wave spawning ---");
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
 
     ecs_init(&ecs);
@@ -380,7 +384,7 @@ static void test_wave_system(void) {
     CHECK(waves.zombies_spawned > 0);
 
     /* Spawn a zombie directly and test bullet damage */
-    Entity zombie = waves_spawn_zombie(&ecs, vec2(500, 500));
+    Entity zombie = waves_spawn_zombie(&ecs, vec2(500, 500), THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
 
     /* Zombies must sense the player from anywhere in the 400-600 spawn ring,
@@ -430,7 +434,7 @@ static void test_items(void) {
     CHECK(medkit != ECS_NULL_ENTITY);
     CHECK(ecs_get_item_tag(&ecs, medkit)->type == ITEM_HEALTH);
 
-    items_check_pickup(&ecs, player);
+    items_check_pickup(&ecs, player, NULL);
     CHECK(!ecs_is_alive(&ecs, medkit));
     CHECK(ecs_get_health(&ecs, player)->current > 100.0f);
 
@@ -464,6 +468,104 @@ static void test_items(void) {
     remove(path);
 }
 
+static void test_hud_damage_flash(void) {
+    LOG_INFO("--- Test: HUD damage flash ---");
+    HUD hud;
+    hud_init(&hud);
+
+    /* First call should establish the baseline without flashing. */
+    hud_track_player_hp(&hud, 200.0f);
+    CHECK(hud.damage_flash == 0.0f);
+
+    /* Same HP → no flash. */
+    hud_track_player_hp(&hud, 200.0f);
+    CHECK(hud.damage_flash == 0.0f);
+
+    /* HP drop → flash armed. */
+    hud_track_player_hp(&hud, 170.0f);
+    CHECK(hud.damage_flash == 1.0f);
+
+    /* Flash decays, then re-arms on another drop. */
+    hud_update(&hud, 0.1f);
+    CHECK(hud.damage_flash < 1.0f);
+    hud_track_player_hp(&hud, 140.0f);
+    CHECK(hud.damage_flash == 1.0f);
+
+    /* Healing raises HP and must not re-fire the flash. */
+    hud.damage_flash = 0.0f;
+    hud_track_player_hp(&hud, 185.0f);
+    CHECK(hud.damage_flash == 0.0f);
+}
+
+static void test_item_ammo_pickup(void) {
+    LOG_INFO("--- Test: Ammo pickup feeds owned weapons (B5) ---");
+    World ecs;
+    ecs_init(&ecs);
+
+    Entity player = spawn_player(&ecs, vec2(100, 100));
+    CHECK(player != ECS_NULL_ENTITY);
+
+    PlayerInventory inv;
+    weapons_inventory_init(&inv);
+
+    /* Fresh run: only pistol unlocked → pickup grants nothing but is safe. */
+    Entity ammo0 = items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
+    CHECK(ammo0 != ECS_NULL_ENTITY);
+    items_check_pickup(&ecs, player, &inv);
+    CHECK(!ecs_is_alive(&ecs, ammo0));
+    CHECK(inv.grenades == 0);
+    CHECK(inv.launcher_ammo == 0);
+
+    /* After unlocking grenades + launcher, pickups feed both stocks. */
+    inv.unlocked[WEAPON_GRENADE] = true;
+    inv.unlocked[WEAPON_LAUNCHER] = true;
+    Entity ammo1 = items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
+    CHECK(ammo1 != ECS_NULL_ENTITY);
+    items_check_pickup(&ecs, player, &inv);
+    CHECK(inv.grenades == 1);
+    CHECK(inv.launcher_ammo == 2);
+
+    /* Second pickup accumulates. */
+    items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
+    items_check_pickup(&ecs, player, &inv);
+    CHECK(inv.grenades == 2);
+    CHECK(inv.launcher_ammo == 4);
+}
+
+static void test_camera_clamp_world(void) {
+    LOG_INFO("--- Test: Camera clamps to world bounds (B6) ---");
+    Camera cam;
+    camera_init(&cam, 1280, 720);   /* viewport: half 640 x 360 */
+
+    float world_w = 2944.0f;        /* 46x34 tiles @ 64px */
+    float world_h = 2176.0f;
+
+    /* Mid-world: no clamping (position is well inside). */
+    cam.position = vec2(world_w * 0.5f, world_h * 0.5f);
+    camera_clamp_world(&cam, world_w, world_h);
+    CHECK(fabsf(cam.position.x - world_w * 0.5f) < 0.001f);
+
+    /* Far corner: clamp to half-viewport margins. */
+    cam.position = vec2(0.0f, 0.0f);
+    camera_clamp_world(&cam, world_w, world_h);
+    CHECK(cam.position.x == 640.0f);
+    CHECK(cam.position.y == 360.0f);
+
+    cam.position = vec2(world_w, world_h);
+    camera_clamp_world(&cam, world_w, world_h);
+    CHECK(cam.position.x == 2944.0f - 640.0f);
+    CHECK(cam.position.y == 2176.0f - 360.0f);
+
+    /* World smaller than the viewport: keep centered, no void. */
+    Camera small;
+    camera_init(&small, 1280, 720);
+    float tiny_w = 800.0f, tiny_h = 600.0f;
+    small.position = vec2(99999.0f, -99999.0f);
+    camera_clamp_world(&small, tiny_w, tiny_h);
+    CHECK(small.position.x == 400.0f);
+    CHECK(small.position.y == 300.0f);
+}
+
 static void test_entity_limit(void) {
     LOG_INFO("--- Test: Entity limit ---");
     World ecs;
@@ -488,7 +590,7 @@ static void test_entity_limit(void) {
 static void test_wave_completion(void) {
     LOG_INFO("--- Test: Wave completion ---");
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
 
     ecs_init(&ecs);
@@ -584,7 +686,7 @@ static void test_script_aim_shot(void) {
 static void test_wave_timeout(void) {
     LOG_INFO("--- Test: Wave timeout force-end ---");
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
 
     ecs_init(&ecs);
@@ -628,7 +730,7 @@ static void test_event_stream(void) {
     CHECK(g_events == bus);
 
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
     ecs_init(&ecs);
     world_init(&world);
@@ -703,7 +805,7 @@ static void test_event_stream(void) {
 static int run_spawn_sim(Vec2 *out, int max_out) {
     srand(2026);
     World ecs;
-    GameWorld world;
+    GameWorld world = {0};
     WaveSystem waves;
     ecs_init(&ecs);
     world_init(&world);
@@ -817,7 +919,7 @@ static void test_sword_spin(void) {
     LOG_INFO("--- Test: Sword spin system ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
@@ -858,11 +960,92 @@ static void test_sword_spin(void) {
     CHECK(!alive);
 }
 
+/* R13 merge: ported from the assets branch. Upstream these drove
+ * system_sword(&ecs, &input, &inv, dt) and system_player_input(&ecs, &input,
+ * &cam, dt, NULL); the multiplayer layer moved input+inventory onto the Player
+ * slot, so the tests now wrap the entity in a slot and pass &p. */
+static void test_sword_sweep_hits(void) {
+    LOG_INFO("--- Test: Sword sweep hits along the blade ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    p.inventory.points = 1000;
+    weapons_buy_sword(&p.inventory);
+    weapons_select(&p.inventory, WEAPON_SWORD);
+
+    /* A zombie sitting mid-blade (inner circle 26 -> outer 58) must be hit
+     * by the sweeping blade, not just the single orbital point. */
+    Vec2 zpos = vec2_add(spawn, vec2(42.0f, 0.0f));
+    Entity zombie = waves_spawn_zombie(&ecs, zpos, THEME_GRASSLAND);
+    CHECK(zombie != ECS_NULL_ENTITY);
+    float hp_before = ecs_get_health(&ecs, zombie)->current;
+
+    p.input.mouse_buttons[0] = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+
+    int frames = 0;
+    while (frames < 120 && ecs_get_health(&ecs, zombie)->current >= hp_before) {
+        system_sword(&ecs, &p, 1.0f / 60.0f);
+        frames++;
+    }
+    CHECK(ecs_get_health(&ecs, zombie)->current < hp_before);
+}
+
+static void test_zombie_contact_and_slow(void) {
+    LOG_INFO("--- Test: Zombie contact damage & player slow ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 player_pos = {150.0f, 150.0f};
+    Entity player = spawn_player(&ecs, player_pos);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+
+    /* A zombie overlapping the player: skimming through must no longer be
+     * free; contact deals damage and slows the player. */
+    Entity zombie = waves_spawn_zombie(&ecs, vec2(157.0f, 150.0f), THEME_GRASSLAND);
+    CHECK(zombie != ECS_NULL_ENTITY);
+
+    float hp_before = ecs_get_health(&ecs, player)->current;
+    system_collision(&ecs, &world);
+
+    CHECK(ecs_get_health(&ecs, player)->current < hp_before);
+    CHECK(ecs_get_player_tag(&ecs, player)->slow_timer > 0.0f);
+
+    /* Cooldown gating: an immediate second contact must not double-hit. */
+    float hp_after_first = ecs_get_health(&ecs, player)->current;
+    system_collision(&ecs, &world);
+    CHECK(ecs_get_health(&ecs, player)->current == hp_after_first);
+
+    /* While slowed, held movement input moves the player at reduced speed. */
+    Camera cam;
+    camera_init(&cam, 800, 600);
+    p.input.keys[SDL_SCANCODE_D] = true;
+
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CVelocity *pvel = ecs_get_velocity(&ecs, player);
+    CHECK(pvel->vel.x > 0.0f);
+    CHECK(pvel->vel.x < 200.0f);   /* 200 max speed throttled by the hit slow */
+}
+
 static void test_rocket_damage_and_destruction(void) {
     LOG_INFO("--- Test: Rocket pierce & out-of-bounds destruction ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 ppos = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
@@ -871,7 +1054,7 @@ static void test_rocket_damage_and_destruction(void) {
 
     /* Place a zombie directly in front of the rocket path. */
     Vec2 zpos = vec2_add(ppos, vec2(20.0f, 0.0f));
-    Entity zombie = waves_spawn_zombie(&ecs, zpos);
+    Entity zombie = waves_spawn_zombie(&ecs, zpos, THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
     float hp_before = ecs_get_health(&ecs, zombie)->current;
 
@@ -911,7 +1094,7 @@ static void test_grenade_detonation(void) {
     LOG_INFO("--- Test: Grenade AoE detonation ---");
     World ecs;
     ecs_init(&ecs);
-    GameWorld world;
+    GameWorld world = {0};
     world_init(&world);
 
     Vec2 ppos = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
@@ -920,7 +1103,7 @@ static void test_grenade_detonation(void) {
 
     /* Place a zombie near the aim point. */
     Vec2 zpos = vec2_add(ppos, vec2(40.0f, 0.0f));
-    Entity zombie = waves_spawn_zombie(&ecs, zpos);
+    Entity zombie = waves_spawn_zombie(&ecs, zpos, THEME_GRASSLAND);
     CHECK(zombie != ECS_NULL_ENTITY);
     float hp_before = ecs_get_health(&ecs, zombie)->current;
 
@@ -957,6 +1140,54 @@ static void test_grenade_detonation(void) {
 }
 
 /* ---------------------------------------------------------------- End Weapons */
+
+static void test_map_registry_loads(void) {
+    LOG_INFO("--- Test: Ship map registry loads ---");
+    int count = map_registry_count();
+    CHECK(count >= 4);
+
+    for (int i = 0; i < count; i++) {
+        const MapDef *def = map_registry_get(i);
+        CHECK(def != NULL);
+        CHECK(def->name != NULL && def->name[0] != '\0');
+        CHECK(def->file != NULL && def->file[0] != '\0');
+
+        GameWorld w = {0};
+        CHECK(world_load_map(&w, def));
+        CHECK(w.width >= 8 && w.height >= 8);
+        CHECK(w.world_pixel_w == (float)w.width * WORLD_GRID_SIZE);
+        CHECK(w.world_pixel_h == (float)w.height * WORLD_GRID_SIZE);
+        CHECK(w.theme == def->theme);
+        CHECK(w.tiles != NULL);
+
+        /* Interior is bounded by walls and mostly walkable. */
+        int walkable = 0, total = 0;
+        for (int y = 0; y < w.height; y++) {
+            for (int x = 0; x < w.width; x++) {
+                total++;
+                if (world_is_walkable(&w, x * WORLD_GRID_SIZE + 32,
+                                             y * WORLD_GRID_SIZE + 32)) {
+                    walkable++;
+                }
+            }
+        }
+        CHECK(walkable > total / 2);
+
+        Vec2 sp = world_get_spawn_point(&w);
+        CHECK(world_is_walkable(&w, sp.x, sp.y));
+        world_free(&w);
+    }
+
+    /* Registry entry 0 resolves to an actual file on disk. */
+    const MapDef *first = map_registry_get(0);
+    GameWorld probe = {0};
+    CHECK(world_load_map(&probe, first));
+    world_free(&probe);
+}
+
+/* R13 merge: a non-zero map index, so the HELLO round trip proves the field
+ * is carried rather than defaulting to 0 and passing by accident. */
+#define TEST_HELLO_MAP 2
 
 static void test_net_codec(void) {
     LOG_INFO("--- Test: wire codec byte-exact round trips ---");
@@ -1000,19 +1231,23 @@ static void test_net_codec(void) {
 
     /* HELLO: slot + seed + world_gen + host name. */
     {
-        uint8_t buf[NET_HDR_SIZE + 1 + 4 + 4 + 1 + NET_NAME_MAX];
+        uint8_t buf[NET_HDR_SIZE + 1 + 4 + 4 + 1 + 1 + NET_NAME_MAX];
         NetHeader h = {NET_WIRE_VERSION, NET_PKT_HELLO, 0, 255, 0};
         int len = net_encode_hello(buf, (int)sizeof(buf), &h, 3, 2026u,
-                                   NET_WORLD_GEN_VERSION, "Host-1");
+                                   NET_WORLD_GEN_VERSION, TEST_HELLO_MAP,
+                                   "Host-1");
         CHECK(len > NET_HDR_SIZE);
         NetHeader out;
-        uint8_t slot;
+        uint8_t slot, map_index;
         uint32_t seed, world;
         char host_name[NET_NAME_CAP];
         CHECK(net_decode_hello(buf, len, &out, &slot, &seed, &world,
-                               host_name, NET_NAME_CAP) == 0);
+                               &map_index, host_name, NET_NAME_CAP) == 0);
         CHECK(slot == 3);
         CHECK(seed == 2026u);
+        /* R13 merge: the host's map index must survive the round trip, or the
+         * client builds a different world than the host. */
+        CHECK(map_index == TEST_HELLO_MAP);
         CHECK(world == NET_WORLD_GEN_VERSION);
         CHECK(strcmp(host_name, "Host-1") == 0);
     }
@@ -1078,6 +1313,71 @@ static void test_net_codec(void) {
     CHECK(strcmp(net_reject_reason_name(NET_REJECT_VERSION), "version mismatch") == 0);
     CHECK(strcmp(net_leave_reason_name(NET_LEAVE_HOST_STOPPED), "host stopped") == 0);
     CHECK(net_slot_color(0).r == COLOR_BLUE.r); /* host color is blue */
+}
+
+static void test_theme_registry(void) {
+    LOG_INFO("--- Test: Theme registry sanity ---");
+    CHECK(theme_count() == THEME_COUNT);
+    CHECK(theme_count() >= 4);
+
+    for (int id = 0; id < THEME_COUNT; id++) {
+        const Theme *t = theme_get((ThemeID)id);
+        CHECK(t != NULL);
+        CHECK(t->name != NULL && t->name[0] != '\0');
+        for (int i = 0; i < 3; i++) {
+            CHECK(t->ground[i] != NULL && t->ground[i][0] != '\0');
+        }
+        CHECK(t->wall != NULL && t->wall[0] != '\0');
+        CHECK(t->water != NULL && t->water[0] != '\0');
+        CHECK(t->road != NULL && t->road[0] != '\0');
+        CHECK(t->ground_color.a == 1.0f);
+        CHECK(t->player_color.a == 1.0f);
+        for (int i = 0; i < 3; i++) {
+            CHECK(t->zombie_tints[i].a == 1.0f);
+        }
+        CHECK(theme_name((ThemeID)id) == t->name);
+    }
+
+    /* Out-of-range id clamps to a valid theme. */
+    CHECK(theme_get((ThemeID)THEME_COUNT) != NULL);
+    CHECK(theme_get((ThemeID)-1) != NULL);
+}
+
+static void test_map_parser(void) {
+    LOG_INFO("--- Test: Map ASCII parser ---");
+    GameWorld w = {0};
+    const char *ascii =
+        "#######\n"
+        "#S.+##\n"
+        "#~...#\n"
+        "#####.#\n";
+    CHECK(world_init_from_string(&w, ascii, THEME_DESERT));
+    CHECK(w.width == 7);
+    CHECK(w.height == 4);
+    CHECK(w.world_pixel_w == 7.0f * WORLD_GRID_SIZE);
+    CHECK(w.world_pixel_h == 4.0f * WORLD_GRID_SIZE);
+    CHECK(w.theme == THEME_DESERT);
+
+    CHECK(world_get_tile(&w, 0, 0) == TILE_WALL);
+    CHECK(world_get_tile(&w, 6, 3) == TILE_WALL);
+    CHECK(world_get_tile(&w, 5, 3) == TILE_GROUND);
+    CHECK(world_get_tile(&w, 3, 1) == TILE_ROAD);
+    CHECK(world_get_tile(&w, 1, 2) == TILE_WATER);
+    CHECK(world_get_tile(&w, 1, 1) == TILE_GROUND);   /* 'S' -> ground */
+
+    CHECK(w.has_spawn);
+    CHECK(w.spawn_x == 1 && w.spawn_y == 1);
+    Vec2 sp = world_get_spawn_point(&w);
+    CHECK(world_is_walkable(&w, sp.x, sp.y));
+
+    CHECK(world_get_tile(&w, -1, 0) == TILE_WALL);
+    CHECK(world_get_tile(&w, 0, -1) == TILE_WALL);
+    CHECK(world_get_tile(&w, 99, 99) == TILE_WALL);
+
+    /* Too small to be a map. */
+    GameWorld tiny = {0};
+    CHECK(!world_init_from_string(&tiny, "ab\ncd\n", THEME_SNOW));
+    world_free(&w);
 }
 
 /* Channel 1: input sample + world snapshot byte-exact round trips. */
@@ -1206,7 +1506,7 @@ static void test_net_snapshot_build(void) {
     players_reset(players, MAX_PLAYERS);
     player_respawn(players, &ecs, 0, "P1", &COLOR_RED, vec2(10, 20));
     Entity p0 = players[0].entity;
-    Entity z = waves_spawn_zombie(&ecs, vec2(100, 200));
+    Entity z = waves_spawn_zombie(&ecs, vec2(100, 200), THEME_GRASSLAND);
     CHECK(z != ECS_NULL_ENTITY);
 
     Entity bullet = ecs_create_entity(&ecs);
@@ -1221,7 +1521,7 @@ static void test_net_snapshot_build(void) {
     ecs_get_velocity(&ecs, bullet)->max_speed = 400.0f;
     ecs_get_bullet_tag(&ecs, bullet)->owner = p0;
 
-    GameWorld gw;
+    GameWorld gw = {0};
     world_init(&gw);
     WaveSystem ws;
     waves_init(&ws, &gw);
@@ -1407,6 +1707,9 @@ int tests_run_all(void) {
     test_hardcore_elimination();
     test_wave_system();
     test_items();
+    test_hud_damage_flash();
+    test_item_ammo_pickup();
+    test_camera_clamp_world();
     test_entity_limit();
     test_wave_completion();
     test_script_aim_shot();
@@ -1417,6 +1720,15 @@ int tests_run_all(void) {
     test_sword_spin();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
+    /* R13 merge: both engines' suites run. The assets tests (map parser,
+     * registry, theme, HUD flash, ammo pickup, camera clamp, sword sweep,
+     * zombie contact) guard the world/texture layer; the net tests guard
+     * replication. Neither set subsumes the other. */
+    test_theme_registry();
+    test_map_parser();
+    test_map_registry_loads();
+    test_sword_sweep_hits();
+    test_zombie_contact_and_slow();
     test_net_codec();
     test_net_codec_game();
     test_net_snapshot_build();

@@ -82,6 +82,15 @@ static inline int clampi(int val, int min, int max) {
     return val;
 }
 
+/* Closest point on segment [a,b] to point p. */
+static inline Vec2 vec2_closest_on_segment(Vec2 p, Vec2 a, Vec2 b) {
+    Vec2 ab = vec2_sub(b, a);
+    float len2 = vec2_length_sq(ab);
+    if (len2 < 0.0001f) return a;
+    float t = clampf(vec2_dot(vec2_sub(p, a), ab) / len2, 0.0f, 1.0f);
+    return vec2_add(a, vec2_scale(ab, t));
+}
+
 static inline bool circle_circle_collision(Vec2 pos_a, float radius_a, Vec2 pos_b, float radius_b) {
     float dist_sq = vec2_distance_sq(pos_a, pos_b);
     float radii = radius_a + radius_b;

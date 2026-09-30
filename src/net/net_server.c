@@ -47,9 +47,10 @@ static void reject_and_drop(NetServer *s, ENetPeer *peer, uint8_t reason,
 }
 
 int net_server_host(NetServer *s, uint16_t port, const char *host_name,
-                    uint32_t seed, uint32_t world_gen) {
+                    uint32_t seed, uint32_t world_gen, uint8_t map_index) {
     if (!s) return -1;
     memset(s, 0, sizeof(*s));
+    s->map_index = map_index;
     if (net_init() != 0) {
         LOG_ERROR("net_server: enet_initialize failed");
         return -1;
@@ -286,13 +287,15 @@ void net_server_update(NetServer *s) {
                     s->joins++;
 
                     NetHeader oh = {NET_WIRE_VERSION, NET_PKT_HELLO, 0, 0, 0};
-                    uint8_t buf[NET_HDR_SIZE + 1 + 4 + 4 + 1 + NET_NAME_MAX];
+                    uint8_t buf[NET_HDR_SIZE + 1 + 4 + 4 + 1 + 1 + NET_NAME_MAX];
                     int len = net_encode_hello(buf, (int)sizeof(buf), &oh,
                                                (uint8_t)slot, s->seed,
-                                               s->world_gen, s->host_name);
+                                               s->world_gen, s->map_index,
+                                               s->host_name);
                     if (len > 0) send_ctrl(ev.peer, buf, len);
-                    LOG_INFO("NET: '%s' joined -> slot %d (seed=%u world_gen=%u)",
-                             name, slot, s->seed, s->world_gen);
+                    LOG_INFO("NET: '%s' joined -> slot %d (seed=%u world_gen=%u map=%u)",
+                             name, slot, s->seed, s->world_gen,
+                             (unsigned)s->map_index);
                     broadcast_player_list(s);
                 } else if (h.kind == NET_PKT_LEAVE) {
                     LOG_INFO("NET: peer slot=%d is leaving", peer_slot(ev.peer));

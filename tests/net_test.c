@@ -68,7 +68,7 @@ int main(void) {
     /* ---------------------------------------------------------- server --- */
     NetServer server;
     if (net_server_host(&server, TEST_PORT, "Host-1", TEST_SEED,
-                        NET_WORLD_GEN_VERSION) != 0) {
+                        NET_WORLD_GEN_VERSION, 0) != 0) {
         LOG_ERROR("FAIL: could not start host on :%d", TEST_PORT);
         log_shutdown();
         return 1;

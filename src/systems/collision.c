@@ -97,6 +97,16 @@ void system_collision(World *ecs, GameWorld *world) {
             float rad_b = ecs_get_collider(ecs, b)->radius;
 
             if (circle_circle_collision(pos_a, rad_a, pos_b, rad_b)) {
+                /* Contact is not a free pass: a zombie overlapping a player
+                 * deals damage and slows them. Gated by the zombie's own
+                 * attack_timer, which the zombie_ai attack state machine shares,
+                 * so a hit lands once per cooldown rather than every frame. */
+                CZombieTag *ztag = ecs_get_zombie_tag(ecs, a);
+                if (ztag->attack_timer <= 0) {
+                    zombie_damage_player(ecs, a, b, pos_a);
+                    ztag->attack_timer = ztag->attack_cooldown;
+                }
+
                 /* Push player away */
                 Vec2 dir = vec2_normalize(vec2_sub(pos_b, pos_a));
                 CVelocity *pvel = ecs_get_velocity(ecs, b);

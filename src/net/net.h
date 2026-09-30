@@ -20,14 +20,21 @@
  * GamePacket discipline).
  * ------------------------------------------------------------------------- */
 
-#define NET_WIRE_VERSION 2
+/* R13 merge: bumped 2 -> 3. The HELLO body gained a `map_index` byte, so a v2
+ * peer would mis-parse a v3 HELLO (it would read the map byte as the first
+ * character of the host name). Reject loudly rather than desync. */
+#define NET_WIRE_VERSION 3
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
 #define NET_NAME_CAP (NET_NAME_MAX + 1)
 #define NET_MAX_PLAYERS 4               /* matches MAX_PLAYERS (players.h) */
 #define NET_DEFAULT_PORT 5123
-#define NET_WORLD_GEN_VERSION 1         /* world_init is rand()-free; guards */
+/* R13 merge: bumped 1 -> 2. Worlds are no longer `world_init`-only; they come
+ * from a map file plus a theme, and the map index now travels in the HELLO.
+ * A peer that thinks the world is `world_init()`-shaped would agree on tiles
+ * while disagreeing on everything the map contributes. */
+#define NET_WORLD_GEN_VERSION 2         /* map-file-driven world; guards */
 
 #define NET_CH_CTRL 0                   /* reliable / ordered handshake+events */
 #define NET_CH_SNAP 1                   /* unreliable / sequenced game traffic */
@@ -191,6 +198,6 @@ const char *net_leave_reason_name(int reason);
 int net_init(void);
 
 #define NET_VERSION_STR(MINOR) #MINOR
-#define NET_WIRE_VER_STR "2"
+#define NET_WIRE_VER_STR "3"
 
 #endif

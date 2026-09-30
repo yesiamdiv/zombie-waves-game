@@ -1,6 +1,7 @@
 #include "net_client.h"
 #include "net_codec.h"
 #include "events/event_bus.h"
+#include "world/map_registry.h"
 #include "core/log.h"
 #include <ctype.h>
 #include <string.h>
@@ -38,6 +39,8 @@ int net_client_init(NetClient *c) {
     c->state = NET_CLIENT_OFFLINE;
     c->slot = 255;
     c->world_gen = 0;
+    c->map_index = 0;
+    c->map_index_valid = false;
     snprintf(c->status, sizeof(c->status), "offline");
     if (net_init() != 0) {
         LOG_ERROR("net_client: enet_initialize failed");
@@ -195,12 +198,12 @@ void net_client_update(NetClient *c) {
                 }
 
                 if (h.kind == NET_PKT_HELLO) {
-                    uint8_t slot;
+                    uint8_t slot, map_index;
                     uint32_t seed, world;
                     char host_name[NET_NAME_CAP];
                     if (net_decode_hello(ev.packet->data,
                                          (int)ev.packet->dataLength, &h, &slot,
-                                         &seed, &world, host_name,
+                                         &seed, &world, &map_index, host_name,
                                          NET_NAME_CAP) != 0) {
                         LOG_WARN("NET: malformed HELLO from host");
                         enet_packet_destroy(ev.packet);
@@ -213,15 +216,29 @@ void net_client_update(NetClient *c) {
                         LOG_ERROR("NET: world-gen mismatch (host=%u client=%u)",
                                   world, NET_WORLD_GEN_VERSION);
                         enet_peer_disconnect(c->server, 0);
+                    } else if ((int)map_index >= map_registry_count()) {
+                        /* The host named a map this build does not have. Falling
+                         * back to a default world would silently desync the two
+                         * instances (different terrain, spawn and theme), so
+                         * refuse the session instead. */
+                        c->flags = NET_FLAG_WORLD_MISMATCH;
+                        c->reject_reason = NET_REJECT_WORLD;
+                        c->state = NET_CLIENT_REJECTED;
+                        LOG_ERROR("NET: host selected unknown map %u (%d available)",
+                                  (unsigned)map_index, map_registry_count());
+                        enet_peer_disconnect(c->server, 0);
                     } else {
                         c->slot = slot;
                         c->seed = seed;
                         c->world_gen = world;
+                        c->map_index = map_index;
+                        c->map_index_valid = true;
                         snprintf(c->host_name, sizeof(c->host_name), "%s",
                                  host_name);
                         c->state = NET_CLIENT_CONNECTED;
-                        LOG_INFO("NET: hello from '%s' -> slot %u (seed=%u world_gen=%u)",
-                                 host_name, slot, seed, world);
+                        LOG_INFO("NET: hello from '%s' -> slot %u (seed=%u world_gen=%u map=%u)",
+                                 host_name, slot, seed, world,
+                                 (unsigned)map_index);
                         snprintf(c->status, sizeof(c->status),
                                  "in lobby of '%s'", host_name);
                     }

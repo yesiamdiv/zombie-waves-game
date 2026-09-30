@@ -16,14 +16,23 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         if (!camera_is_visible(cam, pos->pos, 50.0f)) continue;
 
         Vec2 screen = camera_world_to_screen(cam, pos->pos);
+
+        /* Sweeping sword: draw a blade that pivots at the handle point (inner
+         * circle) and extends to the tip (outer circle). */
+        if (ecs->component_masks[i] & (1u << COMP_SWORD_TAG)) {
+            const CSwordTag *sword = &ecs->sword_tags[i];
+            float length = sword->outer_radius - sword->radius;
+            float width = spr->sprite.as.rect.w > 0.0f ? spr->sprite.as.rect.w : 8.0f;
+            sprite_draw_blade(renderer, spr->sprite.texture,
+                              screen.x, screen.y, sword->angle,
+                              length, width, cam->zoom,
+                              spr->sprite.color, spr->base_alpha);
+            continue;
+        }
+
         float draw_alpha = spr->base_alpha;
         float draw_scale = spr->scale;
         float draw_rot = 0.0f;
-
-        /* The sword blade is drawn rotated along its orbital angle. */
-        if (ecs->component_masks[i] & (1u << COMP_SWORD_TAG)) {
-            draw_rot = ecs->sword_tags[i].angle;
-        }
 
         /* Flash white when zombie is hurt */
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {

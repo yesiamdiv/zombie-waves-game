@@ -1,6 +1,7 @@
 #include "ui/menu.h"
 #include "core/log.h"
 #include "net/net.h"
+#include "world/map_registry.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -23,9 +24,31 @@ void menu_init(MainMenu *menu) {
     menu->editing_address = false;
     menu->host_requested = false;
     menu->join_requested = false;
+    menu->host_pending = false;
     snprintf(menu->join_address, sizeof(menu->join_address), "127.0.0.1:%d",
              NET_DEFAULT_PORT);
     LOG_DEBUG("Main menu initialized");
+}
+
+static void map_select_load_thumb(MapSelectMenu *menu) {
+    world_free(&menu->thumb);
+    const MapDef *def = map_registry_get(menu->selected_option);
+    if (def && world_load_map(&menu->thumb, def)) {
+        LOG_DEBUG("Map preview loaded: %s", def->name);
+    }
+}
+
+void map_select_init(MapSelectMenu *menu) {
+    menu->selected_option = 0;
+    menu->option_count = map_registry_count();
+    menu->title_pulse = 0;
+    menu->thumb = (GameWorld){0};
+    map_select_load_thumb(menu);
+    LOG_DEBUG("Map select initialized with %d maps", menu->option_count);
+}
+
+void map_select_free(MapSelectMenu *menu) {
+    world_free(&menu->thumb);
 }
 
 void pause_menu_init(PauseMenu *menu) {
@@ -108,13 +131,19 @@ GameState menu_update(MainMenu *menu, InputState *input, float dt) {
     }
 
     if (input_key_pressed(input, SDL_SCANCODE_RETURN) || input_key_pressed(input, SDL_SCANCODE_SPACE)) {
+        /* Solo and Host Co-op both go through the map picker: the map is a
+         * property of the match, so a co-op lobby has to be entered *after*
+         * the world is chosen. `host_pending` is how main.c tells the map
+         * screen whether to resume into a lobby or straight into play.
+         * Join Co-op deliberately skips the picker - the host's map wins, and
+         * it arrives in the HELLO. */
         switch (menu->selected_option) {
             case 0: /* Solo */
-                return GAME_STATE_PLAYING;
-            case 1: /* Host Co-op lobby */
-                menu->host_requested = true;
-                LOG_INFO("Hosting co-op lobby from menu");
-                return GAME_STATE_LOBBY;
+                menu->host_pending = false;
+                return GAME_STATE_MAP_SELECT;
+            case 1: /* Host Co-op - pick a map, then open the lobby */
+                menu->host_pending = true;
+                return GAME_STATE_MAP_SELECT;
             case 2: /* Join Co-op - open the address field */
                 menu->editing_address = true;
                 break;
@@ -126,6 +155,35 @@ GameState menu_update(MainMenu *menu, InputState *input, float dt) {
     }
 
     return GAME_STATE_MENU;
+}
+
+GameState map_select_update(MapSelectMenu *menu, InputState *input) {
+    menu->title_pulse += 1.0f / 60.0f * 2.0f;
+
+    int prev = menu->selected_option;
+    if (input_key_pressed(input, SDL_SCANCODE_UP) || input_key_pressed(input, SDL_SCANCODE_W)) {
+        menu->selected_option--;
+        if (menu->selected_option < 0) menu->selected_option = menu->option_count - 1;
+    }
+    if (input_key_pressed(input, SDL_SCANCODE_DOWN) || input_key_pressed(input, SDL_SCANCODE_S)) {
+        menu->selected_option++;
+        if (menu->selected_option >= menu->option_count) menu->selected_option = 0;
+    }
+    if (menu->selected_option != prev) {
+        map_select_load_thumb(menu);
+    }
+
+    if (input_key_pressed(input, SDL_SCANCODE_ESCAPE) ||
+        input_key_pressed(input, SDL_SCANCODE_B)) {
+        return GAME_STATE_MENU;
+    }
+
+    if (input_key_pressed(input, SDL_SCANCODE_RETURN) ||
+        input_key_pressed(input, SDL_SCANCODE_SPACE)) {
+        return GAME_STATE_PLAYING;
+    }
+
+    return GAME_STATE_MAP_SELECT;
 }
 
 GameState pause_menu_update(PauseMenu *menu, InputState *input) {
@@ -195,19 +253,25 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
     SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
     SDL_RenderClear(renderer);
 
+    const float lh = (float)TTF_GetFontHeight(font);
+
     /* Title */
     float pulse = 0.8f + sinf(menu->title_pulse) * 0.2f;
     SDL_FColor title_color = {pulse, 0.15f * pulse, 0.15f * pulse, 1.0f};
     draw_text_centered(renderer, font, "OPEN WORLD ZOMBIE WAVES",
-                       screen_w * 0.5f, screen_h * 0.2f, title_color);
+                       screen_w * 0.5f, screen_h * 0.18f, title_color);
 
     /* Subtitle */
     SDL_FColor sub_color = {0.5f, 0.55f, 0.6f, 0.8f};
     draw_text_centered(renderer, font, "Survive the Horde",
-                       screen_w * 0.5f, screen_h * 0.3f, sub_color);
+                       screen_w * 0.5f, screen_h * 0.18f + lh + 16.0f, sub_color);
 
-    /* Options */
+    /* Options: vertically centered as a block, spaced by font height so they
+     * never overlap regardless of window size (assets B1). */
     const char *options[] = {"Solo", "Host Co-op", "Join Co-op", "Quit"};
+    float row_h = lh + 18.0f;
+    float block_h = (float)menu->option_count * row_h;
+    float first_y = screen_h * 0.5f - block_h * 0.5f;
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -227,7 +291,7 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
             snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
         }
         draw_text_centered(renderer, font, buf,
-                           screen_w * 0.5f, screen_h * 0.5f + i * 50.0f, opt_color);
+                           screen_w * 0.5f, first_y + i * row_h, opt_color);
     }
 
     /* Address edit field overlay. */
@@ -247,10 +311,101 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
                            screen_w * 0.5f, screen_h * 0.72f, sub);
     }
 
-    /* Controls hint */
+    /* Controls hints: bottom-anchored (assets B1) so the taller 4-option block
+     * and the address overlay above can never overlap them. */
     SDL_FColor hint = {0.3f, 0.3f, 0.35f, 0.6f};
+    float hint_y = screen_h - lh * 3.0f - 28.0f;
     draw_text_centered(renderer, font, "WASD/Arrows: Move  |  Mouse: Aim & Shoot  |  ESC: Pause",
-                       screen_w * 0.5f, screen_h * 0.85f, hint);
+                       screen_w * 0.5f, hint_y, hint);
+
+    draw_text_centered(renderer, font, "Weapon purchases reset each run",
+                       screen_w * 0.5f, hint_y + lh + 10.0f, hint);
+}
+
+static SDL_FColor tile_preview_color(TileType t, ThemeID theme) {
+    const Theme *th = theme_get(theme);
+    switch (t) {
+        case TILE_WALL:  return th->wall_color;
+        case TILE_WATER: return th->water_color;
+        case TILE_ROAD:  return th->road_color;
+        case TILE_SPAWN: return (SDL_FColor){0.3f, 0.9f, 0.3f, 1.0f};
+        case TILE_GROUND:
+        default:         return th->ground_color;
+    }
+}
+
+void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
+    /* Dark background */
+    SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
+    SDL_RenderClear(renderer);
+
+    const float lh = (float)TTF_GetFontHeight(font);
+
+    float pulse = 0.8f + sinf(menu->title_pulse) * 0.2f;
+    SDL_FColor title_color = {pulse, pulse, 0.9f, 1.0f};
+    draw_text_centered(renderer, font, "SELECT MAP",
+                       screen_w * 0.5f, screen_h * 0.08f, title_color);
+
+    /* Map list (left): name row + detail row, spaced by font height. */
+    float list_x = screen_w * 0.30f;
+    float row_y = screen_h * 0.20f;
+    const float row_h = lh * 2.2f;
+    for (int i = 0; i < menu->option_count; i++) {
+        const MapDef *def = map_registry_get(i);
+        if (!def) continue;
+        SDL_FColor opt_color = (i == menu->selected_option)
+            ? (SDL_FColor){1.0f, 1.0f, 0.3f, 1.0f}
+            : (SDL_FColor){0.55f, 0.55f, 0.6f, 0.8f};
+        char buf[96];
+        const char *arrow = (i == menu->selected_option) ? "> " : "  ";
+        snprintf(buf, sizeof(buf), "%s%s", arrow, def->name);
+        draw_text_centered(renderer, font, buf,
+                           list_x, row_y + i * row_h, opt_color);
+
+        if (i == menu->selected_option) {
+            char detail[128];
+            const Theme *defth = theme_get(def->theme);
+            snprintf(detail, sizeof(detail), "Theme: %s  |  Size: %dx%d tiles",
+                     defth->name, menu->thumb.width, menu->thumb.height);
+            draw_text_centered(renderer, font, detail,
+                               list_x, row_y + lh + 6.0f + i * row_h,
+                               (SDL_FColor){0.4f, 0.4f, 0.5f, 0.7f});
+        }
+    }
+
+    SDL_FColor hint = {0.3f, 0.3f, 0.35f, 0.6f};
+    draw_text_centered(renderer, font,
+                       "W/S or Arrows: Select map  |  ENTER: Play  |  ESC: Back",
+                       screen_w * 0.5f, screen_h - lh - 16.0f, hint);
+
+    /* Mini-map preview of the highlighted map (right panel). */
+    GameWorld *w = &menu->thumb;
+    if (w->width > 0 && w->height > 0 && w->tiles) {
+        float panel_w = screen_w * 0.28f;
+        float panel_h = screen_h * 0.52f;
+        float panel_x = screen_w * 0.64f;
+        float panel_y = screen_h * 0.22f;
+
+        SDL_SetRenderDrawColorFloat(renderer, 0.12f, 0.12f, 0.16f, 1.0f);
+        SDL_RenderFillRect(renderer, &(SDL_FRect){panel_x - 10, panel_y - 10,
+                                                  panel_w + 20, panel_h + 20});
+
+        float scale = fminf(panel_w / (float)w->width,
+                            panel_h / (float)w->height);
+        float px = panel_x + (panel_w - w->width * scale) * 0.5f;
+        float py = panel_y + (panel_h - w->height * scale) * 0.5f;
+
+        for (int ty = 0; ty < w->height; ty++) {
+            for (int tx = 0; tx < w->width; tx++) {
+                SDL_FColor c = tile_preview_color(world_get_tile(w, tx, ty),
+                                                  w->theme);
+                SDL_SetRenderDrawColorFloat(renderer, c.r, c.g, c.b, 1.0f);
+                SDL_FRect cell = {px + tx * scale, py + ty * scale,
+                                  scale * 1.02f, scale * 1.02f};
+                SDL_RenderFillRect(renderer, &cell);
+            }
+        }
+    }
 }
 
 void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
@@ -258,11 +413,16 @@ void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int 
     SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.0f, 0.6f);
     SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
 
+    const float lh = (float)TTF_GetFontHeight(font);
+
     SDL_FColor title_color = {1.0f, 1.0f, 1.0f, 1.0f};
     draw_text_centered(renderer, font, "PAUSED",
-                       screen_w * 0.5f, screen_h * 0.3f, title_color);
+                       screen_w * 0.5f, screen_h * 0.30f, title_color);
 
     const char *options[] = {"Resume", "Quit to Menu"};
+    float row_h = lh + 18.0f;
+    float block_h = (float)menu->option_count * row_h;
+    float first_y = screen_h * 0.5f - block_h * 0.5f;
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -275,7 +435,7 @@ void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int 
         char buf[64];
         snprintf(buf, sizeof(buf), "%s%s", prefix, options[i]);
         draw_text_centered(renderer, font, buf,
-                           screen_w * 0.5f, screen_h * 0.5f + i * 50.0f, opt_color);
+                           screen_w * 0.5f, first_y + i * row_h, opt_color);
     }
 }
 
@@ -283,27 +443,35 @@ void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int
     SDL_SetRenderDrawColorFloat(renderer, 0.1f, 0.02f, 0.02f, 1.0f);
     SDL_RenderClear(renderer);
 
+    const float lh = (float)TTF_GetFontHeight(font);
+    const float row_h = lh + 14.0f;
+
     SDL_FColor title = {0.9f, 0.15f, 0.15f, 1.0f};
     draw_text_centered(renderer, font, "GAME OVER",
-                       screen_w * 0.5f, screen_h * 0.15f, title);
+                       screen_w * 0.5f, screen_h * 0.18f, title);
 
     char buf[128];
     SDL_FColor info = {0.8f, 0.8f, 0.8f, 1.0f};
+    float stat_y = screen_h * 0.38f;
 
     snprintf(buf, sizeof(buf), "Wave Reached: %d", go->final_wave);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.35f, info);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, stat_y, info);
 
     snprintf(buf, sizeof(buf), "Zombies Killed: %d", go->final_kills);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.42f, info);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, stat_y + row_h, info);
 
     snprintf(buf, sizeof(buf), "Score: %d", go->final_score);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.49f, info);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, stat_y + row_h * 2.0f, info);
+
+    SDL_FColor note = {0.7f, 0.65f, 0.45f, 1.0f};
+    draw_text_centered(renderer, font, "New run resets weapon purchases and points",
+                       screen_w * 0.5f, stat_y + row_h * 3.5f, note);
 
     if (go->display_timer > 1.0f) {
         float blink = 0.5f + sinf(go->display_timer * 3.0f) * 0.5f;
         SDL_FColor prompt = {blink, blink, blink, 0.8f};
         draw_text_centered(renderer, font, "Press ENTER to return to menu",
-                           screen_w * 0.5f, screen_h * 0.7f, prompt);
+                           screen_w * 0.5f, screen_h - lh - 24.0f, prompt);
     }
 }
 
@@ -405,17 +573,19 @@ void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventor
     SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.05f, 0.72f);
     SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
 
+    const float lh = (float)TTF_GetFontHeight(font);
+
     SDL_FColor title_color = {1.0f, 0.85f, 0.2f, 1.0f};
     draw_text_centered(renderer, font, "WEAPON SHOP",
-                       screen_w * 0.5f, screen_h * 0.12f, title_color);
+                       screen_w * 0.5f, screen_h * 0.10f, title_color);
 
     char buf[192];
     SDL_FColor pts = {0.6f, 1.0f, 0.4f, 1.0f};
     snprintf(buf, sizeof(buf), "Points: %d", inv->points);
-    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.22f, pts);
+    draw_text_centered(renderer, font, buf, screen_w * 0.5f, screen_h * 0.10f + lh + 14.0f, pts);
 
-    float row_y = screen_h * 0.30f;
-    const float row_h = 40.0f;
+    const float row_h = lh + 14.0f;
+    float first_y = screen_h * 0.38f - ((float)SHOP_OPTION_COUNT * row_h) * 0.5f;
 
     const char *rows[SHOP_OPTION_COUNT] = {
         "Pistol",
@@ -481,18 +651,18 @@ void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventor
 
         snprintf(buf, sizeof(buf), "%s%s%s", prefix, rows[i], status);
         draw_text_centered(renderer, font, buf,
-                           screen_w * 0.5f, row_y + i * row_h, opt_color);
+                           screen_w * 0.5f, first_y + i * row_h, opt_color);
     }
 
     if (menu->msg_timer > 0) {
         float blink = menu->msg_timer > 1.0f ? 1.0f : menu->msg_timer;
         SDL_FColor msg_color = {1.0f, 0.9f, 0.4f, blink};
         draw_text_centered(renderer, font, menu->message,
-                           screen_w * 0.5f, screen_h * 0.78f, msg_color);
+                           screen_w * 0.5f, screen_h * 0.80f, msg_color);
     }
 
     SDL_FColor hint = {0.35f, 0.35f, 0.4f, 0.7f};
     draw_text_centered(renderer, font,
                        "ENTER/SPACE: Buy/Switch  |  W/S: Navigate  |  B/ESC: Close",
-                       screen_w * 0.5f, screen_h * 0.88f, hint);
+                       screen_w * 0.5f, screen_h - lh - 16.0f, hint);
 }

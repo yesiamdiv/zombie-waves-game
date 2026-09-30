@@ -15,6 +15,7 @@
 #include "world/world.h"
 #include "world/camera.h"
 #include "world/waves.h"
+#include "world/map_registry.h"
 #include "systems/systems.h"
 #include "ui/menu.h"
 #include "ui/hud.h"
@@ -83,6 +84,7 @@ typedef struct {
     PauseMenu pause_menu;
     GameOverScreen gameover_screen;
     ShopMenu shop_menu;
+    MapSelectMenu map_select;
     Player players[MAX_PLAYERS];
     HUD hud;
 
@@ -100,6 +102,10 @@ typedef struct {
      * P1e). */
     bool net_host_mode;
     uint16_t net_port;
+    /* --map=N: map-select index requested on the command line, or -1 for none.
+     * Applied in main() *after* init(), because map_select_init() (inside init)
+     * resets selected_option to 0 and would otherwise wipe the request. */
+    int cli_map;
     char net_join_addr[64];
     char net_player_name[NET_NAME_CAP];
     uint32_t net_seed;          /* 0 = derive from RNG at host time */
@@ -123,6 +129,7 @@ static Game game = {
     .player_hp_pct = -1.0f,
     .mode = GAME_MODE_SINGLE,
     .net_port = NET_DEFAULT_PORT,
+    .cli_map = -1,
 };
 
 /* Set by the SIGINT/SIGTERM handler so headless runs can be stopped cleanly
@@ -138,17 +145,50 @@ static void reset_game(void) {
     LOG_INFO("=== RESETTING GAME ===");
 
     ecs_init(&game.ecs);
-    world_init(&game.world);
+    /* R13 merge / CROSS_BRANCH_CONFLICTS.md 5: a joining client must build the
+     * *host's* world, not whichever map its own (never-shown) picker held, or
+     * the two windows disagree about terrain, spawn and theme. The map index
+     * arrives in the HELLO; `net_map_index_valid` distinguishes "host told
+     * me" from "no host". */
+    if (game.headless) {
+        /* Headless runs keep the fixed classic world so scripts/tests stay
+         * layout-stable; the map picker only applies to real gameplay. */
+        world_init(&game.world);
+    } else {
+        int map_index = (game.net_client.map_index_valid && !game.net_host_mode)
+                            ? game.net_client.map_index
+                            : game.map_select.selected_option;
+        const MapDef *m = map_registry_get(map_index);
+        if (!m || !world_load_map(&game.world, m)) {
+            if (m) {
+                LOG_WARN("map '%s' failed to load; using default world", m->name);
+            } else {
+                LOG_WARN("no map at index %d; using default world", map_index);
+            }
+            world_init(&game.world);
+        } else {
+            LOG_INFO("Starting map: %s (%dx%d, %s)", m->name,
+                     game.world.width, game.world.height,
+                     theme_name(game.world.theme));
+        }
+    }
     waves_init(&game.waves, &game.world);
     players_reset(game.players, MAX_PLAYERS);
 
-    /* Single-player: the local player occupies slot 0. */
+    /* Single-player: the local player occupies slot 0. In co-op the local
+     * player is slot 0 too, so it keeps the slot color the client's mirror
+     * expects; a solo run has no slots and takes the map theme's player tint
+     * (assets F9). */
     Vec2 spawn = world_get_spawn_point(&game.world);
     const char *local_name = game.net_host_mode
                                  ? game.net_player_name
                                  : "Player";
+    SDL_FColor local_color = COLOR_BLUE;
+    if (!game.net_host_mode && !game.net_client.host) {
+        local_color = theme_get(game.world.theme)->player_color;
+    }
     if (player_respawn(game.players, &game.ecs, 0, local_name,
-                       &COLOR_BLUE, spawn) < 0) {
+                       &local_color, spawn) < 0) {
         LOG_FATAL("Failed to spawn local player");
         return;
     }
@@ -289,11 +329,15 @@ static bool begin_net_session(void) {
 
     if (game.net_host_mode) {
         uint32_t seed = game.net_seed != 0 ? game.net_seed : (uint32_t)rand();
-        LOG_INFO("NET: hosting lobby on port %u as '%s' (seed=%u)",
-                 (unsigned)game.net_port, game.net_player_name, seed);
+        /* Advertise the chosen map so every client builds this exact world
+         * (CROSS_BRANCH_CONFLICTS.md 5). */
+        uint8_t map_index = (uint8_t)game.map_select.selected_option;
+        LOG_INFO("NET: hosting lobby on port %u as '%s' (seed=%u map=%u)",
+                 (unsigned)game.net_port, game.net_player_name, seed,
+                 (unsigned)map_index);
         if (net_server_host(&game.net_server, game.net_port,
                             game.net_player_name, seed,
-                            NET_WORLD_GEN_VERSION) != 0) {
+                            NET_WORLD_GEN_VERSION, map_index) != 0) {
             LOG_ERROR("Failed to host lobby on port %u",
                       (unsigned)game.net_port);
             return false;
@@ -397,6 +441,7 @@ static bool init(void) {
     input_init(&game.input);
     camera_init(&game.camera, WINDOW_W, WINDOW_H);
     menu_init(&game.main_menu);
+    map_select_init(&game.map_select);
     pause_menu_init(&game.pause_menu);
 
     game.state = GAME_STATE_MENU;
@@ -410,6 +455,9 @@ static void shutdown_game(void) {
     LOG_INFO("Shutting down...");
 
     event_bus_shutdown(g_events);
+
+    world_free(&game.world);
+    map_select_free(&game.map_select);
 
     if (game.font) TTF_CloseFont(game.font);
     if (game.font_large) TTF_CloseFont(game.font_large);
@@ -493,12 +541,11 @@ static void update(float dt) {
     switch (game.state) {
         case GAME_STATE_MENU: {
             GameState next = menu_update(&game.main_menu, &game.input, dt);
+            if (next == GAME_STATE_MAP_SELECT) {
+                game.state = GAME_STATE_MAP_SELECT;
+                LOG_INFO("Opening map select");
+            }
             switch (next) {
-                case GAME_STATE_PLAYING:
-                    reset_game();
-                    game.state = GAME_STATE_PLAYING;
-                    LOG_INFO("Game started from menu");
-                    break;
                 case GAME_STATE_LOBBY:
                     if (game.main_menu.host_requested) {
                         game.main_menu.host_requested = false;
@@ -532,6 +579,30 @@ static void update(float dt) {
             }
             if (game.input.quit_requested || game.main_menu.quit_requested) {
                 game.running = false;
+            }
+            break;
+        }
+
+        case GAME_STATE_MAP_SELECT: {
+            GameState next = map_select_update(&game.map_select, &game.input);
+            if (next == GAME_STATE_PLAYING) {
+                const MapDef *m = map_registry_get(game.map_select.selected_option);
+                if (m) LOG_INFO("Map chosen: %s", m->name);
+                if (game.main_menu.host_pending) {
+                    /* Host Co-op: the world is settled, so the lobby can open
+                     * now. Opening it first would have to retro-fit the map
+                     * into a session that already exists. */
+                    game.main_menu.host_pending = false;
+                    game.main_menu.host_requested = true;
+                    game.state = GAME_STATE_LOBBY;
+                } else {
+                    reset_game();
+                    game.state = GAME_STATE_PLAYING;
+                    LOG_INFO("Game started from map select");
+                }
+            } else if (next == GAME_STATE_MENU) {
+                game.state = GAME_STATE_MENU;
+                LOG_INFO("Map select cancelled");
             }
             break;
         }
@@ -707,10 +778,14 @@ static void update(float dt) {
                 hud_show_message(&game.hud, msg, 3.0f);
             }
 
+            /* Pickups resolve per player slot (multiplayer) and take that
+             * slot's inventory, so the ammo pickup (assets B5) refills the
+             * weapons *that* player actually owns. */
             for (int s = 0; s < MAX_PLAYERS; s++) {
                 if (!game.players[s].in_use || game.players[s].entity == ECS_NULL_ENTITY) continue;
                 if (!ecs_is_alive(&game.ecs, game.players[s].entity)) continue;
-                items_check_pickup(&game.ecs, game.players[s].entity);
+                items_check_pickup(&game.ecs, game.players[s].entity,
+                                   &game.players[s].inventory);
             }
 
             game.item_spawn_timer += dt;
@@ -734,6 +809,10 @@ static void update(float dt) {
             if (local->entity != ECS_NULL_ENTITY &&
                 ecs_is_alive(&game.ecs, local->entity)) {
                 camera_follow(&game.camera, ecs_get_position(&game.ecs, local->entity)->pos, dt);
+                /* assets B6: keep the camera inside the (now map-sized) world
+                 * so the view never pans into empty void past the border. */
+                camera_clamp_world(&game.camera,
+                                   game.world.world_pixel_w, game.world.world_pixel_h);
             }
 
             hud_update(&game.hud, dt);
@@ -931,6 +1010,10 @@ static void render(void) {
     switch (game.state) {
         case GAME_STATE_MENU:
             menu_draw(game.renderer, &game.main_menu, win_w, win_h, game.font_large);
+            break;
+
+        case GAME_STATE_MAP_SELECT:
+            map_select_draw(game.renderer, &game.map_select, win_w, win_h, game.font_large);
             break;
 
         case GAME_STATE_CONNECTING:
@@ -1363,6 +1446,19 @@ static void parse_args(int argc, char *argv[]) {
         } else if (strncmp(arg, "--name=", 7) == 0) {
             snprintf(game.net_player_name, sizeof(game.net_player_name), "%s",
                      arg + 7);
+        } else if (strncmp(arg, "--map=", 6) == 0) {
+            /* Preset the map chosen in the map-select screen, so the world is
+             * scriptable and the host's map can be exercised without driving
+             * the GUI. Applied after init() (see Game.cli_map), because
+             * map_select_init() resets the selection during init. */
+            int idx = atoi(arg + 6);
+            if (idx < 0 || idx >= map_registry_count()) {
+                LOG_WARN("--map=%d is out of range (0..%d); using the default map",
+                         idx, map_registry_count() - 1);
+                game.cli_map = -1;
+            } else {
+                game.cli_map = idx;
+            }
         } else if (strcmp(arg, "--help") == 0) {
             printf("%s\n", "Usage: open_world_zombie_waves [options]");
             printf("%s\n", "  --headless            run with no window/renderer (fast, deterministic)");
@@ -1380,6 +1476,7 @@ static void parse_args(int argc, char *argv[]) {
             printf("%s\n", "  --join <ip>[:port]        join a hosted lobby (multiplayer)");
             printf("%s\n", "  --port=<n>                host listen port (default 5123)");
             printf("%s\n", "  --name=<name>             player name when hosting/joining");
+            printf("%s\n", "  --map=<n>                 preset the map-select index (host sends it in HELLO)");
             exit(0);
         } else if (ai_script_requested && game.ai.mode != AI_MODE_SCRIPT &&
                    arg[0] != '-') {
@@ -1422,6 +1519,16 @@ int main(int argc, char *argv[]) {
     if (!init()) {
         LOG_FATAL("Initialization failed!");
         return 1;
+    }
+
+    /* Apply the --map=N preset now that init() has built the map-select menu
+     * (map_select_init resets selected_option to 0). This must happen before
+     * begin_net_session() so a hosting peer advertises the right map. */
+    if (game.cli_map >= 0) {
+        game.map_select.selected_option = game.cli_map;
+        const MapDef *preset = map_registry_get(game.cli_map);
+        LOG_INFO("Map preset from --map: index %d (%s)", game.cli_map,
+                 preset ? preset->name : "?");
     }
 
     /* Kick off any requested multiplayer session (--host/--join). Falls back to

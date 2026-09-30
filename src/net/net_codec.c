@@ -140,7 +140,8 @@ int net_decode_join(const uint8_t *buf, int len, NetHeader *h, char *name, int n
 /* ----------------------------------------------------------------- HELLO */
 
 int net_encode_hello(uint8_t *buf, int cap, const NetHeader *h, uint8_t slot,
-                     uint32_t seed, uint32_t world_gen, const char *host_name) {
+                     uint32_t seed, uint32_t world_gen, uint8_t map_index,
+                     const char *host_name) {
     if (!buf || !h || cap < NET_HDR_SIZE) return -1;
     int off = 0;
     if (net_hdr_encode(buf, h) != 0) return -1;
@@ -148,18 +149,25 @@ int net_encode_hello(uint8_t *buf, int cap, const NetHeader *h, uint8_t slot,
     if (put_u8(buf, cap, &off, slot) != 0) return -1;
     if (put_u32(buf, cap, &off, seed) != 0) return -1;
     if (put_u32(buf, cap, &off, world_gen) != 0) return -1;
+    /* R13 merge: which map the host is playing. Without this the client falls
+     * back to its own (never displayed) picker selection and the two windows
+     * render different terrain. Appended after world_gen so the body grows by
+     * one byte rather than shifting every later field. */
+    if (put_u8(buf, cap, &off, map_index) != 0) return -1;
     if (put_name(buf, cap, &off, host_name) != 0) return -1;
     return off;
 }
 
 int net_decode_hello(const uint8_t *buf, int len, NetHeader *h, uint8_t *slot,
-                     uint32_t *seed, uint32_t *world_gen, char *host_name, int name_cap) {
+                     uint32_t *seed, uint32_t *world_gen, uint8_t *map_index,
+                     char *host_name, int name_cap) {
     if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
     if (h->kind != NET_PKT_HELLO) return -1;
     int off = NET_HDR_SIZE;
     if (get_u8(buf, len, &off, slot) != 0) return -1;
     if (get_u32(buf, len, &off, seed) != 0) return -1;
     if (get_u32(buf, len, &off, world_gen) != 0) return -1;
+    if (get_u8(buf, len, &off, map_index) != 0) return -1;
     if (get_name(buf, len, &off, host_name, name_cap) != 0) return -1;
     return 0;
 }

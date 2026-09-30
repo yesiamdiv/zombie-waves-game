@@ -151,7 +151,7 @@ static bool spawn_point_near_player(World *ecs, GameWorld *world,
     return false;
 }
 
-Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
+Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
     Entity e = ecs_create_entity(ecs);
     if (e == ECS_NULL_ENTITY) return e;
 
@@ -176,16 +176,9 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos) {
         .last_hit_by = ECS_NULL_ENTITY
     };
 
-    /* Vary zombie colors and sizes slightly */
-    float hue = (float)(rand() % 3) / 3.0f;
-    SDL_FColor color;
-    if (hue < 0.33f) {
-        color = (SDL_FColor){0.3f, 0.6f, 0.2f, 1.0f};  /* green zombie */
-    } else if (hue < 0.66f) {
-        color = (SDL_FColor){0.5f, 0.4f, 0.2f, 1.0f};  /* brown zombie */
-    } else {
-        color = (SDL_FColor){0.4f, 0.2f, 0.3f, 1.0f};  /* purple zombie */
-    }
+    /* Vary zombie colors/sizes; tints resolve through the map's theme. */
+    int variant = rand() % 3;
+    SDL_FColor color = theme_get(theme)->zombie_tints[variant];
 
     float size = 10.0f + (float)(rand() % 6);
     *ecs_get_sprite(ecs, e) = (CSprite){
@@ -242,7 +235,7 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
                 spawn_pos.y += (float)(rand() % 100 - 50);
             }
 
-            Entity z = waves_spawn_zombie(ecs, spawn_pos);
+            Entity z = waves_spawn_zombie(ecs, spawn_pos, world->theme);
             if (z != ECS_NULL_ENTITY) {
                 /* Scale health and speed with difficulty */
                 CHealth *h = ecs_get_health(ecs, z);
