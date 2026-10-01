@@ -12,6 +12,7 @@
 #include "config.h"
 #include "ecs/ecs.h"
 #include "graphics/sprite.h"
+#include "assets/asset_manager.h"
 #include "world/world.h"
 #include "world/camera.h"
 #include "world/waves.h"
@@ -50,6 +51,10 @@ float g_zombie_speed_mult = 1.0f;
 typedef struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
+    /* R13 merge fix (B14): the asset manager is the global texture cache that
+     * sprite_tex()/world_draw() resolve through. Without it every sprite falls
+     * back to a flat colored shape. */
+    AssetManager assets;
     TTF_Font *font;
     TTF_Font *font_large;
     bool running;
@@ -408,6 +413,11 @@ static bool init(void) {
             return false;
         }
 
+        /* R13 merge fix (B14): the asset manager must be initialized with the
+         * live renderer, otherwise asset_manager_get() returns NULL silently
+         * and every entity/tile renders as a plain colored shape. */
+        asset_manager_init(&game.assets, game.renderer);
+
         /* Synchronize present with the display refresh. Without vsync (and no
          * frame cap) the render loop spins a core flat at 100% CPU, which
          * starves the desktop compositor's input dispatch under Wayland - the
@@ -461,6 +471,8 @@ static void shutdown_game(void) {
 
     if (game.font) TTF_CloseFont(game.font);
     if (game.font_large) TTF_CloseFont(game.font_large);
+    /* R13 merge fix (B14): destroy cached textures before the renderer. */
+    if (!game.headless) asset_manager_shutdown(&game.assets);
     if (game.renderer) SDL_DestroyRenderer(game.renderer);
     if (game.window) SDL_DestroyWindow(game.window);
     if (!game.headless) TTF_Quit();

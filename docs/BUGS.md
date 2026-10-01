@@ -23,6 +23,9 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B9 | Uninitialized stack `GameWorld` in tests (crash after heap tiles) | `4dc1740` | FIXED |
 | B10 | Stone wall generator produced flat red walls | `f8c95ac` | FIXED |
 | B11 | World tiles leaked on shutdown (missing `world_free`) | `b9b8987` | FIXED |
+| B12 | Cross-branch merge silently dropped seven shipped features | `eda5cd9` | FIXED |
+| B13 | Joining client built the wrong world | `eda5cd9` | FIXED |
+| B14 | Asset manager never initialized → all sprites/tiles render as flat shapes | (this commit) | FIXED |
 
 ## Detailed entries
 
@@ -200,3 +203,30 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
   **rejected** rather than falling back to a default world, which would keep the
   desync. New `--map=N` flag presets the map-select index so this is testable
   without a GUI.
+
+## B14. Asset manager never initialized — all art renders as flat colored shapes
+
+- **Status**: FIXED (this commit)
+- **Symptom**: In a windowed run every entity and tile renders as a plain
+  colored shape — no player/zombie/pickup sprites, no tile textures. Looks like
+  the pre-assets build.
+- **Root cause (confirmed)**: The cross-branch merge (`eda5cd9`) dropped the
+  asset-manager wiring from `src/main.c` while keeping the asset code that
+  consumes it:
+    - no `#include "assets/asset_manager.h"`
+    - no `AssetManager assets;` field in `Game`
+    - no `asset_manager_init(&game.assets, game.renderer)` after renderer
+      creation
+    - no `asset_manager_shutdown()` before renderer teardown
+  With `g_assets == NULL`, `sprite_tex()` (sprite.c:6-7) and `world_draw()`
+  (world.c:192) get a NULL manager; `asset_manager_get()` returns NULL
+  **silently** (its early-out for `!am->renderer` logs nothing), so every draw
+  site falls back to its flat-color path. `--headless` was unaffected because
+  it never initializes a renderer, which is why all automated gates stayed green.
+- **Fix**: Restored all four pieces in `src/main.c`, matching the assets
+  worktree. Verified with a temporary probe that `player.png`, `zombie.png`,
+  `city_ground0.png`, `city_wall.png` and `snow_wall.png` all load (LOADED, not
+  NULL), then removed the probe.
+- **Why the gates missed it**: headless render() returns immediately, so no
+  texture is ever requested in CI. This is the known blind spot in
+  `PENDING_VERIFICATION.md`; a windowed screenshot is the real regression test.
