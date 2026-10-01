@@ -75,6 +75,7 @@ typedef struct {
     PauseMenu pause_menu;
     GameOverScreen gameover_screen;
     ShopMenu shop_menu;
+    MapSelectMenu map_select;
     PlayerInventory inventory;
     HUD hud;
 
@@ -144,7 +145,7 @@ static void reset_game(void) {
          * layout-stable; the map picker only applies to real gameplay. */
         world_init(&game.world);
     } else {
-        const MapDef *m = map_registry_get(game.main_menu.selected_map);
+        const MapDef *m = map_registry_get(game.map_select.selected_option);
         if (!world_load_map(&game.world, m)) {
             LOG_WARN("map '%s' failed to load; using default world", m->name);
             world_init(&game.world);
@@ -251,6 +252,7 @@ static bool init(void) {
     input_init(&game.input);
     camera_init(&game.camera, WINDOW_W, WINDOW_H);
     menu_init(&game.main_menu);
+    map_select_init(&game.map_select);
     pause_menu_init(&game.pause_menu);
 
     game.state = GAME_STATE_MENU;
@@ -266,6 +268,7 @@ static void shutdown(void) {
     event_bus_shutdown(g_events);
 
     world_free(&game.world);
+    map_select_free(&game.map_select);
 
     if (game.font) TTF_CloseFont(game.font);
     if (game.font_large) TTF_CloseFont(game.font_large);
@@ -282,12 +285,29 @@ static void update(float dt) {
     switch (game.state) {
         case GAME_STATE_MENU: {
             GameState next = menu_update(&game.main_menu, &game.input, dt);
-            if (next == GAME_STATE_PLAYING) {
-                reset_game();
-                game.state = GAME_STATE_PLAYING;
-                LOG_INFO("Game started from menu");
+            if (next == GAME_STATE_MAP_SELECT) {
+                game.state = GAME_STATE_MAP_SELECT;
+                LOG_INFO("Opening map select");
             }
             if (game.input.quit_requested || game.main_menu.quit_requested) {
+                game.running = false;
+            }
+            break;
+        }
+
+        case GAME_STATE_MAP_SELECT: {
+            GameState next = map_select_update(&game.map_select, &game.input);
+            if (next == GAME_STATE_PLAYING) {
+                const MapDef *m = map_registry_get(game.map_select.selected_option);
+                if (m) LOG_INFO("Map chosen: %s", m->name);
+                reset_game();
+                game.state = GAME_STATE_PLAYING;
+                LOG_INFO("Game started from map select");
+            } else if (next == GAME_STATE_MENU) {
+                game.state = GAME_STATE_MENU;
+                LOG_INFO("Back to menu from map select");
+            }
+            if (game.input.quit_requested) {
                 game.running = false;
             }
             break;
@@ -439,6 +459,10 @@ static void render(void) {
     switch (game.state) {
         case GAME_STATE_MENU:
             menu_draw(game.renderer, &game.main_menu, win_w, win_h, game.font_large);
+            break;
+
+        case GAME_STATE_MAP_SELECT:
+            map_select_draw(game.renderer, &game.map_select, win_w, win_h, game.font_large);
             break;
 
         case GAME_STATE_PLAYING:
