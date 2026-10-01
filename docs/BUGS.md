@@ -25,7 +25,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B11 | World tiles leaked on shutdown (missing `world_free`) | `b9b8987` | FIXED |
 | B12 | Cross-branch merge silently dropped seven shipped features | `eda5cd9` | FIXED |
 | B13 | Joining client built the wrong world | `eda5cd9` | FIXED |
-| B14 | Asset manager never initialized → all sprites/tiles render as flat shapes | (this commit) | FIXED |
+| B14 | Asset manager never initialized → all sprites/tiles render as flat shapes | `8824f73` | FIXED |
 
 ## Detailed entries
 
@@ -206,7 +206,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 
 ## B14. Asset manager never initialized — all art renders as flat colored shapes
 
-- **Status**: FIXED (this commit)
+- **Status**: FIXED (commit `8824f73`)
 - **Symptom**: In a windowed run every entity and tile renders as a plain
   colored shape — no player/zombie/pickup sprites, no tile textures. Looks like
   the pre-assets build.
