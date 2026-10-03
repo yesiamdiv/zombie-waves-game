@@ -145,6 +145,30 @@ that file before claiming a visual fix.
 - `docs/FEATURES.md` — feature sheet for both engines.
 - `docs/PROGRESS.md` — session log: what was found and done, with commit refs.
 - `docs/EXTENDING.md` / `docs/ASSET_MAP_PLAN.md` — asset & API docs.
+- `docs/README.md` — index of every doc above.
+
+## MANDATORY STANDARDS (added 2026-10-03 — read before implementing anything)
+
+Two documents are binding on every agent working in this repo. They are short.
+They are not optional. Each rule in them exists because this project has already
+been broken that way once:
+
+- **`docs/SYSTEM_DESIGN_RULES.md`** — how to design systems so they do not break
+  each other, and above all multiplayer. The headline rule: **the host is the
+  single source of truth; a client may only consume host state**, and may add
+  computation only if it is cosmetic *and* deterministic across machines. Five
+  separate bugs (B19–B23) came from clients inventing or self-supplying values
+  the host owns. Also covers the single-player invariance gate, the
+  headless/visibility blind spot, determinism discipline, asset rules, and the
+  per-system checklist.
+- **`docs/VERSIONING.md`** — the project's version-numbering standard. One
+  number, declared once, guarding exactly one concern. Bump a version in the
+  **same commit** as the change that invalidates it, update the codec test in
+  that commit, and record why in the declaration's comment. Adding a system,
+  wire field, asset, or map format means checking this file first.
+
+If a change cannot be reconciled with both documents, stop and ask rather than
+shipping it.
 
 ## Session start ritual
 
