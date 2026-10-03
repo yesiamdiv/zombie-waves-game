@@ -26,10 +26,10 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B12 | Cross-branch merge silently dropped seven shipped features | `eda5cd9` | FIXED |
 | B13 | Joining client built the wrong world | `eda5cd9` | FIXED |
 | B14 | Asset manager never initialized → all sprites/tiles render as flat shapes | `8824f73` | FIXED |
-| B15 | Zombie sprite lost → zombies render as flat circles | (this commit) | FIXED |
-| B16 | Bullet sprite lost → bullets render as flat circles | (this commit) | FIXED |
-| B17 | Grenade sprite lost → grenades render as flat circles | (this commit) | FIXED |
-| B18 | Rocket sprite lost → rockets render as flat circles | (this commit) | FIXED |
+| B15 | Zombie sprite lost → zombies render as flat circles | `f6ba8e1` | FIXED |
+| B16 | Bullet sprite lost → bullets render as flat circles | `f6ba8e1` | FIXED |
+| B17 | Grenade sprite lost → grenades render as flat circles | `f6ba8e1` | FIXED |
+| B18 | Rocket sprite lost → rockets render as flat circles | `f6ba8e1` | FIXED |
 
 ## Detailed entries
 
@@ -237,7 +237,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 
 ## B15–B18. Zombie / bullet / grenade / rocket sprites lost in the merge
 
-- **Status**: FIXED (this commit)
+- **Status**: FIXED (commit `f6ba8e1`)
 - **Symptom**: Even after B14 (asset manager restored), four entity types still
   rendered as plain colored circles: zombies, bullets, grenades and rockets.
   Player, pickups and the sword blade were textured correctly.
