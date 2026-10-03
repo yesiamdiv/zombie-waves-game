@@ -117,6 +117,73 @@ humans are told why.
 
 ---
 
+## Sprint N4 — divergence audit: everything else that can drift (DEV)
+
+**Goal.** Build a complete inventory of *every* value the two peers do not share,
+and decide — per item — replicate it, derive it deterministically, or accept the
+difference on purpose. Nothing stays "not looked at".
+
+**Why this sprint exists, and why it is last.** N1–N3 fix divergences that were
+already found. N4 is the sweep for the ones nobody has looked for yet, because
+looking is what finds them. It is deliberately sequenced last: each earlier
+sprint changes the replication surface, so an audit run before them would be
+partly invalidated by its own fixes. It is the last thing to do precisely so it
+is done once, on the final shape of the protocol.
+
+**Method.** For each subsystem, ask: *where does this value live, and who decides
+it?* Then classify every value into exactly one bucket:
+
+| Bucket | Meaning | Action |
+|---|---|---|
+| **R** replicated | Host decides, travels the wire | verify it actually round-trips |
+| **D** deterministic | Either peer may compute it, identical result everywhere | prove it, and say why it is safe |
+| **A** accepted | Genuinely per-peer, difference is intended and harmless | record the reason |
+| **F** fix | A real divergence | file a bug, replicate it, commit |
+
+A value that fits none of the four is a finding in itself.
+
+**Candidate inventory — to be confirmed, not assumed.** Each of these is a
+question to answer, not a claim:
+
+- **Player lifecycle** — `eliminated`, `respawn_timer`. The HUD already reads
+  both (`hud.c:121-127`) on the client, from local state that never simulates.
+  Strong R-candidate.
+- **Player combat state** — sword swing timing, attack cooldown, hit timers.
+  Cosmetic or not?
+- **Wave state** — `wave_number` and `wave_active` are in the snapshot header,
+  but the HUD message path uses a *relayed event* instead. Two mechanisms for
+  one value is itself a smell: which one wins, and can they disagree?
+- **Scoring** — `total_kills` in the snapshot header *and* `GE_KILL`/`GE_POINTS`
+  relayed events. Same duplication question as wave state.
+- **Items** — does the client show pickups that the host has already consumed?
+  Does it linger after collection?
+- **Particles and effects** — the client does not simulate, so it presumably
+  draws no explosion particles at all. Deliberate or overlooked?
+- **Audio** — does the client play anything? Are event sounds aligned with host
+  events, or invented client-side?
+- **Zombie AI state** — target selection, attack windup. Likely **A**, but must
+  be recorded rather than assumed.
+- **Camera** — each peer follows its own view. **D** by design.
+- **Pause** — relayed (R13-I4). Verify it cannot desync.
+- **Anything that calls `rand()` on the client** — the mirror path must contain
+  none (ADR-3); the wider client path needs a sweep too.
+- **Time bases** — `sim_time` vs local clock; anything comparing them.
+
+**Acceptance.**
+
+- [ ] Every value in every subsystem is classified R / D / A / F, in a table
+      committed to `docs/`.
+- [ ] Every **F** has a bug number and is fixed or explicitly deferred.
+- [ ] Every **D** has a one-line justification for why it is client-safe.
+- [ ] No `rand()` in any replicated visual path.
+- [ ] All standing gates pass; SP byte-identity intact.
+
+**Not proven by CI.** As always: anything visual or audible is on-device only.
+This sprint is mostly a *reasoning* deliverable, and its value is in the writing
+down, not in the passing of tests.
+
+---
+
 ## Backlog — deliberately deferred
 
 - Snapshot packet size / MTU fragmentation. Pre-existing (the 1024-entity cap
@@ -126,10 +193,10 @@ humans are told why.
   latency is measured and found bad.
 - Per-entity animation phase over the wire. The host's `system_animation` is not
   replicated, so walking frames may not match exactly. Same class of issue as
-  N1, smaller visible impact.
+  N1, smaller visible impact — **N4 will classify it properly**.
 
 ## Definition of done for the branch
 
-N1, N2 and N3 all accepted; `AGENTS.md` gates green; `docs/BUGS.md` B19–B23
-resolved with commit refs; `docs/PENDING_VERIFICATION.md` lists what still needs
-a human two-window run; branch pushed; `main` untouched.
+N1, N2, N3 and N4 all accepted; `AGENTS.md` gates green; `docs/BUGS.md` B19–B23
+resolved with commit refs plus any N4 findings; `docs/PENDING_VERIFICATION.md`
+lists what still needs a human two-window run; branch pushed; `main` untouched.

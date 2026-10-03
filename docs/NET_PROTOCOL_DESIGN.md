@@ -4,6 +4,50 @@ Branch: `feature/net-protocol` (forked from `feature/multiplayer` @ `398f8d1`).
 Author: DEV. Scope agreed with PM. Companions: `docs/NET_SPRINT_PLAN.md`,
 `docs/BUGS.md`.
 
+## 0.1 Decision log
+
+Choices made during planning, with the reasoning, so they survive chat
+compression and are not quietly re-litigated mid-implementation.
+
+| # | Decision | Rationale | Status |
+|---|---|---|---|
+| ADR-1 | The host transmits appearance; the client never derives it | Appearance is host-owned state. Deriving it is the root cause of R13-I5, and any heuristic is a future desync waiting to happen. | accepted |
+| ADR-2 | **Art ids are a shared numbered table, not texture names on the wire** | A per-entity name would repeat ~8 bytes at 20 Hz per entity to say something both builds already agree on. The table costs zero bytes and makes new artwork a one-line append. The cost is that the table must match across builds — which is exactly what `NET_ASSET_VERSION` (Sprint N2) enforces, turning a silent visual mismatch into a loud connection refusal. | **accepted by PM 2026-10-03** |
+| ADR-3 | `size_q` is quantised to half units, not a float | Integers decode bit-identically on every client; a float invites "close enough" drift. Half-unit precision on a 10–16 unit sprite is already finer than a pixel. | accepted |
+| ADR-4 | `tint` is the host's literal RGB, not a theme index | A theme index would force the client to re-derive a colour from local theme state — precisely the derivation this document exists to delete. It also makes the client correct even if its theme lookup were ever wrong. | accepted |
+| ADR-5 | Payload growth 26 → 31 bytes/entity is accepted | The requirement is that the protocol stays correct as art changes; that is worth 19% on a field that is already the smaller half of a snapshot. | accepted by PM 2026-10-03 |
+| ADR-6 | Snapshot MTU/fragmentation is **not** addressed here | Pre-existing: the 1024-entity cap already produced a ~26 KB packet before this change. Mixing it in would confound the desync work. Deferred, tracked in the sprint plan backlog. | deferred |
+
+### Art table (ADR-2)
+
+Owned by the host, resolved by both peers from the same table:
+
+```c
+enum {
+    NET_ART_NONE    = 0,   /* host is drawing a flat circle: reproduce it */
+    NET_ART_PLAYER  = 1,
+    NET_ART_ZOMBIE  = 2,
+    NET_ART_BULLET  = 3,
+    NET_ART_GRENADE = 4,
+    NET_ART_ROCKET  = 5,
+    NET_ART_MEDKIT  = 6,
+    NET_ART_AMMO    = 7,
+    NET_ART_SPEED   = 8,
+    NET_ART_SWORD   = 9,
+};
+```
+
+Rules:
+
+- `net_art_path(id)` maps an id to the asset path. **Ids are append-only** — a
+  released id never changes meaning, so a stale peer that does not recognise an
+  id renders `NET_ART_NONE` (a circle) instead of the wrong sprite.
+- Adding artwork appends one enum value and one table row. No struct change, no
+  wire-version change.
+- `NET_ART_NONE` is load-bearing, not a placeholder: it is how the host says
+  "this entity really is a flat circle", so the client is faithful rather than
+  guessing.
+
 ## 0. The governing rule (why this document exists)
 
 **The host is the single source of truth. A client may only consume host state.**
