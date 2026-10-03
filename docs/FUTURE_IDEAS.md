@@ -46,3 +46,25 @@ sprint.
 - Cap `item_spawn_timer`-based free item spawns per wave.
 - Camera world-bounds clamp so the void beyond map edges isn't visible
   (esp. small maps like snow 34x34).
+## Zombie speed variants (lowest priority — after N1–N4)
+
+Requested 2026-10-03: **make some zombies fast and some slow, sized accordingly**
+— e.g. small zombies quick, large zombies slow. Logged last in the queue on
+purpose.
+
+Two things to settle before anyone starts this, both recorded now so they are not
+discovered halfway through:
+
+1. **This is a single-player gameplay change.** `feature/net-protocol` exists to
+   add multiplayer *without* changing single-player, and this alters how every
+   wave plays for everyone. It probably belongs on `main` as a gameplay feature,
+   or behind an explicit opt-in, rather than riding along on a net branch.
+2. **Size is currently random (`10 + rand()%6`) and already replicated.** Sprint
+   N1 puts size on the wire as `size_q`, so once speed keys off size, the client
+   needs no new replication to animate or reason about it — but `speed` itself
+   becomes gameplay state that must *not* be re-derived per client if it ever
+   affects anything the client displays.
+
+Acceptance when it is picked up: still byte-identical for a fixed seed, wave 1
+still `8 zombies, interval: 1.90s, difficulty: 1.00`, and the size→speed mapping
+written down as a table rather than a formula buried in a spawn function.
