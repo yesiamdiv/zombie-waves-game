@@ -181,9 +181,18 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
     SDL_FColor color = theme_get(theme)->zombie_tints[variant];
 
     float size = 10.0f + (float)(rand() % 6);
+    /* R13 merge fix (B15): the merge dropped the zombie texture, leaving a flat
+     * circle. Restore it; the theme tint keeps the per-variant palette. */
+    Sprite zs = sprite_circle(size, color);
+    SDL_Texture *zombie_tex = sprite_tex("textures/entities/zombie.png");
+    if (zombie_tex) {
+        /* 32px art at 2*size world units matches the old circle diameter. */
+        zs = sprite_texture(zombie_tex);
+        zs.color = color;
+    }
     *ecs_get_sprite(ecs, e) = (CSprite){
-        .sprite = sprite_circle(size, color),
-        .scale = 1.0f,
+        .sprite = zs,
+        .scale = size / 16.0f,
         .base_alpha = 1.0f
     };
     ecs_get_collider(ecs, e)->radius = size;

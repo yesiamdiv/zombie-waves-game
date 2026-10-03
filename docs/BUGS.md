@@ -26,6 +26,10 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B12 | Cross-branch merge silently dropped seven shipped features | `eda5cd9` | FIXED |
 | B13 | Joining client built the wrong world | `eda5cd9` | FIXED |
 | B14 | Asset manager never initialized → all sprites/tiles render as flat shapes | `8824f73` | FIXED |
+| B15 | Zombie sprite lost → zombies render as flat circles | (this commit) | FIXED |
+| B16 | Bullet sprite lost → bullets render as flat circles | (this commit) | FIXED |
+| B17 | Grenade sprite lost → grenades render as flat circles | (this commit) | FIXED |
+| B18 | Rocket sprite lost → rockets render as flat circles | (this commit) | FIXED |
 
 ## Detailed entries
 
@@ -230,3 +234,31 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 - **Why the gates missed it**: headless render() returns immediately, so no
   texture is ever requested in CI. This is the known blind spot in
   `PENDING_VERIFICATION.md`; a windowed screenshot is the real regression test.
+
+## B15–B18. Zombie / bullet / grenade / rocket sprites lost in the merge
+
+- **Status**: FIXED (this commit)
+- **Symptom**: Even after B14 (asset manager restored), four entity types still
+  rendered as plain colored circles: zombies, bullets, grenades and rockets.
+  Player, pickups and the sword blade were textured correctly.
+- **Root cause (confirmed)**: The cross-branch merge `eda5cd9` resolved
+  `waves.c`, `player_input.c`, `grenades.c` and `rockets.c` toward the
+  multiplayer versions, which had reverted the sprite code to `sprite_circle()`
+  for determinism — but unlike `players.c` (explicitly annotated as an R13
+  adaptation), these four got **no** re-texture patch. Git reported no conflict,
+  so the loss was silent.
+  - `waves.c` — zombie spawned `sprite_circle(size, color)`; assets used
+    `sprite_texture(zombie_tex)` with a theme tint at `scale = size/16`.
+  - `player_input.c` — bullet spawned `sprite_circle(4, yellow)`; assets used
+    the 8px `bullet.png` at `scale = 1.0`.
+  - `grenades.c` — grenade spawned `sprite_circle(GRENADE_RADIUS, ...)`; assets
+    used `grenade.png` at `scale = 0.375` (12 world units).
+  - `rockets.c` — rocket spawned `sprite_circle(ROCKET_RADIUS, ...)`; assets
+    used `rocket.png` at `scale = 0.3125` (10 world units).
+- **Fix**: Restored the texture path in all four call sites, keeping each
+  entity's flat-color fallback so headless runs and missing art still render.
+  Scales are set so each sprite keeps its previous on-screen diameter, and the
+  zombie keeps its per-variant theme tint.
+- **Determinism**: `sprite_tex()`/`sprite_texture()` consume no RNG, and the
+  `rand()` call order around each spawn is unchanged — the single-player
+  determinism gate stays byte-identical.

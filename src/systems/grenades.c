@@ -110,9 +110,16 @@ static void throw_grenade(World *ecs, Entity player, const InputState *input) {
         .explosion_radius = GRENADE_EXPLOSION_RANGE,
         .damage = GRENADE_DAMAGE
     };
+    /* R13 merge fix (B17): grenade art was dropped; restore it. */
+    Sprite gs = sprite_circle(GRENADE_RADIUS, COLOR_DARK_GREEN);
+    SDL_Texture *grenade_tex = sprite_tex("textures/entities/grenade.png");
+    if (grenade_tex) {
+        gs = sprite_texture(grenade_tex);
+        gs.color = COLOR_WHITE;
+    }
     *ecs_get_sprite(ecs, g) = (CSprite){
-        .sprite = sprite_circle(GRENADE_RADIUS, COLOR_DARK_GREEN),
-        .scale = 1.0f,
+        .sprite = gs,
+        .scale = 0.375f,   /* 32px art -> 12 world units diameter */
         .base_alpha = 1.0f
     };
 

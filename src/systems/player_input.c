@@ -90,9 +90,17 @@ void system_player_input(World *ecs, Player *p, Camera *cam, float dt) {
                 .owner = player
             };
 
+            SDL_FColor bullet_color = {1.0f, 0.9f, 0.3f, 1.0f};
+            /* R13 merge fix (B16): bullet art was dropped; restore it. */
+            Sprite bul = sprite_circle(4.0f, bullet_color);
+            SDL_Texture *bullet_tex = sprite_tex("textures/entities/bullet.png");
+            if (bullet_tex) {
+                bul = sprite_texture(bullet_tex);
+                bul.color = bullet_color;
+            }
             *ecs_get_sprite(ecs, bullet) = (CSprite){
-                .sprite = sprite_circle(4.0f, (SDL_FColor){1.0f, 0.9f, 0.3f, 1.0f}),
-                .scale = 1.0f,
+                .sprite = bul,
+                .scale = 1.0f,   /* 8px art -> 8 world units */
                 .base_alpha = 1.0f
             };
 
