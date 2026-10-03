@@ -1497,6 +1497,47 @@ static void test_net_codec_game(void) {
     }
 }
 
+/* Shared art table integrity (ADR-2). This is the only part of the appearance
+ * work CI can genuinely verify: that both peers resolve an id to the same path
+ * and back, and that the sizes the wire maths depends on are sane. Whether the
+ * client then DRAWS the right thing is visual and needs a human. */
+static void test_net_art_table(void) {
+    LOG_INFO("--- Test: shared art table integrity ---");
+
+    /* NET_ART_NONE means "the host drew a flat shape" and must have no
+     * texture and no size to divide by. */
+    CHECK(net_art_path(NET_ART_NONE) == NULL);
+    CHECK(net_art_base_px(NET_ART_NONE) == 0);
+    CHECK(net_art_from_path(NULL) == NET_ART_NONE);
+    CHECK(net_art_from_path("") == NET_ART_NONE);
+
+    int textured = 0;
+    for (int i = 1; i < NET_ART_COUNT; i++) {
+        const char *path = net_art_path((uint8_t)i);
+        CHECK(path != NULL);
+        CHECK(path[0] != '\0');
+        /* Round trip: this is the property that guarantees both peers agree.
+         * A typo in the table fails here rather than on a second machine. */
+        CHECK(net_art_from_path(path) == (uint8_t)i);
+        CHECK(net_art_base_px((uint8_t)i) > 0);
+        textured++;
+    }
+    CHECK(textured == NET_ART_COUNT - 1);
+
+    /* An id from a newer host must degrade to NET_ART_NONE (draw a circle),
+     * never to some other sprite. */
+    CHECK(net_art_path(NET_ART_COUNT) == NULL);
+    CHECK(net_art_path(200) == NULL);
+    CHECK(net_art_base_px(200) == 0);
+    CHECK(net_art_from_path("textures/entities/not_a_thing.png") == NET_ART_NONE);
+    /* The paths must be the ones the spawn code actually asks for; if a spawn
+     * site is renamed and the table is not, art silently degrades to a circle. */
+    CHECK(strcmp(net_art_path(NET_ART_ZOMBIE),
+                 "textures/entities/zombie.png") == 0);
+    CHECK(strcmp(net_art_path(NET_ART_BULLET),
+                 "textures/entities/bullet.png") == 0);
+}
+
 /* Snapshot builder maps a live world into the 20 Hz wire format. */
 static void test_net_snapshot_build(void) {
     LOG_INFO("--- Test: net_snapshot_build maps the live world ---");
@@ -1565,8 +1606,38 @@ static void test_net_snapshot_build(void) {
     CHECK(bullets_n == 1);
     CHECK(bulletOwner == p0);
 
+    /* Appearance block (R13-I5). Note the diameter is 2*radius on the flat
+     * path and scale*base_px on the textured path; for a zombie both are 2*size,
+     * so this assertion holds headless AND on a device with real art. */
+    NetEntitySnap zombie_e = {0};
+    NetEntitySnap player_e = {0};
+    bool have_zombie = false, have_player = false;
+    for (int i = 0; i < n; i++) {
+        if (snap.entities[i].kind == NET_ENT_ZOMBIE) {
+            zombie_e = snap.entities[i];
+            have_zombie = true;
+        } else if (snap.entities[i].kind == NET_ENT_PLAYER) {
+            player_e = snap.entities[i];
+            have_player = true;
+        }
+    }
+    CHECK(have_zombie && have_player);
+    /* size_q is a world diameter in half units: 2*size. */
+    CHECK(zombie_e.size_q > 0);
+    CHECK(zombie_e.size_q / 4.0f >= 10.0f && zombie_e.size_q / 4.0f <= 15.0f);
+    /* The player is drawn as a 16-unit square at scale 0.5 -> diameter 16. */
+    CHECK(player_e.size_q == 32);
+    /* Headless has no asset manager, so nothing is textured and the host must
+     * faithfully report NET_ART_NONE (a flat shape) rather than claim art it
+     * did not draw. */
+    CHECK(zombie_e.art == NET_ART_NONE);
+    /* Tint is the host's literal sprite colour, so it must be non-black for a
+     * themed zombie and must match the player's own colour. */
+    CHECK(zombie_e.tint[0] || zombie_e.tint[1] || zombie_e.tint[2]);
+    CHECK(player_e.tint[0] == 255);   /* COLOR_RED */
+
     /* The built snapshot round-trips through the wire codec. */
-    uint8_t buf[NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * 26];
+    uint8_t buf[NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES];
     NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 3, 0, 0};
     int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
     CHECK(len > NET_HDR_SIZE);
@@ -1577,6 +1648,29 @@ static void test_net_snapshot_build(void) {
     CHECK(got.count == n);
     CHECK(got.slot_entities[0] == p0);
     CHECK(got.sim_time == 6.25f);
+    /* NET_WIRE_VERSION 4: appearance survives the round trip, and the encoded
+     * size must be exactly the declared entry size or a v3/v4 pair silently
+     * strides the wrong distance. */
+    bool got_zombie = false;
+    for (int i = 0; i < got.count; i++) {
+        if (got.entities[i].kind == NET_ENT_ZOMBIE) {
+            got_zombie = true;
+            CHECK(got.entities[i].art == zombie_e.art);
+            CHECK(got.entities[i].size_q == zombie_e.size_q);
+            CHECK(got.entities[i].tint[0] == zombie_e.tint[0]);
+            CHECK(got.entities[i].tint[1] == zombie_e.tint[1]);
+            CHECK(got.entities[i].tint[2] == zombie_e.tint[2]);
+        }
+    }
+    CHECK(got_zombie);
+    int expect_len = NET_HDR_SIZE + 18 + n * NET_SNAP_ENTRY_BYTES;
+    CHECK(len == expect_len);
+    /* NetEntitySnap is NOT packed: the compiler pads it (36 bytes here against
+     * 31 on the wire). That is fine and intended — the codec writes each field
+     * explicitly, so the padding never reaches the wire. This assertion exists
+     * so nobody "fixes" NET_SNAP_ENTRY_BYTES to sizeof() and silently changes
+     * the protocol. The load-bearing check is the encoded length above. */
+    CHECK(sizeof(NetEntitySnap) >= NET_SNAP_ENTRY_BYTES);
 }
 
 /* Two-snapshot mirror: pushes blend pos/hp, slot map resolves own player,
@@ -1731,6 +1825,7 @@ int tests_run_all(void) {
     test_zombie_contact_and_slow();
     test_net_codec();
     test_net_codec_game();
+    test_net_art_table();
     test_net_snapshot_build();
     test_net_mirror_interp();
     test_net_events_codec();

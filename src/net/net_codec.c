@@ -345,6 +345,14 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
         if (put_f32(buf, cap, &off, e->hp) != 0) return -1;
         if (put_u8(buf, cap, &off, e->flags) != 0) return -1;
         if (put_u16(buf, cap, &off, e->owner) != 0) return -1;
+        /* Appearance block (NET_WIRE_VERSION 4). Appended after owner so the
+         * v3 field order is untouched and a reader diffing the two layouts sees
+         * only an addition. */
+        if (put_u8(buf, cap, &off, e->art) != 0) return -1;
+        if (put_u8(buf, cap, &off, e->size_q) != 0) return -1;
+        for (int c = 0; c < 3; c++) {
+            if (put_u8(buf, cap, &off, e->tint[c]) != 0) return -1;
+        }
     }
     return off;
 }
@@ -376,6 +384,11 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
         if (get_f32(buf, len, &off, &e->hp) != 0) return -1;
         if (get_u8(buf, len, &off, &e->flags) != 0) return -1;
         if (get_u16(buf, len, &off, &e->owner) != 0) return -1;
+        if (get_u8(buf, len, &off, &e->art) != 0) return -1;
+        if (get_u8(buf, len, &off, &e->size_q) != 0) return -1;
+        for (int c = 0; c < 3; c++) {
+            if (get_u8(buf, len, &off, &e->tint[c]) != 0) return -1;
+        }
     }
     return 0;
 }

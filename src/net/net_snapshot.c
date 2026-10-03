@@ -1,11 +1,27 @@
 #include "net.h"
 #include "ecs/ecs.h"
+#include "assets/asset_manager.h"
+
+/* Float colour component -> byte. Clamps in FLOAT space: casting first would
+ * make an out-of-range or negative component undefined, and comparing the
+ * uint8_t result against 255 would be a tautology the compiler rejects. */
+static uint8_t net_tint_byte(float v) {
+    if (v <= 0.0f) return 0;
+    if (v >= 1.0f) return 255;
+    return (uint8_t)(v * 255.0f + 0.5f);
+}
 
 /* Build the 20 Hz world snapshot on the host. Only semantic (networked)
  * state crosses the wire: entity id (a stable ECS index), kind, pos, vel,
- * hp, and the projectile/owner linkage. Visuals are reconstructed by the
- * client from `kind` (deterministic factories on both sides). The slot map
- * lets each client pick its own player out of the entity list. */
+ * hp, and the projectile/owner linkage — plus, as of NET_WIRE_VERSION 4, the
+ * entity's appearance (art/size_q/tint).
+ *
+ * The comment above used to say "Visuals are reconstructed by the client from
+ * `kind` (deterministic factories on both sides)". That was the bug: it was
+ * never deterministic, because zombie size is rand()'d and the colour variant
+ * is a waves.c local that never reaches the ECS. The host now transmits
+ * appearance (R13-I5, docs/NET_PROTOCOL_DESIGN.md). The slot map lets each
+ * client pick its own player out of the entity list. */
 int net_snapshot_build(const World *ecs, const Player *players, int player_count,
                        float sim_time, const WaveSystem *waves, NetSnapshot *out) {
     if (!ecs || !out) return -1;
@@ -59,6 +75,55 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
         se->hp = (mask & (1u << COMP_HEALTH)) ? ecs->healths[e].current : 0.0f;
         se->flags = 0;
         se->owner = (uint16_t)owner;
+
+        /* Appearance: report the sprite this entity ACTUALLY has, so the client
+         * never has to guess (R13-I5). Read off the CSprite rather than derived
+         * from `kind` — kind would be a heuristic, and heuristics are what put
+         * a circle on screen in the first place.
+         *
+         * A missing CSprite, or one holding a flat shape, means the host is
+         * genuinely drawing a circle: that is reported as NET_ART_NONE so the
+         * client reproduces it faithfully instead of substituting art. */
+        se->art = NET_ART_NONE;
+        se->size_q = 0;
+        se->tint[0] = se->tint[1] = se->tint[2] = 0;
+        if (mask & (1u << COMP_SPRITE)) {
+            const CSprite *cs = &ecs->sprites[e];
+            se->tint[0] = net_tint_byte(cs->sprite.color.r);
+            se->tint[1] = net_tint_byte(cs->sprite.color.g);
+            se->tint[2] = net_tint_byte(cs->sprite.color.b);
+
+            if (cs->sprite.shape == SPRITE_SHAPE_TEXTURE && cs->sprite.texture) {
+                const char *name = asset_manager_name_of(cs->sprite.texture);
+                uint8_t art = net_art_from_path(name);
+                int base = net_art_base_px(art);
+                if (base > 0) {
+                    /* The wire carries a world DIAMETER, so multiply the host's
+                     * own scale by the texture's natural size: scale is
+                     * texture-relative, the diameter is not, and a diameter
+                     * keeps its meaning if the art is ever rescaled. */
+                    float diam = cs->scale * (float)base;
+                    se->art = art;
+                    int q = (int)(diam * 2.0f + 0.5f);
+                    se->size_q = (uint8_t)(q > 255 ? 255 : (q < 0 ? 0 : q));
+                } else {
+                    /* Textured but not in the art table (unknown texture, or a
+                     * table this build does not know). Half-unit circle of the
+                     * base rect keeps it visible rather than invisible. */
+                    float diam = cs->scale * 16.0f;
+                    int q = (int)(diam * 2.0f + 0.5f);
+                    se->size_q = (uint8_t)(q > 255 ? 255 : (q < 0 ? 0 : q));
+                }
+            } else {
+                /* Flat shape: circle radius or rect width becomes the diameter,
+                 * so the client's circle is the same size as the host's. */
+                float diam = (cs->sprite.shape == SPRITE_SHAPE_CIRCLE)
+                                 ? cs->sprite.as.circle.radius * 2.0f
+                                 : cs->sprite.as.rect.w;
+                int q = (int)(diam * 2.0f + 0.5f);
+                se->size_q = (uint8_t)(q > 255 ? 255 : (q < 0 ? 0 : q));
+            }
+        }
     }
     return out->count;
 }

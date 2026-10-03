@@ -7,6 +7,7 @@
 #include "graphics/sprite.h"
 #include "ecs/ecs.h"
 #include "world/waves.h"
+#include "net_art.h"
 #include "players.h"
 
 /* ---------------------------------------------------------------------------
@@ -20,10 +21,11 @@
  * GamePacket discipline).
  * ------------------------------------------------------------------------- */
 
-/* R13 merge: bumped 2 -> 3. The HELLO body gained a `map_index` byte, so a v2
- * peer would mis-parse a v3 HELLO (it would read the map byte as the first
- * character of the host name). Reject loudly rather than desync. */
-#define NET_WIRE_VERSION 3
+/* N1: bumped 3 -> 4. `NetEntitySnap` gained the appearance block (art,
+ * size_q, tint[3]), so an entry is 31 bytes, not 26. A v3 peer would stride
+ * 26 bytes per entry and desync on the very first entity. Reject loudly
+ * rather than render a plausible wrong world. */
+#define NET_WIRE_VERSION 4
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
@@ -90,6 +92,27 @@ enum {
     NET_ENT_ITEM   = 6
 };
 
+/* Appearance of a snapshot entity (docs/NET_PROTOCOL_DESIGN.md ADR-1/2/3/4).
+ *
+ * R13-I5 was a client guessing a circle size per entity kind because the
+ * snapshot said nothing about how anything looked. The host is the only party
+ * that knows, so the host now says it explicitly and the client reproduces it.
+ * The NET_ART_* ids live in net_art.h so the table does not depend on this
+ * header.
+ *
+ * `art` indexes the shared art table rather than sending a path: both peers
+ * resolve the id the same way, new artwork is a one-line append, and it costs
+ * nothing per frame.
+ *
+ * `size_q` is a world-space diameter in HALF units (size = size_q / 2.0f),
+ * deliberately not a texture-relative scale: a diameter is an absolute physical
+ * size, so it survives art being rescaled or replaced. An integer decodes
+ * bit-identically on every client, which a float invites "close enough" drift
+ * into.
+ *
+ * `tint` is the host's literal RGB from CSprite.color. Sending resolved colour
+ * rather than a theme index means the client needs no theme lookup at all,
+ * which is the whole point: derivation is what caused this bug. */
 #define NET_SNAP_MAX_ENTITIES 1024
 
 /* One live entity in a snapshot. Entity ids are stable ECS array indices, so
@@ -102,6 +125,9 @@ typedef struct {
     float hp;
     uint8_t flags;
     uint16_t owner;         /* bullet/grenade/rocket source player, else 0 */
+    uint8_t art;            /* NET_ART_*: which sprite the host drew */
+    uint8_t size_q;         /* world diameter, half units */
+    uint8_t tint[3];        /* host CSprite.color, 0-255 each */
 } NetEntitySnap;
 
 /* 20 Hz host->client snapshot (channel 1). `slot_entities` maps each roster
@@ -119,7 +145,7 @@ typedef struct {
 
 #define NET_SNAP_HZ 20           /* host snapshot cadence (matches the plan) */
 #define NET_INPUT_HZ 30          /* client input cadence (matches the plan) */
-#define NET_SNAP_ENTRY_BYTES 26  /* NetEntitySnap wire size */
+#define NET_SNAP_ENTRY_BYTES 31  /* NetEntitySnap wire size */
 #define NET_SNAP_MAX_BYTES \
     (NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES)
 

@@ -115,42 +115,45 @@ void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
 
         Vec2 screen = camera_world_to_screen(cam, e.pos);
         float z = cam->zoom;
-        SDL_FColor color = COLOR_WHITE;
-        float size = 8.0f;
 
-        switch (e.kind) {
-            case NET_ENT_PLAYER: {
-                int slot = net_mirror_slot_for(mirror, e.id);
-                color = net_slot_color(slot < 0 ? 1 : slot);
-                size = 10.0f;
-                break;
-            }
-            case NET_ENT_ZOMBIE:
-                color = COLOR_GREEN;
-                size = 11.0f;
-                break;
-            case NET_ENT_BULLET:
-                color = color_rgb(1.0f, 0.9f, 0.3f);
-                size = 3.0f;
-                break;
-            case NET_ENT_GRENADE:
-                color = COLOR_DARK_GREEN;
-                size = 5.0f;
-                break;
-            case NET_ENT_ROCKET:
-                color = COLOR_ORANGE;
-                size = 5.0f;
-                break;
-            case NET_ENT_ITEM:
-                color = COLOR_CYAN;
-                size = 7.0f;
-                break;
-            default:
-                continue;
+        /* Appearance is HOST-AUTHORITATIVE (R13-I5). The old code switched on
+         * `kind` and invented a size and colour here, which is why a client
+         * saw dots while the host saw sprites. Now that the snapshot carries
+         * art/size_q/tint, this function only reproduces them.
+         *
+         * Note what is deliberately NOT here: no rand(), no per-kind size table,
+         * no theme lookup. Zombie size and colour variant and pickup subtype
+         * are all things the client cannot know (they are rand()'d or live in
+         * an unreplicated component), so they must come from the host. */
+        float diameter = (float)e.size_q * 0.5f;
+        if (diameter <= 0.0f) {
+            /* No appearance reported at all. Keep the entity visible rather
+             * than silently invisible; a real entity always carries a CSprite,
+             * so this is a defensive path, not a normal one. */
+            diameter = 8.0f;
         }
+        SDL_FColor color = COLOR_WHITE;
+        color.r = (float)e.tint[0] / 255.0f;
+        color.g = (float)e.tint[1] / 255.0f;
+        color.b = (float)e.tint[2] / 255.0f;
 
-        Sprite s = sprite_circle(size, color);
-        sprite_draw(renderer, &s, screen.x, screen.y, z, 0.0f, 1.0f);
+        const char *art_path = (e.art != NET_ART_NONE) ? net_art_path(e.art) : NULL;
+        SDL_Texture *tex = art_path ? sprite_tex(art_path) : NULL;
+        if (tex) {
+            /* Same draw scale the host used: diameter / the texture's natural
+             * width, so a replacement at a different resolution still fills the
+             * same world space. */
+            int base = net_art_base_px(e.art);
+            float scale = (base > 0) ? diameter / (float)base : 1.0f;
+            Sprite s = sprite_texture(tex);
+            s.color = color;
+            sprite_draw(renderer, &s, screen.x, screen.y, scale * z, 0.0f, 1.0f);
+        } else {
+            /* Host is drawing a flat shape (or this build lacks the texture):
+             * reproduce the circle at the host's size and colour. */
+            Sprite s = sprite_circle(diameter * 0.5f, color);
+            sprite_draw(renderer, &s, screen.x, screen.y, z, 0.0f, 1.0f);
+        }
 
         /* Health bar over damaged/player entities. */
         if (e.kind == NET_ENT_PLAYER || e.kind == NET_ENT_ZOMBIE) {

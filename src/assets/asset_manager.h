@@ -33,4 +33,9 @@ SDL_Texture *asset_manager_get(AssetManager *am, const char *name);
  * executable's base path first, then the process working directory. */
 const char *asset_path(const char *rel);
 
+/* Reverse of asset_manager_get: the asset name behind a texture, or NULL if
+ * this build did not load it. Lets the host report the sprite it really drew
+ * instead of guessing from the entity kind. */
+const char *asset_manager_name_of(SDL_Texture *tex);
+
 #endif

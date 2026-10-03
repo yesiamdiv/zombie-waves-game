@@ -53,6 +53,22 @@ void asset_manager_shutdown(AssetManager *am) {
     g_assets = NULL;
 }
 
+/* Reverse lookup: which asset name produced this texture?
+ *
+ * The net snapshot needs to report the sprite the host ACTUALLY drew rather
+ * than infer one from the entity kind, so that changing what an entity looks
+ * like cannot silently desync the client. Walking the (short) entry list per
+ * entity at 20 Hz is far cheaper than being wrong. Returns NULL for a texture
+ * this manager did not load, which the caller treats as NET_ART_NONE. */
+const char *asset_manager_name_of(SDL_Texture *tex) {
+    AssetManager *am = asset_manager_global();
+    if (!am || !tex) return NULL;
+    for (AssetEntry *e = am->head; e; e = e->next) {
+        if (e->texture == tex) return e->name;
+    }
+    return NULL;
+}
+
 SDL_Texture *asset_manager_get(AssetManager *am, const char *name) {
     if (!am || !am->renderer || !name) return NULL;
 
