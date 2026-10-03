@@ -35,6 +35,11 @@ typedef struct {
      * straight into play, so the world is always chosen before the lobby
      * exists. */
     bool host_pending;
+    /* Human-readable notice shown under the title. This exists because a
+     * refused connection used to be LOG_ERROR-only: the player was dropped back
+     * to the menu with nothing on screen and no way to tell a version mismatch
+     * from a crash (sprint N2). */
+    char message[160];
 } MainMenu;
 
 typedef struct {
@@ -66,6 +71,9 @@ typedef struct {
 } GameOverScreen;
 
 void menu_init(MainMenu *menu);
+/* Set/clear the main-menu notice. Safe to call in any state. */
+void menu_set_message(MainMenu *menu, const char *fmt, ...);
+void menu_clear_message(MainMenu *menu);
 void map_select_init(MapSelectMenu *menu);
 void map_select_free(MapSelectMenu *menu);
 void pause_menu_init(PauseMenu *menu);

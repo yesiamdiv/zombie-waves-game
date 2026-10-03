@@ -121,27 +121,46 @@ static int decode_hdr_from_packet(NetHeader *h, const uint8_t *buf, int len) {
 
 /* ------------------------------------------------------------------ JOIN */
 
-int net_encode_join(uint8_t *buf, int cap, const NetHeader *h, const char *name) {
+/* N2: the body carries the client's asset version after the name, so the host
+ * can refuse on art drift before it allocates a slot — and so the host can
+ * report a real reason instead of a silent drop. */
+int net_encode_join(uint8_t *buf, int cap, const NetHeader *h, const char *name,
+                    uint32_t asset_version) {
     if (!buf || !h || cap < NET_HDR_SIZE) return -1;
     int off = 0;
     if (net_hdr_encode(buf, h) != 0) return -1;
     off = NET_HDR_SIZE;
     if (put_name(buf, cap, &off, name) != 0) return -1;
+    if (put_u32(buf, cap, &off, asset_version) != 0) return -1;
     return off;
 }
 
-int net_decode_join(const uint8_t *buf, int len, NetHeader *h, char *name, int name_cap) {
+int net_decode_join(const uint8_t *buf, int len, NetHeader *h, char *name, int name_cap,
+                    uint32_t *asset_version) {
     if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
     if (h->kind != NET_PKT_JOIN) return -1;
     int off = NET_HDR_SIZE;
-    return get_name(buf, len, &off, name, name_cap);
+    if (get_name(buf, len, &off, name, name_cap) != 0) return -1;
+    /* Optional tail. A pre-N2 peer sends NO trailing bytes, which is reported
+     * as "unknown" so the host refuses with an asset reason. A PARTIAL tail is
+     * a corrupt packet and is rejected: treating one as "unknown" would let a
+     * damaged JOIN through as merely old. The two cases are distinguishable
+     * because the length is exact. */
+    *asset_version = 0xFFFFFFFFu;
+    if (off < len) {
+        if (off + 4 > len) return -1;
+        uint32_t v;
+        if (get_u32(buf, len, &off, &v) != 0) return -1;
+        *asset_version = v;
+    }
+    return 0;
 }
 
 /* ----------------------------------------------------------------- HELLO */
 
 int net_encode_hello(uint8_t *buf, int cap, const NetHeader *h, uint8_t slot,
                      uint32_t seed, uint32_t world_gen, uint8_t map_index,
-                     const char *host_name) {
+                     uint32_t asset_version, const char *host_name) {
     if (!buf || !h || cap < NET_HDR_SIZE) return -1;
     int off = 0;
     if (net_hdr_encode(buf, h) != 0) return -1;
@@ -154,13 +173,17 @@ int net_encode_hello(uint8_t *buf, int cap, const NetHeader *h, uint8_t slot,
      * render different terrain. Appended after world_gen so the body grows by
      * one byte rather than shifting every later field. */
     if (put_u8(buf, cap, &off, map_index) != 0) return -1;
+    /* N2: asset version after map_index, before the name. The client compares it
+     * against its own NET_ASSET_VERSION and refuses rather than rendering art
+     * the host does not have. */
+    if (put_u32(buf, cap, &off, asset_version) != 0) return -1;
     if (put_name(buf, cap, &off, host_name) != 0) return -1;
     return off;
 }
 
 int net_decode_hello(const uint8_t *buf, int len, NetHeader *h, uint8_t *slot,
                      uint32_t *seed, uint32_t *world_gen, uint8_t *map_index,
-                     char *host_name, int name_cap) {
+                     uint32_t *asset_version, char *host_name, int name_cap) {
     if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
     if (h->kind != NET_PKT_HELLO) return -1;
     int off = NET_HDR_SIZE;
@@ -168,26 +191,52 @@ int net_decode_hello(const uint8_t *buf, int len, NetHeader *h, uint8_t *slot,
     if (get_u32(buf, len, &off, seed) != 0) return -1;
     if (get_u32(buf, len, &off, world_gen) != 0) return -1;
     if (get_u8(buf, len, &off, map_index) != 0) return -1;
+    /* N2. Same rule as the JOIN tail: no trailing bytes means a pre-N2 host
+     * ("unknown"), a partial tail means a corrupt packet (reject). */
+    *asset_version = 0xFFFFFFFFu;
+    if (off < len) {
+        if (off + 4 > len) return -1;
+        uint32_t v;
+        if (get_u32(buf, len, &off, &v) != 0) return -1;
+        *asset_version = v;
+    }
     if (get_name(buf, len, &off, host_name, name_cap) != 0) return -1;
     return 0;
 }
 
 /* --------------------------------------------------------------- REJECT */
 
-int net_encode_reject(uint8_t *buf, int cap, const NetHeader *h, uint8_t reason) {
+/* N2: the body carries the HOST's version for the refused concern, so the
+ * client can say "host has 4, you have 5" rather than the useless "version
+ * mismatch". Meaning depends on `reason`: NET_WIRE_VERSION sends
+ * NET_WIRE_VERSION, NET_REJECT_WORLD sends NET_WORLD_GEN_VERSION,
+ * NET_REJECT_ASSET sends NET_ASSET_VERSION. */
+int net_encode_reject(uint8_t *buf, int cap, const NetHeader *h, uint8_t reason,
+                      uint32_t host_version) {
     if (!buf || !h || cap < NET_HDR_SIZE) return -1;
     int off = 0;
     if (net_hdr_encode(buf, h) != 0) return -1;
     off = NET_HDR_SIZE;
     if (put_u8(buf, cap, &off, reason) != 0) return -1;
+    if (put_u32(buf, cap, &off, host_version) != 0) return -1;
     return off;
 }
 
-int net_decode_reject(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason) {
+int net_decode_reject(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason,
+                      uint32_t *host_version) {
     if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
     if (h->kind != NET_PKT_REJECT) return -1;
     int off = NET_HDR_SIZE;
-    return get_u8(buf, len, &off, reason);
+    if (get_u8(buf, len, &off, reason) != 0) return -1;
+    /* Same rule as JOIN/HELLO: absent tail = pre-N2 host, partial = corrupt. */
+    *host_version = 0xFFFFFFFFu;
+    if (off < len) {
+        if (off + 4 > len) return -1;
+        uint32_t v;
+        if (get_u32(buf, len, &off, &v) != 0) return -1;
+        *host_version = v;
+    }
+    return 0;
 }
 
 /* --------------------------------------------------------- PLAYER LIST */
@@ -413,8 +462,47 @@ const char *net_reject_reason_name(int reason) {
         case NET_REJECT_FULL:    return "lobby full";
         case NET_REJECT_VERSION: return "version mismatch";
         case NET_REJECT_WORLD:   return "world-gen mismatch";
+        case NET_REJECT_ASSET:   return "asset version mismatch";
         case NET_REJECT_OTHER:   return "rejected";
         default:                 return "unknown";
+    }
+}
+
+/* Turn a refusal into a sentence a player can act on (sprint N2).
+ *
+ * The short reason name is fine for a log but useless to a human standing in
+ * front of a menu: "version mismatch" does not tell anyone what to do. Each
+ * branch therefore names BOTH numbers and the remedy, because the remedy
+ * differs — a wire mismatch means "update the game", an asset mismatch usually
+ * means "you are running a different build".
+ *
+ * `theirs`/`ours` are the two versions; `cap` bounds the output. */
+void net_version_conflict_message(char *buf, int cap, int reason,
+                                  uint32_t theirs, uint32_t ours) {
+    if (!buf || cap <= 0) return;
+    switch (reason) {
+        case NET_REJECT_VERSION:
+            snprintf(buf, (size_t)cap,
+                     "Incompatible game version (host %u, you %u). "
+                     "Both players need the same build.", theirs, ours);
+            break;
+        case NET_REJECT_WORLD:
+            snprintf(buf, (size_t)cap,
+                     "Different world/map version (host %u, you %u). "
+                     "Both players need the same build.", theirs, ours);
+            break;
+        case NET_REJECT_ASSET:
+            snprintf(buf, (size_t)cap,
+                     "Different game art (host %u, you %u). "
+                     "Both players need the same build.", theirs, ours);
+            break;
+        case NET_REJECT_FULL:
+            snprintf(buf, (size_t)cap, "Host lobby is full.");
+            break;
+        default:
+            snprintf(buf, (size_t)cap, "Host refused the connection: %s.",
+                     net_reject_reason_name(reason));
+            break;
     }
 }
 

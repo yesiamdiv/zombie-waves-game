@@ -15,6 +15,17 @@ static void shop_set_message(ShopMenu *menu, const char *fmt, ...) {
     menu->msg_timer = 2.0f;
 }
 
+void menu_set_message(MainMenu *menu, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(menu->message, sizeof(menu->message), fmt, args);
+    va_end(args);
+}
+
+void menu_clear_message(MainMenu *menu) {
+    menu->message[0] = '\0';
+}
+
 void menu_init(MainMenu *menu) {
     menu->selected_option = 0;
     menu->option_count = 4;
@@ -265,6 +276,16 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
     SDL_FColor sub_color = {0.5f, 0.55f, 0.6f, 0.8f};
     draw_text_centered(renderer, font, "Survive the Horde",
                        screen_w * 0.5f, screen_h * 0.18f + lh + 16.0f, sub_color);
+
+    /* Notice line: a refused co-op connection has to be visible. Sprint N2 —
+     * the reason used to exist only in the log, so a version mismatch looked
+     * identical to a crash. Amber so it reads as a warning, not a menu entry. */
+    if (menu->message[0] != '\0') {
+        SDL_FColor msg_color = {1.0f, 0.65f, 0.2f, 0.95f};
+        draw_text_centered(renderer, font, menu->message,
+                           screen_w * 0.5f, screen_h * 0.18f + (lh + 16.0f) * 2.0f,
+                           msg_color);
+    }
 
     /* Options: vertically centered as a block, spaced by font height so they
      * never overlap regardless of window size (assets B1). */

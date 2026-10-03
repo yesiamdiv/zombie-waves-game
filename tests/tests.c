@@ -1212,37 +1212,70 @@ static void test_net_codec(void) {
         char long_name[96];
         memset(long_name, 'A', sizeof(long_name) - 1);
         long_name[sizeof(long_name) - 1] = '\0';
-        uint8_t buf[NET_HDR_SIZE + 1 + NET_NAME_MAX + 32];
+        uint8_t buf[NET_HDR_SIZE + 4 + 1 + NET_NAME_MAX + 32];
         NetHeader jh = {NET_WIRE_VERSION, NET_PKT_JOIN, 42, 0, 0};
-        int len = net_encode_join(buf, (int)sizeof(buf), &jh, long_name);
+        int len = net_encode_join(buf, (int)sizeof(buf), &jh, long_name,
+                                  NET_ASSET_VERSION);
         CHECK(len >= NET_HDR_SIZE);
         NetHeader h;
         char name[NET_NAME_CAP];
-        CHECK(net_decode_join(buf, len, &h, name, NET_NAME_CAP) == 0);
+        uint32_t assets = 0;
+        CHECK(net_decode_join(buf, len, &h, name, NET_NAME_CAP, &assets) == 0);
         CHECK(h.kind == NET_PKT_JOIN);
         CHECK(h.seq == 42);
         CHECK((int)strlen(name) == NET_NAME_MAX); /* trimmed, not truncated wire */
+        /* N2: the client's asset version must reach the host, or it cannot
+         * refuse art drift. */
+        CHECK(assets == NET_ASSET_VERSION);
         /* Normal name. */
         NetHeader sh = {NET_WIRE_VERSION, NET_PKT_JOIN, 7, 0, 0};
-        len = net_encode_join(buf, (int)sizeof(buf), &sh, "Alice");
-        CHECK(net_decode_join(buf, len, &h, name, NET_NAME_CAP) == 0);
+        len = net_encode_join(buf, (int)sizeof(buf), &sh, "Alice", 77u);
+        CHECK(net_decode_join(buf, len, &h, name, NET_NAME_CAP, &assets) == 0);
         CHECK(strcmp(name, "Alice") == 0);
+        CHECK(assets == 77u);
+        /* A pre-N2 peer sends a JOIN with NO asset tail: that decodes, and is
+         * reported as "unknown" so the host refuses with an asset reason. */
+        {
+            /* Names are length-prefixed on the wire (see put_name), so a
+             * pre-N2 JOIN is header + len byte + name and nothing else. */
+            uint8_t old[NET_HDR_SIZE + 8];
+            NetHeader oh = {NET_WIRE_VERSION, NET_PKT_JOIN, 3, 0, 0};
+            /* net_hdr_encode returns 0 on success, not the byte count. */
+            CHECK(net_hdr_encode(old, &oh) == 0);
+            old[NET_HDR_SIZE] = 3;
+            memcpy(old + NET_HDR_SIZE + 1, "Bob", 3);
+            int name_end = NET_HDR_SIZE + 4;
+            CHECK(net_decode_join(old, name_end, &h, name, NET_NAME_CAP,
+                                  &assets) == 0);
+            CHECK(assets == 0xFFFFFFFFu);
+            CHECK(strcmp(name, "Bob") == 0);
+            /* A PARTIAL tail is corrupt, not "old": reject rather than let a
+             * damaged JOIN through as merely out of date. */
+            CHECK(net_decode_join(old, name_end + 1, &h, name, NET_NAME_CAP,
+                                  &assets) != 0);
+            CHECK(net_decode_join(old, name_end + 3, &h, name, NET_NAME_CAP,
+                                  &assets) != 0);
+        }
     }
 
     /* HELLO: slot + seed + world_gen + host name. */
     {
-        uint8_t buf[NET_HDR_SIZE + 1 + 4 + 4 + 1 + 1 + NET_NAME_MAX];
+        uint8_t buf[NET_HDR_SIZE + 4 + 1 + 4 + 4 + 1 + 4 + NET_NAME_MAX];
         NetHeader h = {NET_WIRE_VERSION, NET_PKT_HELLO, 0, 255, 0};
         int len = net_encode_hello(buf, (int)sizeof(buf), &h, 3, 2026u,
                                    NET_WORLD_GEN_VERSION, TEST_HELLO_MAP,
-                                   "Host-1");
+                                   NET_ASSET_VERSION, "Host-1");
         CHECK(len > NET_HDR_SIZE);
         NetHeader out;
         uint8_t slot, map_index;
-        uint32_t seed, world;
+        uint32_t seed, world, host_assets = 0;
         char host_name[NET_NAME_CAP];
         CHECK(net_decode_hello(buf, len, &out, &slot, &seed, &world,
-                               &map_index, host_name, NET_NAME_CAP) == 0);
+                               &map_index, &host_assets, host_name,
+                               NET_NAME_CAP) == 0);
+        /* N2: the host's asset version must survive, or the client cannot
+         * refuse art drift. */
+        CHECK(host_assets == NET_ASSET_VERSION);
         CHECK(slot == 3);
         CHECK(seed == 2026u);
         /* R13 merge: the host's map index must survive the round trip, or the
@@ -1254,15 +1287,44 @@ static void test_net_codec(void) {
 
     /* REJECT + LEAVE round trips. */
     {
-        uint8_t buf[NET_HDR_SIZE + 1];
+        uint8_t buf[NET_HDR_SIZE + 1 + 4];
         NetHeader h = {NET_WIRE_VERSION, NET_PKT_REJECT, 0, 0,
                        NET_FLAG_VERSION_MISMATCH};
-        int len = net_encode_reject(buf, (int)sizeof(buf), &h, NET_REJECT_VERSION);
+        int len = net_encode_reject(buf, (int)sizeof(buf), &h, NET_REJECT_VERSION,
+                                    NET_WIRE_VERSION);
         NetHeader out;
         uint8_t reason = 0;
-        CHECK(net_decode_reject(buf, len, &out, &reason) == 0);
+        uint32_t host_version = 0;
+        CHECK(net_decode_reject(buf, len, &out, &reason, &host_version) == 0);
         CHECK(reason == NET_REJECT_VERSION);
         CHECK(out.flags == NET_FLAG_VERSION_MISMATCH);
+        /* N2: the refused player must be able to see the host's number. */
+        CHECK(host_version == NET_WIRE_VERSION);
+        len = net_encode_reject(buf, (int)sizeof(buf), &h, NET_REJECT_ASSET,
+                                NET_ASSET_VERSION);
+        CHECK(net_decode_reject(buf, len, &out, &reason, &host_version) == 0);
+        CHECK(reason == NET_REJECT_ASSET);
+        CHECK(host_version == NET_ASSET_VERSION);
+        /* A pre-N2 host sends only the reason byte: report unknown. A partial
+         * tail is corrupt and must be rejected. */
+        CHECK(net_decode_reject(buf, NET_HDR_SIZE + 1, &out, &reason,
+                                &host_version) == 0);
+        CHECK(host_version == 0xFFFFFFFFu);
+        CHECK(net_decode_reject(buf, NET_HDR_SIZE + 2, &out, &reason,
+                                &host_version) != 0);
+
+        /* N2: the refusal text a player reads must name both numbers and the
+         * remedy. "version mismatch" alone is what made this bug invisible. */
+        char msg[160];
+        net_version_conflict_message(msg, (int)sizeof(msg), NET_REJECT_VERSION,
+                                     5, 4);
+        CHECK(strstr(msg, "5") != NULL && strstr(msg, "4") != NULL);
+        net_version_conflict_message(msg, (int)sizeof(msg), NET_REJECT_ASSET,
+                                     1, 2);
+        CHECK(strstr(msg, "art") != NULL);
+        net_version_conflict_message(msg, (int)sizeof(msg), NET_REJECT_FULL,
+                                     0, 0);
+        CHECK(strstr(msg, "full") != NULL);
 
         NetHeader lh = {NET_WIRE_VERSION, NET_PKT_LEAVE, 0, 0, 0};
         len = net_encode_leave(buf, (int)sizeof(buf), &lh, NET_LEAVE_HOST_STOPPED);
@@ -1298,14 +1360,18 @@ static void test_net_codec(void) {
 
     /* Robustness: truncated payloads must fail cleanly, not over-read. */
     {
-        uint8_t buf[NET_HDR_SIZE + 1 + NET_NAME_MAX];
+        uint8_t buf[NET_HDR_SIZE + 4 + 1 + NET_NAME_MAX];
         NetHeader jh = {NET_WIRE_VERSION, NET_PKT_JOIN, 1, 0, 0};
-        int len = net_encode_join(buf, (int)sizeof(buf), &jh, "Bob");
+        int len = net_encode_join(buf, (int)sizeof(buf), &jh, "Bob",
+                                  NET_ASSET_VERSION);
         NetHeader h;
         char name[NET_NAME_CAP];
-        CHECK(net_decode_join(buf, NET_HDR_SIZE, &h, name, NET_NAME_CAP) != 0);
-        CHECK(net_decode_join(buf, 0, &h, name, NET_NAME_CAP) != 0);
-        CHECK(net_decode_join(buf, len - 1, &h, name, NET_NAME_CAP) != 0);
+        uint32_t assets = 0;
+        CHECK(net_decode_join(buf, NET_HDR_SIZE, &h, name, NET_NAME_CAP,
+                              &assets) != 0);
+        CHECK(net_decode_join(buf, 0, &h, name, NET_NAME_CAP, &assets) != 0);
+        /* Cutting one byte off a complete JOIN leaves a partial asset tail. */
+        CHECK(net_decode_join(buf, len - 1, &h, name, NET_NAME_CAP, &assets) != 0);
     }
 
     /* Convenience name helpers. */

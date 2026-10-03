@@ -629,6 +629,13 @@ static void update(float dt) {
             } else if (c->state == NET_CLIENT_REJECTED) {
                 LOG_ERROR("Join to %s rejected by host: %s",
                           c->host_addr, net_reject_reason_name(c->reject_reason));
+                /* N2: show the reason. A refusal the player cannot see is
+                 * indistinguishable from the game failing to launch. */
+                char why[160];
+                net_version_conflict_message(why, (int)sizeof(why),
+                                             c->reject_reason,
+                                             c->reject_theirs, c->reject_ours);
+                menu_set_message(&game.main_menu, "%s", why);
                 net_client_shutdown(&game.net_client);
                 game.state = GAME_STATE_MENU;
             } else if (c->state == NET_CLIENT_OFFLINE) {
@@ -665,6 +672,11 @@ static void update(float dt) {
                 if (c->state == NET_CLIENT_REJECTED) {
                     LOG_ERROR("Rejected by host: %s",
                               net_reject_reason_name(c->reject_reason));
+                    char why[160];
+                    net_version_conflict_message(why, (int)sizeof(why),
+                                                 c->reject_reason,
+                                                 c->reject_theirs, c->reject_ours);
+                    menu_set_message(&game.main_menu, "%s", why);
                     net_client_shutdown(&game.net_client);
                     game.state = GAME_STATE_MENU;
                 } else if (c->state == NET_CLIENT_OFFLINE || c->server_stopped) {

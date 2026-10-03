@@ -30,7 +30,12 @@ typedef struct {
     uint8_t map_index;
     bool map_index_valid;
     uint8_t reject_reason;       /* when state == REJECTED */
-    uint8_t flags;               /* rejection flags (version/world mismatch) */
+    uint8_t flags;               /* rejection flags (version/world/asset) */
+    /* N2: the two numbers behind a refusal, so the menu can say "host has 5,
+     * you have 4" instead of the useless "version mismatch". 0xFFFFFFFF means
+     * the peer did not send the value (pre-N2 build). */
+    uint32_t reject_theirs;
+    uint32_t reject_ours;
 
     NetPlayerInfo roster[NET_MAX_PLAYERS];
     int roster_count;
@@ -57,9 +62,10 @@ typedef struct {
      * because the simulation really is stopped, so the client shows this instead
      * of freezing silently. */
     bool host_paused;
-    /* Test seam: advertise a different NET_WIRE_VERSION in the JOIN so a stale
-     * client build can be exercised (0 = use the real wire version). */
+    /* Test seams: advertise a different version in the JOIN so a mismatched
+     * peer can be exercised (0 = use the real version). */
     uint8_t wire_version_override;
+    uint32_t asset_version_override;   /* N2 */
     char status[96];
 } NetClient;
 

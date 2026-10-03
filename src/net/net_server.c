@@ -39,8 +39,16 @@ static int next_free_slot(NetServer *s) {
 static void reject_and_drop(NetServer *s, ENetPeer *peer, uint8_t reason,
                             uint8_t flags) {
     NetHeader h = {NET_WIRE_VERSION, NET_PKT_REJECT, 0, 0, flags};
-    uint8_t buf[NET_HDR_SIZE + 1];
-    int len = net_encode_reject(buf, (int)sizeof(buf), &h, reason);
+    /* N2: name the host's own number for the concern being refused, so the
+     * player's menu can print both sides instead of "version mismatch". */
+    uint32_t host_version;
+    switch (reason) {
+        case NET_REJECT_WORLD: host_version = s->world_gen; break;
+        case NET_REJECT_ASSET: host_version = NET_ASSET_VERSION; break;
+        default:               host_version = NET_WIRE_VERSION; break;
+    }
+    uint8_t buf[NET_HDR_SIZE + 1 + 4];
+    int len = net_encode_reject(buf, (int)sizeof(buf), &h, reason, host_version);
     if (len > 0) send_ctrl(peer, buf, len);
     enet_peer_disconnect_later(peer, 0);
     s->rejects++;
@@ -266,10 +274,23 @@ void net_server_update(NetServer *s) {
 
                 if (h.kind == NET_PKT_JOIN) {
                     char name[NET_NAME_CAP];
+                    uint32_t peer_assets = 0;
                     NetHeader jh;
                     if (net_decode_join(ev.packet->data, (int)ev.packet->dataLength,
-                                        &jh, name, NET_NAME_CAP) != 0) {
+                                        &jh, name, NET_NAME_CAP,
+                                        &peer_assets) != 0) {
                         s->bad_packets++;
+                        enet_packet_destroy(ev.packet);
+                        break;
+                    }
+                    /* N2: refuse art drift before allocating a slot, so the
+                     * peer gets a real reason and the host roster never briefly
+                     * contains someone who is about to be dropped. */
+                    if (peer_assets != NET_ASSET_VERSION) {
+                        LOG_WARN("NET: asset mismatch from peer (assets=%u expected=%u)",
+                                 peer_assets, NET_ASSET_VERSION);
+                        reject_and_drop(s, ev.peer, NET_REJECT_ASSET,
+                                        NET_FLAG_ASSET_MISMATCH);
                         enet_packet_destroy(ev.packet);
                         break;
                     }
@@ -287,11 +308,11 @@ void net_server_update(NetServer *s) {
                     s->joins++;
 
                     NetHeader oh = {NET_WIRE_VERSION, NET_PKT_HELLO, 0, 0, 0};
-                    uint8_t buf[NET_HDR_SIZE + 1 + 4 + 4 + 1 + 1 + NET_NAME_MAX];
+                    uint8_t buf[NET_HDR_SIZE + 4 + 1 + 4 + 4 + 1 + 4 + NET_NAME_MAX];
                     int len = net_encode_hello(buf, (int)sizeof(buf), &oh,
                                                (uint8_t)slot, s->seed,
                                                s->world_gen, s->map_index,
-                                               s->host_name);
+                                               NET_ASSET_VERSION, s->host_name);
                     if (len > 0) send_ctrl(ev.peer, buf, len);
                     LOG_INFO("NET: '%s' joined -> slot %d (seed=%u world_gen=%u map=%u)",
                              name, slot, s->seed, s->world_gen,

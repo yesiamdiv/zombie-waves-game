@@ -13,19 +13,28 @@ int net_hdr_decode(NetHeader *h, const uint8_t in[NET_HDR_SIZE]);
  * `h` + the body out-params, or -1 on malformed input. Header version is
  * always NET_WIRE_VERSION on encode; `seq`/`flags` for the sender to set. */
 
-int net_encode_join(uint8_t *buf, int cap, const NetHeader *h, const char *name);
+/* N2: asset_version is NET_ASSET_VERSION. The decoder sets *asset_version to
+ * 0xFFFFFFFF when the tail is absent (a pre-N2 peer) so the caller can refuse
+ * with a reason instead of reading past the packet. */
+int net_encode_join(uint8_t *buf, int cap, const NetHeader *h, const char *name,
+                    uint32_t asset_version);
 int net_decode_join(const uint8_t *buf, int len, NetHeader *h, char *name,
-                    int name_cap);
+                    int name_cap, uint32_t *asset_version);
 
 int net_encode_hello(uint8_t *buf, int cap, const NetHeader *h, uint8_t slot,
                      uint32_t seed, uint32_t world_gen, uint8_t map_index,
-                     const char *host_name);
+                     uint32_t asset_version, const char *host_name);
 int net_decode_hello(const uint8_t *buf, int len, NetHeader *h, uint8_t *slot,
                      uint32_t *seed, uint32_t *world_gen, uint8_t *map_index,
-                     char *host_name, int name_cap);
+                     uint32_t *asset_version, char *host_name, int name_cap);
 
-int net_encode_reject(uint8_t *buf, int cap, const NetHeader *h, uint8_t reason);
-int net_decode_reject(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason);
+/* N2: `host_version` is the host's number for the refused concern, so the
+ * refused player can be told what the host has. The decoder yields 0xFFFFFFFF
+ * when the tail is absent (pre-N2 host). */
+int net_encode_reject(uint8_t *buf, int cap, const NetHeader *h, uint8_t reason,
+                      uint32_t host_version);
+int net_decode_reject(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason,
+                      uint32_t *host_version);
 
 int net_encode_player_list(uint8_t *buf, int cap, const NetPlayerInfo *players,
                            int count);

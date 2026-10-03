@@ -132,6 +132,36 @@ int main(void) {
     net_client_shutdown(&bad);
     CHECK(net_server_player_count(&server) == 3); /* bad never took a slot */
 
+    /* --------------------- asset mismatch (N2): same protocol, other art ---
+     * The case that used to be invisible: the session "works" and the two
+     * windows simply look different. The host must refuse with its own reason
+     * code, and the client must be able to name both numbers. */
+    NetClient oldart;
+    net_client_init(&oldart);
+    if (net_client_connect(&oldart, "127.0.0.1", TEST_PORT, "OldArt") == 0) {
+        oldart.asset_version_override = NET_ASSET_VERSION + 1;
+        for (int tries = 0; tries < 800 && oldart.state == NET_CLIENT_CONNECTING;
+             tries++) {
+            service(&server, &oldart, 1);
+        }
+        for (int tries = 0; tries < 400 &&
+                          oldart.state != NET_CLIENT_REJECTED &&
+                          oldart.state != NET_CLIENT_OFFLINE;
+             tries++) {
+            service(&server, &oldart, 1);
+        }
+    }
+    CHECK(oldart.state == NET_CLIENT_REJECTED);
+    if (oldart.state == NET_CLIENT_REJECTED) {
+        CHECK(oldart.reject_reason == NET_REJECT_ASSET);
+        CHECK(oldart.flags == NET_FLAG_ASSET_MISMATCH);
+        /* Both numbers must reach the menu, or the player is told nothing. */
+        CHECK(oldart.reject_theirs == NET_ASSET_VERSION);
+        CHECK(oldart.reject_ours == NET_ASSET_VERSION + 1);
+    }
+    net_client_shutdown(&oldart);
+    CHECK(net_server_player_count(&server) == 3); /* never took a slot */
+
     /* ---------------------------------------------- Cara joins last ------ */
     if (net_client_connect(&c[2], "127.0.0.1", TEST_PORT, names[2]) != 0) {
         g_failed++;

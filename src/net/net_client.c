@@ -146,8 +146,12 @@ void net_client_update(NetClient *c) {
                                   ? c->wire_version_override
                                   : NET_WIRE_VERSION;
                 NetHeader h = {ver, NET_PKT_JOIN, c->seq++, 0, 0};
-                uint8_t buf[NET_HDR_SIZE + 1 + NET_NAME_MAX];
-                int len = net_encode_join(buf, (int)sizeof(buf), &h, c->name);
+                uint8_t buf[NET_HDR_SIZE + 4 + 1 + NET_NAME_MAX];
+                uint32_t assets = c->asset_version_override
+                                      ? c->asset_version_override
+                                      : NET_ASSET_VERSION;
+                int len = net_encode_join(buf, (int)sizeof(buf), &h, c->name,
+                                          assets);
                 if (len > 0) {
                     send_ctrl(c->server, buf, len);
                     LOG_INFO("NET: JOIN sent (wire=%u name='%s')", ver, c->name);
@@ -199,12 +203,12 @@ void net_client_update(NetClient *c) {
 
                 if (h.kind == NET_PKT_HELLO) {
                     uint8_t slot, map_index;
-                    uint32_t seed, world;
+                    uint32_t seed, world, host_assets;
                     char host_name[NET_NAME_CAP];
                     if (net_decode_hello(ev.packet->data,
                                          (int)ev.packet->dataLength, &h, &slot,
-                                         &seed, &world, &map_index, host_name,
-                                         NET_NAME_CAP) != 0) {
+                                         &seed, &world, &map_index, &host_assets,
+                                         host_name, NET_NAME_CAP) != 0) {
                         LOG_WARN("NET: malformed HELLO from host");
                         enet_packet_destroy(ev.packet);
                         break;
@@ -212,9 +216,23 @@ void net_client_update(NetClient *c) {
                     if (world != NET_WORLD_GEN_VERSION) {
                         c->flags = NET_FLAG_WORLD_MISMATCH;
                         c->reject_reason = NET_REJECT_WORLD;
+                        c->reject_theirs = world;
+                        c->reject_ours = NET_WORLD_GEN_VERSION;
                         c->state = NET_CLIENT_REJECTED;
                         LOG_ERROR("NET: world-gen mismatch (host=%u client=%u)",
                                   world, NET_WORLD_GEN_VERSION);
+                        enet_peer_disconnect(c->server, 0);
+                    } else if (host_assets != NET_ASSET_VERSION) {
+                        /* N2: same protocol, different art. The session would
+                         * "work" and simply look wrong on one machine, which is
+                         * the silent B15-B18 failure again. Refuse instead. */
+                        c->flags = NET_FLAG_ASSET_MISMATCH;
+                        c->reject_reason = NET_REJECT_ASSET;
+                        c->reject_theirs = host_assets;
+                        c->reject_ours = NET_ASSET_VERSION;
+                        c->state = NET_CLIENT_REJECTED;
+                        LOG_ERROR("NET: asset mismatch (host=%u client=%u)",
+                                  host_assets, NET_ASSET_VERSION);
                         enet_peer_disconnect(c->server, 0);
                     } else if ((int)map_index >= map_registry_count()) {
                         /* The host named a map this build does not have. Falling
@@ -244,13 +262,34 @@ void net_client_update(NetClient *c) {
                     }
                 } else if (h.kind == NET_PKT_REJECT) {
                     uint8_t reason;
+                    uint32_t host_version = 0xFFFFFFFFu;
                     if (net_decode_reject(ev.packet->data,
                                           (int)ev.packet->dataLength, &h,
-                                          &reason) != 0) {
+                                          &reason, &host_version) != 0) {
                         reason = NET_REJECT_OTHER;
+                        host_version = 0xFFFFFFFFu;
                     }
                     c->reject_reason = reason;
                     c->flags = h.flags;
+                    c->reject_theirs = host_version;
+                    /* Our side of the same concern, for the menu message.
+                     * For assets this must be the value this client actually
+                     * ADVERTISED in its JOIN, not the compiled-in constant:
+                     * otherwise a mismatched peer is told "host 1, you 1" and
+                     * the numbers appear to agree. */
+                    switch (reason) {
+                        case NET_REJECT_WORLD:
+                            c->reject_ours = NET_WORLD_GEN_VERSION;
+                            break;
+                        case NET_REJECT_ASSET:
+                            c->reject_ours = c->asset_version_override
+                                                  ? c->asset_version_override
+                                                  : NET_ASSET_VERSION;
+                            break;
+                        default:
+                            c->reject_ours = NET_WIRE_VERSION;
+                            break;
+                    }
                     c->state = NET_CLIENT_REJECTED;
                     LOG_WARN("NET: rejected by host: %s",
                              net_reject_reason_name(reason));

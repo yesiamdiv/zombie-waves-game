@@ -21,11 +21,16 @@
  * GamePacket discipline).
  * ------------------------------------------------------------------------- */
 
-/* N1: bumped 3 -> 4. `NetEntitySnap` gained the appearance block (art,
- * size_q, tint[3]), so an entry is 31 bytes, not 26. A v3 peer would stride
- * 26 bytes per entry and desync on the very first entity. Reject loudly
- * rather than render a plausible wrong world. */
-#define NET_WIRE_VERSION 4
+/* N2: bumped 4 -> 5. The JOIN body gained an `asset_version` byte and the
+ * HELLO body gained another, appended last in each so earlier fields do not
+ * shift. A v4 peer's JOIN would still parse (it reads a name and stops) but a
+ * v5 host's HELLO would leave a v4 client one byte short. Reject loudly rather
+ * than connect and disagree about art.
+ *
+ * History: 2 -> 3, HELLO gained `map_index` (a v2 peer read that byte as the
+ * first character of the host name). 3 -> 4, `NetEntitySnap` gained the
+ * appearance block, 26 -> 31 bytes per entry. */
+#define NET_WIRE_VERSION 5
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
@@ -38,6 +43,17 @@
  * while disagreeing on everything the map contributes. */
 #define NET_WORLD_GEN_VERSION 2         /* map-file-driven world; guards */
 
+/* N2. Two peers must ship the same ART, not merely the same protocol. Without
+ * this, a client built from a different asset tree renders different pictures
+ * and neither side has any idea why — which is exactly the silent failure of
+ * B15-B18, where a lost texture became a flat circle on one machine only.
+ *
+ * Bump this whenever anything in assets/ is added, removed, resized or
+ * replaced, including the net art table in net_art.c (ids resolve to a pixel
+ * size that the wire maths depends on). The REJECT reason is distinct from the
+ * wire reason so the message can say which kind of mismatch it is. */
+#define NET_ASSET_VERSION 1
+
 #define NET_CH_CTRL 0                   /* reliable / ordered handshake+events */
 #define NET_CH_SNAP 1                   /* unreliable / sequenced game traffic */
 
@@ -46,6 +62,7 @@
 #define NET_FLAG_NONE 0
 #define NET_FLAG_VERSION_MISMATCH 0x01  /* set on REJECT for old/new clients */
 #define NET_FLAG_WORLD_MISMATCH 0x02
+#define NET_FLAG_ASSET_MISMATCH 0x04  /* set on REJECT for art content drift */
 
 /* Packet kinds (channel 0) */
 enum {
@@ -182,7 +199,8 @@ enum {
     NET_REJECT_FULL = 1,      /* all slots taken */
     NET_REJECT_VERSION = 2,   /* NET_WIRE_VERSION mismatch */
     NET_REJECT_WORLD = 3,     /* NET_WORLD_GEN_VERSION mismatch */
-    NET_REJECT_OTHER = 4
+    NET_REJECT_OTHER = 4,
+    NET_REJECT_ASSET = 5      /* NET_ASSET_VERSION mismatch (N2) */
 };
 
 /* LEAVE reasons */
@@ -223,6 +241,11 @@ static inline SDL_FColor net_slot_color(int slot) {
 /* Convenience: human-readable names for logs/tests. */
 const char *net_pkt_kind_name(int kind);
 const char *net_reject_reason_name(int reason);
+
+/* Human-readable refusal text for the menu (sprint N2). Names both versions and
+ * the remedy; see the implementation for why the short name is not enough. */
+void net_version_conflict_message(char *buf, int cap, int reason,
+                                  uint32_t theirs, uint32_t ours);
 const char *net_leave_reason_name(int reason);
 
 /* Initialize ENet globally (idempotent). Returns 0 or -1. Called automatically
