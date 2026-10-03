@@ -30,9 +30,9 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B16 | Bullet sprite lost → bullets render as flat circles | `f6ba8e1` | FIXED |
 | B17 | Grenade sprite lost → grenades render as flat circles | `f6ba8e1` | FIXED |
 | B18 | Rocket sprite lost → rockets render as flat circles | `f6ba8e1` | FIXED |
-| B19 | Clients render entities as flat circles, not sprites (R13-I5) | — | PLANNED |
-| B20 | Zombie size and colour variant never replicated | — | PLANNED |
-| B21 | Pickup subtype never replicated | — | PLANNED |
+| B19 | Clients render entities as flat circles, not sprites (R13-I5) | `f7c44f3` | FIXED |
+| B20 | Zombie size and colour variant never replicated | `f7c44f3` | FIXED |
+| B21 | Pickup subtype never replicated | `f7c44f3` | FIXED |
 | B22 | Client HUD health reads the client's own stale ECS | — | PLANNED |
 | B23 | Client HUD points/weapon/ammo read the client's own stale inventory | — | PLANNED |
 
@@ -284,26 +284,25 @@ rationale: `docs/NET_PROTOCOL_DESIGN.md`; work: `docs/NET_SPRINT_PLAN.md`.
   (`src/main.c:1051`). `NetEntitySnap` carries only `{id, kind, pos, vel, hp,
   flags, owner}` — never an appearance — so the mirror hardcodes a size per kind
   and calls `sprite_circle()` at `render.c:152`.
-- **Fix**: transmit appearance (`art`, `size_q`, `tint[3]`) in the snapshot and
-  have the mirror reproduce the host's sprite verbatim. Sprint N1.
-- **Status**: PLANNED.
+- **Fix**: `f7c44f3` transmits appearance (`art`, `size_q`, `tint[3]`) in the
+  snapshot and the mirror reproduces the host's sprite verbatim. The per-kind
+  size table is deleted. `NET_WIRE_VERSION` 3 -> 4.
+- **Status**: FIXED — but **unproven visually**; see `docs/PENDING_VERIFICATION.md`.
 
 ### B20. Zombie size and colour variant are unreplicated
 - **Symptom**: even after B19, a client cannot match the host's zombies.
 - **Root cause**: zombie size is `10 + rand()%6` and the colour variant is a
   `waves.c:180` local variable that never reaches the ECS — it exists only baked
   into `CSprite.color`. Nothing on the wire describes either.
-- **Fix**: same as B19; `size_q` and `tint` are exactly these two values.
-  Sprint N1.
-- **Status**: PLANNED.
+- **Fix**: `f7c44f3`; `size_q` and `tint` are exactly these two values.
+- **Status**: FIXED — **unproven visually**.
 
 ### B21. Pickup subtype is unreplicated (all three look identical to a client)
 - **Symptom**: medkit, ammo and speed pickups are indistinguishable on a client.
 - **Root cause**: one `NET_ENT_ITEM` kind covers all three; the real subtype
   lives in `CItemTag.type`, which is not replicated.
-- **Fix**: `art` carries the subtype (`NET_ART_MEDKIT`/`AMMO`/`SPEED`) on the
-  wire. Sprint N1.
-- **Status**: PLANNED.
+- **Fix**: `f7c44f3`; `art` carries the subtype on the wire.
+- **Status**: FIXED — **unproven visually**.
 
 ### B22. Client HUD health is the client's own never-simulated ECS
 - **Symptom**: a client's own health readout does not fall when the host damages

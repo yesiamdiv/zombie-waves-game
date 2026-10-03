@@ -49,7 +49,20 @@ Headless-verified, reproducible, in `docs/R13_BUGFIX_TRACKER.md`:
 
 ### R13-I5 — the client renders dots, not sprites (Major, open)
 
-**Status: OPEN — fix PLANNED, not yet implemented.**
+**Status: FIXED in code (`f7c44f3`) — UNPROVEN on screen.**
+
+The host now transmits appearance (`art`, `size_q`, `tint`) and the client
+renderer reproduces it instead of guessing. Every headless gate passes. That
+is not evidence: `render()` returns immediately when `game.headless` is set, so
+nothing in CI can see a sprite.
+
+**A human must run two real windows and check:**
+1. All six entity kinds draw as sprites on the client, not circles.
+2. A client's zombies match the host's for the same zombie — both the size
+   variation and the per-variant colour.
+3. The three pickup types look different (medkit / ammo / speed).
+4. The client's own character is a sprite in its slot colour.
+5. Each client's sprite sizes match the host's pixel-for-pixel at the same zoom.
 
 Root cause is confirmed and the fix is designed in `docs/NET_PROTOCOL_DESIGN.md`
 (Sprint N1), with B19-B21 filed in `docs/BUGS.md`. The decision was reversed

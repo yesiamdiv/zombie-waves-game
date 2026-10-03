@@ -35,7 +35,7 @@ Splitting them keeps a failure in one diagnosable in that one.
 
 ---
 
-## Sprint N1 — appearance over the wire (DEV)
+## Sprint N1 — appearance over the wire (DEV) — DONE (`f7c44f3`)
 
 **Goal.** The client draws what the host draws. No client-side invention.
 
@@ -54,14 +54,21 @@ Splitting them keeps a failure in one diagnosable in that one.
 
 **Acceptance.**
 
-- [ ] A client draws sprites, not circles, for all six entity kinds.
-- [ ] Zombie size *and* variant tint match the host for the same entity.
-- [ ] Pickups show the correct subtype icon (medkit / ammo / speed).
-- [ ] Player tint still comes from the slot; unchanged from today.
-- [ ] All standing gates in `AGENTS.md` pass, including SP byte-identity.
+- [x] Code: all six kinds read appearance from the wire; per-kind size table deleted.
+- [x] Zombie size *and* variant tint are transmitted (`size_q`, `tint`).
+- [x] Pickup subtype is transmitted (`art`).
+- [x] `NET_WIRE_VERSION` 3 -> 4 with the codec test asserting the 31-byte stride.
+- [x] Gates: Release zero warnings, project sources -Werror clean, ctest 3/3,
+      zombie_tests 781/781, SP byte-identical, wave 1 = 8 zombies / 1.00.
+- [ ] **HUMAN, on device:** a client actually draws sprites, sizes match, the
+      three pickups look different. Still open — see
+      `docs/PENDING_VERIFICATION.md` for the five-point checklist.
 
-**Not proven by CI.** Everything above is visual. It needs a human two-window
-run. Log as such in `docs/PENDING_VERIFICATION.md`.
+**Done, with one deviation worth recording.** The planned per-kind size table
+was not built. The host reads the art id off the entity's live `CSprite` via a
+new `asset_manager_name_of()` reverse lookup instead, so it reports the sprite
+actually drawn rather than inferring one from the entity kind. Same bytes, but
+it cannot go stale if a spawn site changes its texture.
 
 ---
 
