@@ -30,6 +30,11 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B16 | Bullet sprite lost → bullets render as flat circles | `f6ba8e1` | FIXED |
 | B17 | Grenade sprite lost → grenades render as flat circles | `f6ba8e1` | FIXED |
 | B18 | Rocket sprite lost → rockets render as flat circles | `f6ba8e1` | FIXED |
+| B19 | Clients render entities as flat circles, not sprites (R13-I5) | — | PLANNED |
+| B20 | Zombie size and colour variant never replicated | — | PLANNED |
+| B21 | Pickup subtype never replicated | — | PLANNED |
+| B22 | Client HUD health reads the client's own stale ECS | — | PLANNED |
+| B23 | Client HUD points/weapon/ammo read the client's own stale inventory | — | PLANNED |
 
 ## Detailed entries
 
@@ -262,3 +267,67 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 - **Determinism**: `sprite_tex()`/`sprite_texture()` consume no RNG, and the
   `rand()` call order around each spawn is unchanged — the single-player
   determinism gate stays byte-identical.
+
+## B19–B23. Host-authority violations found in the 2026-10-03 audit
+
+Found while planning the net-protocol sprints, not during a playtest. All five
+are the same class of defect: **the client supplies a value the host owns**, or
+**the client displays its own state instead of the host's**. Planning and
+rationale: `docs/NET_PROTOCOL_DESIGN.md`; work: `docs/NET_SPRINT_PLAN.md`.
+
+### B19. Clients render entities as flat circles instead of sprites (R13-I5)
+- **Symptom**: the hosting player sees textured zombies, bullets, grenades and
+  rockets. A player who joined sees coloured dots for everything, including
+  their own character.
+- **Root cause**: `system_render_mirror()` (`src/systems/render.c:97`) is a
+  second, independent renderer used for every client frame via `render_only_client()`
+  (`src/main.c:1051`). `NetEntitySnap` carries only `{id, kind, pos, vel, hp,
+  flags, owner}` — never an appearance — so the mirror hardcodes a size per kind
+  and calls `sprite_circle()` at `render.c:152`.
+- **Fix**: transmit appearance (`art`, `size_q`, `tint[3]`) in the snapshot and
+  have the mirror reproduce the host's sprite verbatim. Sprint N1.
+- **Status**: PLANNED.
+
+### B20. Zombie size and colour variant are unreplicated
+- **Symptom**: even after B19, a client cannot match the host's zombies.
+- **Root cause**: zombie size is `10 + rand()%6` and the colour variant is a
+  `waves.c:180` local variable that never reaches the ECS — it exists only baked
+  into `CSprite.color`. Nothing on the wire describes either.
+- **Fix**: same as B19; `size_q` and `tint` are exactly these two values.
+  Sprint N1.
+- **Status**: PLANNED.
+
+### B21. Pickup subtype is unreplicated (all three look identical to a client)
+- **Symptom**: medkit, ammo and speed pickups are indistinguishable on a client.
+- **Root cause**: one `NET_ENT_ITEM` kind covers all three; the real subtype
+  lives in `CItemTag.type`, which is not replicated.
+- **Fix**: `art` carries the subtype (`NET_ART_MEDKIT`/`AMMO`/`SPEED`) on the
+  wire. Sprint N1.
+- **Status**: PLANNED.
+
+### B22. Client HUD health is the client's own never-simulated ECS
+- **Symptom**: a client's own health readout does not fall when the host damages
+  them; it can read full while dead.
+- **Root cause**: `hud.c:140` calls `ecs_get_health(ecs, local->entity)` on the
+  local ECS, but a render-only client never simulates, so that entity is never
+  damaged. The authoritative value is already on the wire as `NetEntitySnap.hp`.
+- **Fix**: read HP from the mirror entity for the local slot. Sprint N3.
+- **Status**: PLANNED.
+
+### B23. Client HUD points / weapon / ammo are the client's own stale inventory
+- **Symptom**: a client's points, weapon, grenade and launcher-ammo readouts do
+  not reflect scoring or pickups that the host recorded.
+- **Root cause**: `hud.c:137` reads `players[0].inventory` from local state the
+  client never simulates. The host *does* relay `GE_POINTS`, `GE_ITEM_PICKUP`
+  and `GE_KILL` (`main.c:1214`), but `drain_net_events()` only logs them and
+  applies them to nothing.
+- **Fix**: apply the relayed events to a client-side display inventory, keeping
+  the host authoritative. Sprint N3.
+- **Status**: PLANNED.
+
+### Related gap (not numbered — by design)
+Two peers built from different asset trees render different pictures, and nothing
+detects it. That is the failure class of B15–B18, and there is no asset/content
+version in the handshake. Tracked as Sprint N2 scope
+(`NET_ASSET_VERSION`, `NET_REJECT_ASSET`) rather than as a bug, because no
+current build exhibits it.

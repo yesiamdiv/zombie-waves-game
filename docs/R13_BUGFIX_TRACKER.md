@@ -28,7 +28,7 @@ Single source of truth for every bug the playtester agent reported against the
 | R13-I1 | Major | Client stutter | **FIXED** | `60033a1` |
 | R13-N2 | Minor | Legacy `main` won't compile | NOT ACTIONABLE — see below | — |
 | R13-I4 | Question | Host pause freezes client | **FIXED** (decision below) | `a555040` |
-| R13-I5 | Major | Client draws dots, not sprites | **OPEN — needs a decision** | — |
+| R13-I5 | Major | Client draws dots, not sprites | **OPEN — fix planned (N1)** | — |
 | R13-I6 | Major | Remote spawns at host's feet | **FIXED** | `HEAD` |
 
 ## Fixed in `bc6d87c` (round 1)
@@ -193,6 +193,14 @@ guest ghost holding still. Milestone M8 of `playtesting_prompts/08_playtest_r13_
 
 **Reported by:** the user, watching two real windows — "the player shapes are
 different for client and host".
+
+**Decision (2026-10-03, reversed from "open by decision"):** the client's
+renderer will not approximate. The host will transmit appearance explicitly in
+the snapshot (`art`, `size_q`, `tint`), so the client reproduces the host's
+sprite verbatim and the renderer needs no heuristics at all. Design in
+`docs/NET_PROTOCOL_DESIGN.md`, work in `docs/NET_SPRINT_PLAN.md` (Sprint N1),
+bugs B19-B21 in `docs/BUGS.md`. The audit that produced that design also found
+two further host-authority violations (B22, B23) which are Sprint N3.
 
 **Root cause:** the host and the client do not share a renderer.
 

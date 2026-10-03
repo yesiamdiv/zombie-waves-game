@@ -49,13 +49,27 @@ Headless-verified, reproducible, in `docs/R13_BUGFIX_TRACKER.md`:
 
 ### R13-I5 — the client renders dots, not sprites (Major, open)
 
-**Status: OPEN by decision.** Tracked in `docs/R13_BUGFIX_TRACKER.md`.
+**Status: OPEN — fix PLANNED, not yet implemented.**
+
+Root cause is confirmed and the fix is designed in `docs/NET_PROTOCOL_DESIGN.md`
+(Sprint N1), with B19-B21 filed in `docs/BUGS.md`. The decision was reversed
+on 2026-10-03: rather than approximate the client's renderer, the host will
+transmit appearance explicitly (`art`, `size_q`, `tint`), which is both correct
+and future-proof.
+
+Tracked in `docs/R13_BUGFIX_TRACKER.md` and `docs/NET_SPRINT_PLAN.md`.
 
 The host draws entities from their own `CSprite` (players are
 `sprite_rect(16, 16, color)`). The client runs a different renderer,
 `system_render_mirror`, which never reconstructs sprite geometry — it switches
 on `NetEntitySnap.kind` and invents a circle size per kind (player 10px, zombie
 11px, bullet 3px, item 7px). Same player, two windows, two shapes.
+
+A related consequence found during the audit: zombie size and colour variant,
+and pickup subtype, are *unreplicated* rather than merely mis-rendered, so the
+client cannot derive them even in principle (B20, B21). Two further host-authority
+violations were found alongside it: the client's HUD reads its own un-simulated
+ECS health (B22) and its own stale inventory (B23). Those are Sprint N3.
 
 Colour is correct (`net_slot_color(0) == COLOR_BLUE`), so it is purely shape/size.
 
