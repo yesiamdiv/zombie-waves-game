@@ -80,8 +80,14 @@ typedef struct {
     float aim_y;
 } NetInput;
 
-/* Semantic entity kinds carried in a snapshot (client reconstructs visuals
- * from `kind` deterministically - no sprite data crosses the wire). */
+/* Semantic entity kinds carried in a snapshot.
+ *
+ * This comment used to read "client reconstructs visuals from `kind`
+ * deterministically - no sprite data crosses the wire". That was the R13-I5
+ * bug: it was never deterministic, because zombie size is rand()'d and the
+ * colour variant is a local in waves.c that never reaches the ECS. Appearance
+ * now travels explicitly as `art`/`size_q`/`tint` in NetEntitySnap. `kind`
+ * carries SEMANTICS (what this entity is) and no longer appearance. */
 enum {
     NET_ENT_NONE   = 0,
     NET_ENT_PLAYER = 1,
