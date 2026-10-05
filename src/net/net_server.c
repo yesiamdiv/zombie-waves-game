@@ -52,6 +52,13 @@ static void reject_and_drop(NetServer *s, ENetPeer *peer, uint8_t reason,
     if (len > 0) send_ctrl(peer, buf, len);
     enet_peer_disconnect_later(peer, 0);
     s->rejects++;
+    /* N2: the HOST is refused-peer feedback too, and it used to be silent for
+     * every reason without its own LOG_WARN (e.g. a full server). Logged here
+     * rather than at each call site so no refusal path can be forgotten again.
+     * Console-level only: the host has no menu on screen while hosting. */
+    LOG_WARN("NET: refused peer port=%u reason=%s host=%u",
+             (unsigned)peer->address.port, net_reject_reason_name(reason),
+             (unsigned)host_version);
 }
 
 int net_server_host(NetServer *s, uint16_t port, const char *host_name,

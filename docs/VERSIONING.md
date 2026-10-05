@@ -39,8 +39,9 @@ find out why it was duplicated.
 |---|---|---|---|---|
 | `NET_WIRE_VERSION` | `src/net/net.h` | **4** | Byte layout of every net packet body | Any field is added/removed/resized/ reordered in any packet body |
 | `NET_WORLD_GEN_VERSION` | `src/net/net.h` | **2** | Two peers derive the *same world* | Map format, world generation, theme selection, or spawn rules change |
-| `NET_ASSET_VERSION` | `src/net/net.h` | *(planned, sprint N2)* | Two peers ship the *same art* | Any file in `assets/` is added, removed, resized, or replaced |
+| `NET_ASSET_VERSION` | `src/net/net.h` | **1** | Two peers ship the *same art* | Any file in `assets/` is added, removed, resized, or replaced, **including `src/net/net_art.c`** (ids resolve to pixel sizes the wire divides by) |
 | `MAP_FORMAT_VERSION` | map loader | *(planned)* | A `.map` file means the same thing | The map grammar changes at all |
+| `NET_REJECT_*` reason codes | `src/net/net.h` | 1..5 | — | **Never renumbered.** `NET_REJECT_OTHER = 4` stays 4 even though `NET_REJECT_ASSET = 5` was added later; appending beat tidiness |
 | `GAME_VERSION` | `CMakeLists.txt` | *(planned)* | Humans talking to humans | Release-level, not compatibility |
 
 Two rules that follow from the table:

@@ -118,3 +118,14 @@ Each needs a real on-device two-instance run with a human looking at the screen.
   harness needs a `key` action that pushes a real event.
 - No automation exists for a visual assertion. Everything in the M5-GUI/M6/M7
   column depends on a human or a vision-capable agent.
+
+### N2 — a refusal a human can actually read
+
+- [ ] Host and client on **different builds**. Client must show
+      `Different game art (host N, you M). Both players need the same build.`
+      on the main menu, not a bare menu.
+- [ ] The message does not overflow the menu box or overlap the buttons.
+- [ ] The host's console shows `NET: refused peer ... reason=asset mismatch`.
+- [ ] A full server (2 players, 3rd joins) still refuses politely.
+
+## Sprint N3 (client state) — not started

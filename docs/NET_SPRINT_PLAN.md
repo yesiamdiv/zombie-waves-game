@@ -87,16 +87,32 @@ humans are told why.
 - Tests: loopback rejects a stale wire peer, a stale world-gen peer, a stale
   asset peer, and an unknown map; each with the right reason code.
 
+**Status: DONE — `2219792`.** `NET_WIRE_VERSION` 4 → 5, `NET_ASSET_VERSION = 1`,
+`NET_REJECT_ASSET = 5`, `NET_FLAG_ASSET_MISMATCH = 0x04`.
+
 **Acceptance.**
 
-- [ ] Mismatched asset version refuses the session instead of rendering
-      different art on each side.
-- [ ] The refused player sees a readable explanation, not a silent menu return.
-- [ ] The host is told a peer was refused.
-- [ ] All standing gates pass.
+- [x] Mismatched asset version refuses the session instead of rendering
+      different art on each side. `net_loopback` proves the peer is refused with
+      the right reason, never takes a slot, and both version numbers arrive.
+- [x] The refused player sees a readable explanation, not a silent menu return
+      (`MainMenu.message`, `net_version_conflict_message`).
+- [x] The host is told a peer was refused — `reject_and_drop()` logs reason +
+      host version for *every* refusal. Console-level only; the host has no menu
+      on screen while hosting.
+- [x] All standing gates pass.
+
+**Deviation from plan, on purpose.** The REJECT body grew a version field. The
+plan had not anticipated that "name both numbers" was impossible without it: the
+refused player had no way to learn the host's number for the refused concern.
+
+**Deviation from plan, also on purpose.** A truncated packet is rejected rather
+than treated as "an old build". Absent optional tail = pre-N2 peer; *partial*
+tail = corruption. The two are distinguishable because the packet length is
+exact, and accepting corruption as merely-out-of-date would have hidden it.
 
 **Not proven by CI.** The *rejection decision* is testable headless; the
-*message being legible to a human* is not.
+*message being legible to a human* is not — nor is the host's console line.
 
 ---
 

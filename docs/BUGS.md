@@ -324,9 +324,35 @@ rationale: `docs/NET_PROTOCOL_DESIGN.md`; work: `docs/NET_SPRINT_PLAN.md`.
   the host authoritative. Sprint N3.
 - **Status**: PLANNED.
 
-### Related gap (not numbered — by design)
-Two peers built from different asset trees render different pictures, and nothing
-detects it. That is the failure class of B15–B18, and there is no asset/content
-version in the handshake. Tracked as Sprint N2 scope
-(`NET_ASSET_VERSION`, `NET_REJECT_ASSET`) rather than as a bug, because no
-current build exhibits it.
+## B24. No asset version — peers could connect and render different art
+
+- **Symptom**: none. This is the interesting one: nothing breaks, the session
+  runs, and the two windows simply look different.
+- **Root cause**: the handshake carried `NET_WIRE_VERSION` and
+  `NET_WORLD_GEN_VERSION` but nothing about *content*. Two peers built from
+  different asset trees agreed perfectly on the protocol and disagreed
+  completely on the pictures — the B15–B18 failure class, except between two
+  live players instead of between a branch and a build.
+- **Fix**: `2219792` adds `NET_ASSET_VERSION` (1) to both the JOIN and the
+  HELLO, with a distinct `NET_REJECT_ASSET` reason and
+  `NET_FLAG_ASSET_MISMATCH`. The host refuses before allocating a slot; the
+  client refuses on the HELLO. `NET_WIRE_VERSION` 4 → 5.
+- **Status**: FIXED — loopback-tested. The human-readable refusal is **unproven
+  on screen**; see `docs/PENDING_VERIFICATION.md`.
+
+## B25. A refused connection was invisible to the player
+
+- **Symptom**: a client that was rejected dropped silently to the menu. A
+  version mismatch looked identical to the game failing to launch, because the
+  only record was a `LOG_ERROR` in a console nobody had open.
+- **Root cause**: `main.c` logged `net_reject_reason_name(...)` — a short label
+  like "version mismatch" — and returned to `GAME_STATE_MENU`. `MainMenu` had no
+  message field at all, so there was nowhere to put one even if it had been
+  written. The REJECT packet also carried no version numbers, so the message
+  *could not* have named both sides.
+- **Fix**: `2219792` adds a `message` line to `MainMenu` with
+  `menu_set_message()`/`menu_clear_message()`, drawn under the subtitle;
+  `net_version_conflict_message()` which names both numbers and the remedy; and
+  a version field on the REJECT body so the refused player learns what the host
+  has.
+- **Status**: FIXED in code — **unproven on screen**.
