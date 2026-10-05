@@ -78,6 +78,17 @@ bool net_mirror_sample(const NetMirror *m, uint16_t id, float t,
     return true;
 }
 
+bool net_mirror_player_state(const NetMirror *m, int slot, NetPlayerState *out) {
+    if (!m || !out || slot < 0 || slot >= NET_MAX_PLAYERS) return false;
+    if (!m->has_newer) return false;
+    const NetPlayerState *ps = &m->newer.player_states[slot];
+    /* Never hand back a slot the host considers unused: a client that starts
+     * drawing "0 points, dead" before the roster arrives looks broken. */
+    if (!(ps->flags & NET_PST_IN_USE)) return false;
+    *out = *ps;
+    return true;
+}
+
 int net_mirror_slot_for(const NetMirror *m, uint16_t id) {
     if (!m || !m->has_newer) return -1;
     for (int s = 0; s < NET_MAX_PLAYERS; s++) {

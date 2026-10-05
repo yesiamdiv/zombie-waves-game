@@ -1,6 +1,7 @@
 #include "net.h"
 #include "ecs/ecs.h"
 #include "assets/asset_manager.h"
+#include "weapons/weapons.h"
 
 /* Float colour component -> byte. Clamps in FLOAT space: casting first would
  * make an out-of-range or negative component undefined, and comparing the
@@ -9,6 +10,23 @@ static uint8_t net_tint_byte(float v) {
     if (v <= 0.0f) return 0;
     if (v >= 1.0f) return 255;
     return (uint8_t)(v * 255.0f + 0.5f);
+}
+
+/* Non-negative float -> centi-units, saturating. Rounds to nearest so the
+ * client never sees HP drift below the value the host is displaying. */
+static uint16_t net_centis(float v) {
+    if (!(v > 0.0f)) return 0;          /* also catches NaN */
+    float c = v * 100.0f + 0.5f;
+    if (c >= 65535.0f) return 65535u;
+    return (uint16_t)c;
+}
+
+/* Clamp a possibly-negative int into a u16 without wrapping: a wrapped 65535
+ * would read as a huge points total or ammo count on the client. */
+static uint16_t net_clamp_u16(int v) {
+    if (v <= 0) return 0;
+    if (v >= 65535) return 65535u;
+    return (uint16_t)v;
 }
 
 /* Build the 20 Hz world snapshot on the host. Only semantic (networked)
@@ -33,10 +51,34 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
         out->total_kills = (uint16_t)(waves->total_kills & 0xFFFF);
     }
     for (int s = 0; s < player_count && s < NET_MAX_PLAYERS; s++) {
-        if (players && players[s].in_use &&
-            players[s].entity != ECS_NULL_ENTITY &&
+        if (!players || !players[s].in_use) continue;
+        if (players[s].entity != ECS_NULL_ENTITY &&
             ecs->alive[players[s].entity]) {
             out->slot_entities[s] = (uint16_t)players[s].entity;
+        }
+        /* v6: the client HUD reads THIS, not its own (unsimulated) ECS. Sent
+         * for in-use slots even while dead, because a dead slot has no entity
+         * to ask - which is precisely when the respawn countdown matters. */
+        NetPlayerState *ps = &out->player_states[s];
+        const Player *p = &players[s];
+        ps->flags = NET_PST_IN_USE;
+        if (p->alive) ps->flags |= NET_PST_ALIVE;
+        if (p->eliminated) ps->flags |= NET_PST_ELIMINATED;
+        ps->weapon = (uint8_t)p->inventory.current;
+        ps->unlocked_mask = 0;
+        for (int w = 0; w < WEAPON_COUNT; w++) {
+            if (p->inventory.unlocked[w]) ps->unlocked_mask |= (uint8_t)(1u << w);
+        }
+        ps->points = net_clamp_u16(p->inventory.points);
+        ps->grenades = net_clamp_u16(p->inventory.grenades);
+        ps->launcher_ammo = net_clamp_u16(p->inventory.launcher_ammo);
+        ps->respawn_centis = net_centis(p->respawn_timer);
+        ps->hp_centis = 0;
+        ps->hp_max_centis = 0;
+        if (p->entity != ECS_NULL_ENTITY && ecs->alive[p->entity] &&
+            (ecs->component_masks[p->entity] & (1u << COMP_HEALTH))) {
+            ps->hp_centis = net_centis(ecs->healths[p->entity].current);
+            ps->hp_max_centis = net_centis(ecs->healths[p->entity].max);
         }
     }
 

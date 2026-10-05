@@ -30,7 +30,7 @@
  * History: 2 -> 3, HELLO gained `map_index` (a v2 peer read that byte as the
  * first character of the host name). 3 -> 4, `NetEntitySnap` gained the
  * appearance block, 26 -> 31 bytes per entry. */
-#define NET_WIRE_VERSION 5
+#define NET_WIRE_VERSION 6
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
@@ -153,12 +153,46 @@ typedef struct {
     uint8_t tint[3];        /* host CSprite.color, 0-255 each */
 } NetEntitySnap;
 
+/* Per-slot authoritative player state (snapshot v6).
+ *
+ * Why this exists and is NOT read from the entity list: the client HUD used to
+ * draw HP and the inventory from its OWN ECS/Player structs. On a render-only
+ * client those are never simulated, so the numbers froze at join-time values
+ * and simply disagreed with the host (B22/B23). Worse, `slot_entities[s]` is 0
+ * whenever the host has the player dead, so there is no entity to ask.
+ *
+ * Every field is an integer count of centi-units rather than a float, for the
+ * same reason as N1's size_q: an integer decodes bit-identically everywhere, so
+ * two peers can never disagree because of rounding in transit. */
+enum {
+    NET_PST_IN_USE     = 1u << 0,
+    NET_PST_ALIVE      = 1u << 1,
+    NET_PST_ELIMINATED = 1u << 2
+};
+
+typedef struct {
+    uint16_t points;          /* inventory currency */
+    uint16_t grenades;        /* consumable stock */
+    uint16_t launcher_ammo;   /* rockets */
+    uint16_t hp_centis;       /* current HP * 100 */
+    uint16_t hp_max_centis;   /* max HP * 100 */
+    uint16_t respawn_centis;  /* seconds until respawn * 100, while dead */
+    uint8_t  weapon;          /* WeaponType currently selected */
+    uint8_t  unlocked_mask;   /* bit N set => weapon N is owned */
+    uint8_t  flags;           /* NET_PST_* */
+} NetPlayerState;
+
+#define NET_PLAYER_STATE_BYTES 15   /* bytes on the wire, one slot */
+
 /* 20 Hz host->client snapshot (channel 1). `slot_entities` maps each roster
  * slot to its live player entity id (0 when the slot has no entity), so a
  * client can identify which snapshot entity is its own player. */
 typedef struct {
     float sim_time;         /* host simulation clock (seconds) */
     uint16_t slot_entities[NET_MAX_PLAYERS];
+    /* v6: authoritative per-slot state, indexed by the SAME slot number as
+     * slot_entities. Always sent, even for slots that are in use but dead. */
+    NetPlayerState player_states[NET_MAX_PLAYERS];
     uint16_t wave_number;
     uint8_t wave_active;
     uint16_t total_kills;
@@ -169,8 +203,13 @@ typedef struct {
 #define NET_SNAP_HZ 20           /* host snapshot cadence (matches the plan) */
 #define NET_INPUT_HZ 30          /* client input cadence (matches the plan) */
 #define NET_SNAP_ENTRY_BYTES 31  /* NetEntitySnap wire size */
+/* Snapshot header: sim_time(4) + slot_entities(2*N) + player_states(15*N)
+ * + wave_number(2) + wave_active(1) + total_kills(2) + count(1). */
+#define NET_SNAP_HEADER_BYTES \
+    (4 + 2 * NET_MAX_PLAYERS + NET_PLAYER_STATE_BYTES * NET_MAX_PLAYERS + 6)
 #define NET_SNAP_MAX_BYTES \
-    (NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES)
+    (NET_HDR_SIZE + NET_SNAP_HEADER_BYTES + \
+     NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES)
 
 /* One relayed gameplay event (subset of GE_*, §6.3). Payload semantics follow
  * the local emitters: DEATH -> id/kind/pos; PLAYER_HEALTH -> id, a=hp after,

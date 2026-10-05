@@ -104,13 +104,20 @@ static void draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
 }
 
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
-              const struct Player *local, bool multi,
+              const struct Player *local, const HudPlayerState *auth, bool multi,
               int screen_w, int screen_h, TTF_Font *font) {
     char buf[128];
 
     if (!local) return;
 
-    bool alive = local->entity != ECS_NULL_ENTITY && ecs_is_alive(ecs, local->entity);
+    /* Authority: a client displays what the host says (B22/B23). Single-player
+     * and the host have no snapshot to consult, so `auth->valid` is false and
+     * the local ECS - the real thing - is used instead. */
+    bool use_auth = auth && auth->valid;
+
+    bool alive = use_auth ? auth->alive
+                          : (local->entity != ECS_NULL_ENTITY &&
+                             ecs_is_alive(ecs, local->entity));
 
     /* Dead local player: multiplayer shows the post-death overlay (respawn
      * countdown in TDM, elimination mark in HARDCORE). Single-player hands off
@@ -118,13 +125,16 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     if (!alive) {
         if (multi) {
             SDL_FColor dead_color = {1.0f, 0.3f, 0.3f, 1.0f};
-            if (local->eliminated) {
+            bool eliminated = use_auth ? auth->eliminated : local->eliminated;
+            float respawn_timer = use_auth ? auth->respawn_timer
+                                           : local->respawn_timer;
+            if (eliminated) {
                 draw_text_centered(renderer, font, "ELIMINATED",
                                    (float)screen_w * 0.5f, (float)screen_h * 0.3f,
                                    dead_color);
-            } else if (local->respawn_timer > 0.0f) {
+            } else if (respawn_timer > 0.0f) {
                 snprintf(buf, sizeof(buf), "Respawning at beacon in %.1fs",
-                         local->respawn_timer);
+                         respawn_timer);
                 draw_text_centered(renderer, font, buf,
                                    (float)screen_w * 0.5f, (float)screen_h * 0.3f,
                                    dead_color);
@@ -136,9 +146,20 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     const InputState *input = &local->input;
     const PlayerInventory *inv = &local->inventory;
 
-    Entity player = local->entity;
-    CHealth *hp = ecs_get_health(ecs, player);
-    hud_track_player_hp(hud, hp->current);
+    /* Health is display state, not simulation state: read it from the host when
+     * one is answering, otherwise from the local ECS. */
+    float hp_current;
+    float hp_max;
+    if (use_auth) {
+        hp_current = auth->hp;
+        hp_max = auth->hp_max > 0.0f ? auth->hp_max : 1.0f;
+    } else {
+        Entity player = local->entity;
+        CHealth *hp = ecs_get_health(ecs, player);
+        hp_current = hp->current;
+        hp_max = hp->max;
+    }
+    hud_track_player_hp(hud, hp_current);
 
     /* Health bar */
     float bar_x = 20.0f;
@@ -149,7 +170,7 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     SDL_SetRenderDrawColorFloat(renderer, 0.1f, 0.1f, 0.1f, 0.8f);
     SDL_RenderFillRect(renderer, &(SDL_FRect){bar_x, bar_y, bar_w, bar_h});
 
-    float ratio = hp->current / hp->max;
+    float ratio = hp_current / hp_max;
     if (ratio < 0) ratio = 0;
     float r = (1.0f - ratio) * 0.9f + 0.1f;
     float g = ratio * 0.9f + 0.1f;
@@ -158,7 +179,7 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
 
     /* Health text */
     SDL_FColor white = {1.0f, 1.0f, 1.0f, 0.9f};
-    snprintf(buf, sizeof(buf), "HP: %.0f / %.0f", hp->current, hp->max);
+    snprintf(buf, sizeof(buf), "HP: %.0f / %.0f", hp_current, hp_max);
     draw_text(renderer, font, buf, bar_x + 5.0f, bar_y + 2.0f, white);
 
     /* Wave info */
@@ -199,19 +220,23 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     /* Points (shop currency) */
     if (inv) {
         SDL_FColor pts_color = {0.6f, 1.0f, 0.4f, 0.95f};
-        snprintf(buf, sizeof(buf), "Points: %d", inv->points);
+        snprintf(buf, sizeof(buf), "Points: %d",
+                 use_auth ? auth->points : inv->points);
         draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 70.0f, pts_color);
 
         /* Current weapon + consumable stocks */
         char wbuf[96];
         snprintf(wbuf, sizeof(wbuf), "Weapon: %s%s",
-                 weapons_name(inv->current),
-                 inv->current != WEAPON_PISTOL ? " [1-4 to switch]" : " [1-4 weapons]");
+                 weapons_name((WeaponType)(use_auth ? auth->weapon
+                                                     : (int)inv->current)),
+                 (use_auth ? auth->weapon : (int)inv->current) != WEAPON_PISTOL
+                     ? " [1-4 to switch]" : " [1-4 weapons]");
         SDL_FColor wcol = {0.9f, 0.9f, 0.95f, 0.95f};
         draw_text_right(renderer, font, wbuf, (float)screen_w - 20.0f, 95.0f, wcol);
 
         snprintf(buf, sizeof(buf), "Grenades: %d | Rockets: %d",
-                 inv->grenades, inv->launcher_ammo);
+                 use_auth ? auth->grenades : inv->grenades,
+                 use_auth ? auth->launcher_ammo : inv->launcher_ammo);
         draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 120.0f, wcol);
     }
 

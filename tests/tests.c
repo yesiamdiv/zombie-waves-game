@@ -1729,7 +1729,11 @@ static void test_net_snapshot_build(void) {
         }
     }
     CHECK(got_zombie);
-    int expect_len = NET_HDR_SIZE + 18 + n * NET_SNAP_ENTRY_BYTES;
+    /* Header via the constant, not a hand-counted 18: the header grew by
+     * NET_PLAYER_STATE_BYTES * NET_MAX_PLAYERS in wire v6 and a literal here
+     * would have gone stale silently. */
+    int expect_len = NET_HDR_SIZE + NET_SNAP_HEADER_BYTES +
+                     n * NET_SNAP_ENTRY_BYTES;
     CHECK(len == expect_len);
     /* NetEntitySnap is NOT packed: the compiler pads it (36 bytes here against
      * 31 on the wire). That is fine and intended — the codec writes each field
@@ -1737,6 +1741,115 @@ static void test_net_snapshot_build(void) {
      * so nobody "fixes" NET_SNAP_ENTRY_BYTES to sizeof() and silently changes
      * the protocol. The load-bearing check is the encoded length above. */
     CHECK(sizeof(NetEntitySnap) >= NET_SNAP_ENTRY_BYTES);
+}
+
+/* Sprint N3 (B22/B23): the per-slot state block the client HUD now reads.
+ *
+ * Before this, the HUD asked the client's OWN ECS for HP and the client's own
+ * Player struct for points/ammo/weapon. A render-only client simulates nothing,
+ * so those values froze at join and contradicted the host. This test is the
+ * regression: state the host has moved on from must reach the wire, including
+ * for a slot that has NO live entity (dead), because a dead slot is exactly
+ * when the respawn countdown has to be shown. */
+static void test_net_player_state(void) {
+    World ecs;
+    Player players[MAX_PLAYERS];
+    NetSnapshot snap, got;
+
+    ecs_init(&ecs);
+    players_reset(players, MAX_PLAYERS);
+
+    CHECK(player_respawn(players, &ecs, 0, "Host", &COLOR_RED, vec2(10, 20)) == 0);
+    CHECK(player_respawn(players, &ecs, 1, "Alice", &COLOR_BLUE, vec2(30, 40)) == 1);
+    CHECK(player_respawn(players, &ecs, 2, "Bob", &COLOR_BLUE, vec2(50, 60)) == 2);
+
+    players[0].inventory.points = 1234;
+    players[0].inventory.grenades = 7;
+    players[0].inventory.launcher_ammo = 3;
+    players[0].inventory.current = WEAPON_LAUNCHER;
+    players[0].inventory.unlocked[WEAPON_SWORD] = true;
+    players[0].inventory.unlocked[WEAPON_LAUNCHER] = true;
+    players[1].inventory.points = 55;
+
+    /* Bob is dead: no live entity, but the host still owes the client a
+     * respawn countdown. */
+    players[2].alive = false;
+    players[2].respawn_timer = 4.25f;
+    players[2].entity = ECS_NULL_ENTITY;
+
+    CHECK(net_snapshot_build(&ecs, players, MAX_PLAYERS, 1.5f, NULL, &snap) >= 0);
+
+    /* ---- host-side encoding ---- */
+    const NetPlayerState *h0 = &snap.player_states[0];
+    CHECK((h0->flags & NET_PST_IN_USE) != 0);
+    CHECK((h0->flags & NET_PST_ALIVE) != 0);
+    CHECK(h0->points == 1234);
+    CHECK(h0->grenades == 7);
+    CHECK(h0->launcher_ammo == 3);
+    CHECK(h0->weapon == (uint8_t)WEAPON_LAUNCHER);
+    CHECK((h0->unlocked_mask & (1u << WEAPON_SWORD)) != 0);
+    CHECK((h0->unlocked_mask & (1u << WEAPON_LAUNCHER)) != 0);
+    CHECK((h0->unlocked_mask & (1u << WEAPON_PISTOL)) != 0); /* always owned */
+    CHECK(h0->hp_centis > 0 && h0->hp_max_centis > 0);
+
+    const NetPlayerState *d2 = &snap.player_states[2];
+    CHECK((d2->flags & NET_PST_IN_USE) != 0);
+    CHECK((d2->flags & NET_PST_ALIVE) == 0);
+    CHECK(d2->respawn_centis == 425);          /* 4.25s, nearest centi */
+    CHECK(snap.slot_entities[2] == 0);         /* and there is no entity */
+
+    /* An unused slot must be flagged out, or a client would draw a phantom
+     * "0 points / dead" player before the roster arrives. Slot 3 was never
+     * spawned, so it must read as not-in-use. */
+    CHECK((snap.player_states[3].flags & NET_PST_IN_USE) == 0);
+
+    /* ---- round trip ---- */
+    uint8_t buf[NET_SNAP_MAX_BYTES];
+    NetHeader hdr = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 7, 0, 0};
+    int len = net_encode_snapshot(buf, (int)sizeof(buf), &hdr, &snap);
+    CHECK(len > 0);
+    CHECK(net_decode_snapshot(buf, len, &hdr, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    for (int i = 0; i < NET_MAX_PLAYERS; i++) {
+        CHECK(got.player_states[i].points == snap.player_states[i].points);
+        CHECK(got.player_states[i].grenades == snap.player_states[i].grenades);
+        CHECK(got.player_states[i].launcher_ammo ==
+              snap.player_states[i].launcher_ammo);
+        CHECK(got.player_states[i].hp_centis == snap.player_states[i].hp_centis);
+        CHECK(got.player_states[i].hp_max_centis ==
+              snap.player_states[i].hp_max_centis);
+        CHECK(got.player_states[i].respawn_centis ==
+              snap.player_states[i].respawn_centis);
+        CHECK(got.player_states[i].weapon == snap.player_states[i].weapon);
+        CHECK(got.player_states[i].unlocked_mask ==
+              snap.player_states[i].unlocked_mask);
+        CHECK(got.player_states[i].flags == snap.player_states[i].flags);
+    }
+
+    /* ---- the state must survive the MIRROR, which is what the HUD reads --- */
+    NetMirror m;
+    net_mirror_reset(&m);
+    NetPlayerState hs;
+    CHECK(!net_mirror_player_state(&m, 0, &hs));   /* nothing pushed yet */
+    net_mirror_push(&m, &snap);
+    CHECK(net_mirror_player_state(&m, 0, &hs));
+    CHECK(hs.points == 1234 && hs.grenades == 7 && hs.launcher_ammo == 3);
+    CHECK(hs.weapon == WEAPON_LAUNCHER);
+    CHECK(net_mirror_player_state(&m, 2, &hs));  /* dead, but still in use */
+    CHECK((hs.flags & NET_PST_ALIVE) == 0);
+    /* The countdown is what a dead client has to show; it must survive too. */
+    CHECK(hs.respawn_centis == 425);
+
+    /* A truncated packet must be refused, not half-applied: a client that read
+     * 3 of 4 slots would show one player's real HP next to two frozen ones. */
+    CHECK(net_decode_snapshot(buf, NET_HDR_SIZE + NET_SNAP_HEADER_BYTES - 1,
+                              &hdr, &got, NET_SNAP_MAX_ENTITIES) != 0);
+
+    /* Negative/oversized game values must not wrap into absurd u16s. */
+    players[0].inventory.points = -5;
+    players[0].inventory.grenades = 1 << 20;
+    CHECK(net_snapshot_build(&ecs, players, MAX_PLAYERS, 1.5f, NULL, &snap) >= 0);
+    CHECK(snap.player_states[0].points == 0);
+    CHECK(snap.player_states[0].grenades == 65535u);
 }
 
 /* Two-snapshot mirror: pushes blend pos/hp, slot map resolves own player,
@@ -1893,6 +2006,7 @@ int tests_run_all(void) {
     test_net_codec_game();
     test_net_art_table();
     test_net_snapshot_build();
+    test_net_player_state();
     test_net_mirror_interp();
     test_net_events_codec();
 

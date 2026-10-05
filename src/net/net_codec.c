@@ -379,6 +379,21 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
     for (int i = 0; i < NET_MAX_PLAYERS; i++) {
         if (put_u16(buf, cap, &off, snap->slot_entities[i]) != 0) return -1;
     }
+    /* v6: authoritative per-slot state. Placed straight after slot_entities so
+     * the block is one contiguous run and the two stay visually paired - the
+     * slot number indexes both arrays. */
+    for (int i = 0; i < NET_MAX_PLAYERS; i++) {
+        const NetPlayerState *ps = &snap->player_states[i];
+        if (put_u16(buf, cap, &off, ps->points) != 0) return -1;
+        if (put_u16(buf, cap, &off, ps->grenades) != 0) return -1;
+        if (put_u16(buf, cap, &off, ps->launcher_ammo) != 0) return -1;
+        if (put_u16(buf, cap, &off, ps->hp_centis) != 0) return -1;
+        if (put_u16(buf, cap, &off, ps->hp_max_centis) != 0) return -1;
+        if (put_u16(buf, cap, &off, ps->respawn_centis) != 0) return -1;
+        if (put_u8(buf, cap, &off, ps->weapon) != 0) return -1;
+        if (put_u8(buf, cap, &off, ps->unlocked_mask) != 0) return -1;
+        if (put_u8(buf, cap, &off, ps->flags) != 0) return -1;
+    }
     if (put_u16(buf, cap, &off, snap->wave_number) != 0) return -1;
     if (put_u8(buf, cap, &off, snap->wave_active) != 0) return -1;
     if (put_u16(buf, cap, &off, snap->total_kills) != 0) return -1;
@@ -414,6 +429,18 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
     if (get_f32(buf, len, &off, &snap->sim_time) != 0) return -1;
     for (int i = 0; i < NET_MAX_PLAYERS; i++) {
         if (get_u16(buf, len, &off, &snap->slot_entities[i]) != 0) return -1;
+    }
+    for (int i = 0; i < NET_MAX_PLAYERS; i++) {
+        NetPlayerState *ps = &snap->player_states[i];
+        if (get_u16(buf, len, &off, &ps->points) != 0) return -1;
+        if (get_u16(buf, len, &off, &ps->grenades) != 0) return -1;
+        if (get_u16(buf, len, &off, &ps->launcher_ammo) != 0) return -1;
+        if (get_u16(buf, len, &off, &ps->hp_centis) != 0) return -1;
+        if (get_u16(buf, len, &off, &ps->hp_max_centis) != 0) return -1;
+        if (get_u16(buf, len, &off, &ps->respawn_centis) != 0) return -1;
+        if (get_u8(buf, len, &off, &ps->weapon) != 0) return -1;
+        if (get_u8(buf, len, &off, &ps->unlocked_mask) != 0) return -1;
+        if (get_u8(buf, len, &off, &ps->flags) != 0) return -1;
     }
     if (get_u16(buf, len, &off, &snap->wave_number) != 0) return -1;
     if (get_u8(buf, len, &off, &snap->wave_active) != 0) return -1;

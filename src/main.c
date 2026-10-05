@@ -1020,6 +1020,35 @@ static void render_lobby(void) {
     }
 }
 
+/* Authoritative HUD state for a render-only client (Sprint N3, B22/B23).
+ *
+ * Returns valid=false for single-player and for the host, which is what makes
+ * the HUD fall back to the local ECS - the correct source there, because those
+ * two really do own the simulation.
+ *
+ * Before the first snapshot arrives this is also invalid and the HUD falls back
+ * to the client's unsimulated ECS, i.e. the old wrong behaviour. That lasts
+ * only the first ~50ms of a session, which beats drawing nothing. */
+static HudPlayerState client_self_state(void) {
+    HudPlayerState hs = {0};
+    if (!render_only_client()) return hs;
+    NetPlayerState ps;
+    if (!net_mirror_player_state(&game.net_mirror, game.net_client.slot, &ps)) {
+        return hs;
+    }
+    hs.valid = true;
+    hs.alive = (ps.flags & NET_PST_ALIVE) != 0;
+    hs.eliminated = (ps.flags & NET_PST_ELIMINATED) != 0;
+    hs.hp = (float)ps.hp_centis * 0.01f;
+    hs.hp_max = (float)ps.hp_max_centis * 0.01f;
+    hs.respawn_timer = (float)ps.respawn_centis * 0.01f;
+    hs.points = (int)ps.points;
+    hs.grenades = (int)ps.grenades;
+    hs.launcher_ammo = (int)ps.launcher_ammo;
+    hs.weapon = (int)ps.weapon;
+    return hs;
+}
+
 static void render(void) {
     if (game.headless) return;
 
@@ -1067,8 +1096,11 @@ static void render(void) {
             } else {
                 system_render(&game.ecs, game.renderer, &game.camera);
             }
+            /* Must be a named local: the HUD keeps no copy, so an lvalue is
+             * needed to pass its address. */
+            HudPlayerState self_state = client_self_state();
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
-                     &game.players[0], !render_only_client(),
+                     &game.players[0], &self_state, !render_only_client(),
                      win_w, win_h, game.font);
 
             if (game.state == GAME_STATE_PAUSED) {

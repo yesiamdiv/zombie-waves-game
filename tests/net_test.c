@@ -26,6 +26,10 @@
 #include "net/net_server.h"
 #include "net/net_client.h"
 #include "net/net_mirror.h"
+#include "ecs/ecs.h"
+#include "players.h"
+#include "weapons/weapons.h"
+#include "net/net_mirror.h"
 #include "events/event_bus.h"
 #include "core/log.h"
 
@@ -282,6 +286,77 @@ int main(void) {
         CHECK(net_mirror_sample(&mm, 101, 0.5f, &se));
         c[i].dead_count = 0;
         c[i].has_pending_wave = false;
+    }
+
+    /* --------------- authoritative HUD state reaches the client (N3) ------
+     * The regression this guards: the client HUD used to read HP and inventory
+     * from the CLIENT'S OWN ECS, which a render-only client never simulates.
+     * So the client displayed join-time values forever while the host moved on.
+     * Drive a real host snapshot with distinctive numbers and require every
+     * connected client to see exactly those, for its OWN slot. */
+    {
+        /* waves == NULL: net_snapshot_build tolerates it and this test only
+         * cares about per-slot player state, not wave counters. */
+        World ecs;
+        Player hplayers[MAX_PLAYERS];
+        NetSnapshot snap;
+
+        ecs_init(&ecs);
+        players_reset(hplayers, MAX_PLAYERS);
+        CHECK(player_respawn(hplayers, &ecs, 0, "Host-1", &COLOR_RED,
+                             vec2(10, 10)) == 0);
+        for (int slot = 1; slot < NET_MAX_PLAYERS; slot++) {  /* 0 done above */
+            if (!server.slot_used[slot]) continue;
+            CHECK(player_respawn(hplayers, &ecs, slot, "P", &COLOR_BLUE,
+                                 vec2(10.0f * (slot + 1), 10.0f)) == slot);
+        }
+        /* Distinguishable per slot so a client cannot pass by reading
+         * somebody else's state. */
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            hplayers[i].inventory.points = 1000 + i;
+            hplayers[i].inventory.grenades = 3 + i;
+            hplayers[i].inventory.launcher_ammo = 7 + i;
+        }
+        CHECK(net_snapshot_build(&ecs, hplayers, MAX_PLAYERS, 1.0f, NULL,
+                                 &snap) >= 0);
+        net_server_broadcast_snapshot(&server, &snap);
+
+        /* Only clients still connected at this point in the test: earlier
+         * sections deliberately disconnect one. */
+        int live = 0;
+        for (int i = 0; i < 3; i++) {
+            if (c[i].state == NET_CLIENT_CONNECTED) live++;
+        }
+        CHECK(live >= 2);
+        deadline = now_ms() + 2000.0;
+        while (now_ms() < deadline) {
+            net_server_update(&server);
+            for (int i = 0; i < 3; i++) net_client_update(&c[i]);
+            bool all_have = true;
+            for (int i = 0; i < 3; i++) {
+                if (c[i].state != NET_CLIENT_CONNECTED) continue;
+                if (!c[i].snap_valid) all_have = false;
+            }
+            if (all_have) break;
+            nanosleep(&(struct timespec){0, 500000L}, NULL);
+        }
+        for (int i = 0; i < 3; i++) {
+            if (c[i].state != NET_CLIENT_CONNECTED) continue;
+            int slot = c[i].slot;
+            CHECK(c[i].snap_valid);
+            if (!c[i].snap_valid) continue;
+            CHECK(c[i].snap.player_states[slot].points == 1000 + slot);
+            CHECK(c[i].snap.player_states[slot].grenades == 3 + slot);
+            CHECK(c[i].snap.player_states[slot].launcher_ammo == 7 + slot);
+            /* And through the mirror, which is what the HUD actually reads. */
+            NetMirror m;
+            net_mirror_reset(&m);
+            net_mirror_push(&m, &c[i].snap);
+            NetPlayerState hs;
+            CHECK(net_mirror_player_state(&m, slot, &hs));
+            CHECK(hs.points == 1000 + slot);
+            CHECK(hs.weapon == WEAPON_PISTOL);
+        }
     }
 
     /* ------------------------------------------------------------ teardown */
