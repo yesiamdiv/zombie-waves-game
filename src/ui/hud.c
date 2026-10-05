@@ -182,9 +182,18 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     snprintf(buf, sizeof(buf), "HP: %.0f / %.0f", hp_current, hp_max);
     draw_text(renderer, font, buf, bar_x + 5.0f, bar_y + 2.0f, white);
 
-    /* Wave info */
+    /* Wave info. Authoritative on a client (B26); the local WaveSystem
+     * otherwise, which is the real thing for single-player and the host. */
+    const int wave_number   = use_auth ? auth->wave_number   : waves->wave_number;
+    const bool wave_active  = use_auth ? auth->wave_active  : (waves->wave_active != 0);
+    const int zombies_alive = use_auth ? auth->zombies_alive : waves->zombies_alive;
+    const bool between_waves= use_auth ? auth->between_waves: (waves->between_waves != 0);
+    const float next_in     = use_auth ? auth->wave_cooldown_remaining
+                                        : (waves->wave_cooldown - waves->wave_cooldown_timer);
+    const int total_kills   = use_auth ? auth->total_kills   : waves->total_kills;
+
     SDL_FColor wave_color = {1.0f, 0.9f, 0.3f, 1.0f};
-    snprintf(buf, sizeof(buf), "Wave: %d", waves->wave_number);
+    snprintf(buf, sizeof(buf), "Wave: %d", wave_number);
     draw_text(renderer, font, buf, 20.0f, 50.0f, wave_color);
 
     /* Player-colored name tag (multiplayer): ties this HUD to the slot's
@@ -197,23 +206,23 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     }
 
     /* Zombies remaining */
-    if (waves->wave_active) {
+    if (wave_active) {
         SDL_FColor zombie_color = {0.9f, 0.3f, 0.3f, 1.0f};
-        snprintf(buf, sizeof(buf), "Zombies: %d", waves->zombies_alive);
+        snprintf(buf, sizeof(buf), "Zombies: %d", zombies_alive);
         draw_text(renderer, font, buf, 20.0f, 75.0f, zombie_color);
-    } else if (waves->between_waves && waves->wave_number > 0) {
+    } else if (between_waves && wave_number > 0) {
         SDL_FColor next_color = {0.3f, 0.9f, 0.3f, 1.0f};
-        snprintf(buf, sizeof(buf), "Next wave in %.1fs", waves->wave_cooldown - waves->wave_cooldown_timer);
+        snprintf(buf, sizeof(buf), "Next wave in %.1fs", next_in);
         draw_text(renderer, font, buf, 20.0f, 75.0f, next_color);
     }
 
     /* Kills */
     SDL_FColor kill_color = {0.8f, 0.8f, 0.8f, 0.9f};
-    snprintf(buf, sizeof(buf), "Kills: %d", waves->total_kills);
+    snprintf(buf, sizeof(buf), "Kills: %d", total_kills);
     draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 20.0f, kill_color);
 
     /* Score */
-    int score = waves->total_kills * 100 + (waves->wave_number - 1) * 500;
+    int score = total_kills * 100 + (wave_number - 1) * 500;
     snprintf(buf, sizeof(buf), "Score: %d", score);
     draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 45.0f, wave_color);
 

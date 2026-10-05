@@ -30,7 +30,7 @@
  * History: 2 -> 3, HELLO gained `map_index` (a v2 peer read that byte as the
  * first character of the host name). 3 -> 4, `NetEntitySnap` gained the
  * appearance block, 26 -> 31 bytes per entry. */
-#define NET_WIRE_VERSION 6
+#define NET_WIRE_VERSION 7
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
@@ -146,6 +146,10 @@ typedef struct {
     Vec2 pos;
     Vec2 vel;
     float hp;
+    /* v7. Base maximum, so a consumer never has to know the starting number.
+     * `hp / 100.0f` was wrong from wave 2: waves.c scales zombie max HP by the
+     * difficulty multiplier, so the bar quietly overflowed its own background. */
+    float hp_max;
     uint8_t flags;
     uint16_t owner;         /* bullet/grenade/rocket source player, else 0 */
     uint8_t art;            /* NET_ART_*: which sprite the host drew */
@@ -180,9 +184,16 @@ typedef struct {
     uint8_t  weapon;          /* WeaponType currently selected */
     uint8_t  unlocked_mask;   /* bit N set => weapon N is owned */
     uint8_t  flags;           /* NET_PST_* */
+    /* v7. Where this slot's spawn beacon actually is. The client used to
+     * recompute `spawn + (slot*70, slot*30)` from a copy of the host's
+     * formula - it happened to agree, and would have stopped agreeing the
+     * first time either side edited it. Positions are f32 like every other
+     * position on the wire, because the mirror interpolates them. */
+    float beacon_x;
+    float beacon_y;
 } NetPlayerState;
 
-#define NET_PLAYER_STATE_BYTES 15   /* bytes on the wire, one slot */
+#define NET_PLAYER_STATE_BYTES 23   /* bytes on the wire, one slot */
 
 /* 20 Hz host->client snapshot (channel 1). `slot_entities` maps each roster
  * slot to its live player entity id (0 when the slot has no entity), so a
@@ -196,17 +207,29 @@ typedef struct {
     uint16_t wave_number;
     uint8_t wave_active;
     uint16_t total_kills;
+    /* v7: the rest of what the HUD's wave panel shows. `waves_update()` never
+     * runs on a render-only client, so without these the client HUD read
+     * permanent zeros for wave/kills/zombies/countdown (B26). */
+    uint16_t zombies_alive;
+    uint8_t between_waves;
+    uint16_t wave_cooldown_centis;   /* seconds until next wave * 100 */
     int count;
     NetEntitySnap entities[NET_SNAP_MAX_ENTITIES];
 } NetSnapshot;
 
 #define NET_SNAP_HZ 20           /* host snapshot cadence (matches the plan) */
 #define NET_INPUT_HZ 30          /* client input cadence (matches the plan) */
-#define NET_SNAP_ENTRY_BYTES 31  /* NetEntitySnap wire size */
-/* Snapshot header: sim_time(4) + slot_entities(2*N) + player_states(15*N)
- * + wave_number(2) + wave_active(1) + total_kills(2) + count(1). */
-#define NET_SNAP_HEADER_BYTES \
-    (4 + 2 * NET_MAX_PLAYERS + NET_PLAYER_STATE_BYTES * NET_MAX_PLAYERS + 6)
+#define NET_SNAP_ENTRY_BYTES 35  /* NetEntitySnap wire size */
+/* Snapshot header, byte-exact. Written out per field rather than as a single
+ * magic total because the tests assert the encoded length against this, and a
+ * wrong constant there fails the build rather than the protocol - but only if
+ * somebody keeps it honest.
+ *   sim_time(4) slot_entities(2*N) player_states(BYTES*N)
+ *   wave_number(2) wave_active(1) total_kills(2)
+ *   zombies_alive(2) between_waves(1) wave_cooldown_centis(2) count(1)  */
+#define NET_SNAP_HEADER_BYTES                                        \
+    (4 + 2 * NET_MAX_PLAYERS + NET_PLAYER_STATE_BYTES * NET_MAX_PLAYERS \
+     + 2 + 1 + 2 + 2 + 1 + 2 + 1)
 #define NET_SNAP_MAX_BYTES \
     (NET_HDR_SIZE + NET_SNAP_HEADER_BYTES + \
      NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES)

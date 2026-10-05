@@ -356,3 +356,95 @@ rationale: `docs/NET_PROTOCOL_DESIGN.md`; work: `docs/NET_SPRINT_PLAN.md`.
   a version field on the REJECT body so the refused player learns what the host
   has.
 - **Status**: FIXED in code — **unproven on screen**.
+
+---
+
+# Sprint N4 — full host/client divergence audit
+
+Method: every read of client-local simulation state on a path a render-only
+client executes, plus every value the client re-derives instead of receiving.
+`render_only_client()` breaks out of the update switch *before* any system runs,
+so the invariant "the client simulates nothing" holds; the bugs below are all
+about what the client *displays* or *derives* despite simulating nothing.
+
+| # | Symptom | Class | Status |
+|---|---|---|---|
+| B26 | Client HUD shows `Wave: 0`, `Kills: 0`, no zombie count, no next-wave countdown, forever | stale local state | **FIXED (N4)** |
+| B27 | Beacons positioned by a formula duplicated in two places | fragile derivation | **FIXED (N4)** |
+| B28 | Remote zombie health bars overflow at wave 2+ | hardcoded constant | **FIXED (N4)** |
+| B29 | No particles/effects on clients at all | unreplicated cosmetic | ACCEPTED |
+| B30 | Client can open the shop; purchases mutate a local struct the host never sees | authority violation | PARTIALLY FIXED (N4) |
+| B31 | Animation phase not replicated | cosmetic, small | ACCEPTED (N1 note) |
+
+## B26. The client HUD's wave panel never updated
+
+- **Symptom**: on a client the HUD read `Wave: 0`, `Kills: 0`, and showed
+  neither "Zombies: N" nor "Next wave in Xs" — for the entire match. The
+  gameplay itself was fine; only these readouts were wrong. Easy to miss because
+  the health bar and world render correctly.
+- **Root cause**: `hud_draw()` took `WaveSystem *waves` and read `wave_number`,
+  `wave_active`, `zombies_alive`, `between_waves`, `wave_cooldown`,
+  `total_kills` from it. On a client `waves_update()` is never called — the
+  `render_only_client()` break sits at main.c:765, `waves_update()` at
+  main.c:793 — so those fields kept their `waves_init()` zeros. The snapshot
+  already carried `wave_number`, `wave_active` and `total_kills`; nothing read
+  them.
+- **Fix**: N4 adds the missing wave fields to the snapshot and routes the HUD
+  through the same authoritative-view struct used by N3. `NET_WIRE_VERSION` 6 → 7.
+- **Status**: FIXED.
+
+## B27. Beacon positions were re-derived on the client
+
+- **Symptom**: none today.
+- **Root cause**: `sync_client_beacon_slots()` computed
+  `spawn + (slot*70, slot*30)` — byte-for-byte the same expression
+  `reset_game()` uses on the host. So the two agreed *by coincidence of
+  duplication*, not because the client was told. This is precisely the
+  "client re-derives replicated state" anti-pattern that caused R13-I5; it was
+  one edit to either copy away from silently wrong beacons on every client.
+- **Fix**: N4 replicates each slot's `beacon_pos` in the snapshot and the
+  client reads it, so the formula lives in exactly one place.
+- **Status**: FIXED.
+
+## B28. Remote health bars divided by a hardcoded maximum
+
+- **Symptom**: zombie health bars overfilled their background from wave 2
+  onward, and player bars would have done the same under `--player-hp-pct`.
+- **Root cause**: `system_render_mirror()` used
+  `e.hp / (kind == PLAYER ? 200.0f : 100.0f)`. Those are the *base* values.
+  `waves_update()` scales zombie health by `difficulty_multiplier`
+  (waves.c:250), so from the first difficulty increase the true maximum is
+  above 100 and the ratio exceeds 1.0.
+- **Fix**: N4 puts `hp_max` in the entity snapshot and uses it. This also
+  removes the kind-switch on a gameplay value — the same "switch on `kind` and
+  guess" shape that caused R13-I5, one level up.
+- **Status**: FIXED.
+
+## B29. Particles and effects are not replicated
+
+- **Symptom**: clients see no death particles, muzzle flashes, blood or
+  explosions. Entities pop out of existence instead.
+- **Why accepted, not fixed**: `NetEntitySnap` has no particle kind, and
+  particles are short-lived, numerous and purely decorative. Replicating them
+  means a new entity kind plus spawn/lifetime handling on a channel that is
+  already carrying 20 Hz snapshots — a real change with no gameplay value and
+  real bandwidth cost. Cosmetic-only, host-authoritative by construction (the
+  client cannot invent them, it simply omits them). Recorded so it is a
+  decision, not an oversight.
+- **Status**: ACCEPTED.
+
+## B30. A client could "buy" from the shop with no effect
+
+- **Symptom**: pressing B on a client opened the shop; buying decremented a
+  local inventory the host never reads, so the purchase silently vanished on
+  the next snapshot.
+- **Root cause**: `GAME_STATE_SHOP` is reachable on a client, and
+  `shop_menu_update()` is handed `&game.players[0].inventory` — the client's own
+  unsimulated struct. There is no purchase-request packet, so there is nothing
+  the client *could* legitimately do.
+- **Fix (partial, deliberate)**: N4 blocks client purchases with an explicit
+  "host only, not networked yet" message instead of letting the UI imply the
+  purchase worked. Making it actually work needs a request/response protocol and
+  is out of scope for a display-audit sprint.
+- **Status**: PARTIALLY FIXED — the lying UI is gone; real co-op shopping is
+  still unimplemented and is the obvious next feature.

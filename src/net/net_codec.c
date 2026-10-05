@@ -393,10 +393,15 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
         if (put_u8(buf, cap, &off, ps->weapon) != 0) return -1;
         if (put_u8(buf, cap, &off, ps->unlocked_mask) != 0) return -1;
         if (put_u8(buf, cap, &off, ps->flags) != 0) return -1;
+        if (put_f32(buf, cap, &off, ps->beacon_x) != 0) return -1;
+        if (put_f32(buf, cap, &off, ps->beacon_y) != 0) return -1;
     }
     if (put_u16(buf, cap, &off, snap->wave_number) != 0) return -1;
     if (put_u8(buf, cap, &off, snap->wave_active) != 0) return -1;
     if (put_u16(buf, cap, &off, snap->total_kills) != 0) return -1;
+    if (put_u16(buf, cap, &off, snap->zombies_alive) != 0) return -1;
+    if (put_u8(buf, cap, &off, snap->between_waves) != 0) return -1;
+    if (put_u16(buf, cap, &off, snap->wave_cooldown_centis) != 0) return -1;
     if (put_u8(buf, cap, &off, (uint8_t)snap->count) != 0) return -1;
     for (int i = 0; i < snap->count; i++) {
         const NetEntitySnap *e = &snap->entities[i];
@@ -407,6 +412,7 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
         if (put_f32(buf, cap, &off, e->vel.x) != 0) return -1;
         if (put_f32(buf, cap, &off, e->vel.y) != 0) return -1;
         if (put_f32(buf, cap, &off, e->hp) != 0) return -1;
+        if (put_f32(buf, cap, &off, e->hp_max) != 0) return -1;
         if (put_u8(buf, cap, &off, e->flags) != 0) return -1;
         if (put_u16(buf, cap, &off, e->owner) != 0) return -1;
         /* Appearance block (NET_WIRE_VERSION 4). Appended after owner so the
@@ -441,10 +447,15 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
         if (get_u8(buf, len, &off, &ps->weapon) != 0) return -1;
         if (get_u8(buf, len, &off, &ps->unlocked_mask) != 0) return -1;
         if (get_u8(buf, len, &off, &ps->flags) != 0) return -1;
+        if (get_f32(buf, len, &off, &ps->beacon_x) != 0) return -1;
+        if (get_f32(buf, len, &off, &ps->beacon_y) != 0) return -1;
     }
     if (get_u16(buf, len, &off, &snap->wave_number) != 0) return -1;
     if (get_u8(buf, len, &off, &snap->wave_active) != 0) return -1;
     if (get_u16(buf, len, &off, &snap->total_kills) != 0) return -1;
+    if (get_u16(buf, len, &off, &snap->zombies_alive) != 0) return -1;
+    if (get_u8(buf, len, &off, &snap->between_waves) != 0) return -1;
+    if (get_u16(buf, len, &off, &snap->wave_cooldown_centis) != 0) return -1;
     uint8_t n;
     if (get_u8(buf, len, &off, &n) != 0) return -1;
     if ((int)n > max_entities) return -1;
@@ -458,6 +469,7 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
         if (get_f32(buf, len, &off, &e->vel.x) != 0) return -1;
         if (get_f32(buf, len, &off, &e->vel.y) != 0) return -1;
         if (get_f32(buf, len, &off, &e->hp) != 0) return -1;
+        if (get_f32(buf, len, &off, &e->hp_max) != 0) return -1;
         if (get_u8(buf, len, &off, &e->flags) != 0) return -1;
         if (get_u16(buf, len, &off, &e->owner) != 0) return -1;
         if (get_u8(buf, len, &off, &e->art) != 0) return -1;

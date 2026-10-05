@@ -301,11 +301,21 @@ static void sync_client_beacon_slots(void) {
         if (game.players[s].in_use && game.players[s].entity != ECS_NULL_ENTITY) {
             continue; /* slot 0 already has a real local entity */
         }
-        Vec2 spawn = world_get_spawn_point(&game.world);
         game.players[s].in_use = true;
         game.players[s].entity = ECS_NULL_ENTITY;
-        game.players[s].beacon_pos =
-            vec2(spawn.x + (float)(s * 70), spawn.y + (float)(s * 30));
+        /* B27: the host's actual beacon position. This used to recompute
+         * `spawn + (slot*70, slot*30)` - the same expression reset_game() uses
+         * on the host. It agreed only because the formula was duplicated, and
+         * one edit to either copy would have put every client's beacons in the
+         * wrong place with nothing to indicate why. */
+        NetPlayerState ps;
+        if (net_mirror_player_state(&game.net_mirror, s, &ps)) {
+            game.players[s].beacon_pos = vec2(ps.beacon_x, ps.beacon_y);
+        } else {
+            /* No snapshot for this slot yet: draw it at the origin rather than
+             * inventing a plausible-looking position. */
+            game.players[s].beacon_pos = vec2(0.0f, 0.0f);
+        }
         game.players[s].color = net_slot_color(s);
     }
 }
@@ -725,11 +735,27 @@ static void update(float dt) {
                 break;
             }
 
-            /* Open the weapon shop (freezes gameplay until closed). */
+            /* Open the weapon shop (freezes gameplay until closed).
+             *
+             * B30: a client must not open it. `shop_menu_update()` is handed
+             * `&game.players[0].inventory`, which on a render-only client is
+             * never simulated - so buying decremented a local struct the host
+             * never reads and the purchase evaporated on the next snapshot.
+             * There is no purchase-request packet, so there is nothing a client
+             * could legitimately do here; say so instead of showing a menu
+             * whose buttons silently do nothing. Real co-op shopping needs a
+             * request/response protocol and is tracked as future work. */
             if (input_key_pressed(&game.input, SDL_SCANCODE_B)) {
-                shop_menu_init(&game.shop_menu);
-                game.state = GAME_STATE_SHOP;
-                LOG_INFO("Shop opened");
+                if (render_only_client()) {
+                    hud_show_message(&game.hud,
+                                     "Shop is host-only (not networked yet)",
+                                     2.5f);
+                    LOG_INFO("Shop blocked: client purchases are not networked");
+                } else {
+                    shop_menu_init(&game.shop_menu);
+                    game.state = GAME_STATE_SHOP;
+                    LOG_INFO("Shop opened");
+                }
                 break;
             }
 
@@ -890,7 +916,19 @@ static void update(float dt) {
         }
 
         case GAME_STATE_SHOP: {
-            GameState next = shop_menu_update(&game.shop_menu, &game.input, &game.players[0].inventory);
+            /* Defence in depth for B30: a client must never run
+             * shop_menu_update(), because the inventory it would mutate is the
+             * client's own unsimulated copy and the host would contradict it on
+             * the next snapshot. The B press that gets here is already blocked;
+             * this makes the state itself safe. */
+            if (render_only_client()) {
+                game.state = GAME_STATE_PLAYING;
+                hud_show_message(&game.hud, "Shop is host-only (not networked yet)",
+                                 2.5f);
+                break;
+            }
+            GameState next = shop_menu_update(&game.shop_menu, &game.input,
+                                              &game.players[0].inventory);
             if (next == GAME_STATE_PLAYING) {
                 game.state = GAME_STATE_PLAYING;
                 LOG_INFO("Shop closed");
@@ -1046,6 +1084,17 @@ static HudPlayerState client_self_state(void) {
     hs.grenades = (int)ps.grenades;
     hs.launcher_ammo = (int)ps.launcher_ammo;
     hs.weapon = (int)ps.weapon;
+
+    /* Wave panel (B26). Same snapshot, same reason: waves_update() is below
+     * the render_only_client() break, so game.waves is frozen at its init
+     * values on a client. */
+    const NetSnapshot *ns = &game.net_mirror.newer;
+    hs.wave_number = (int)ns->wave_number;
+    hs.wave_active = ns->wave_active != 0;
+    hs.zombies_alive = (int)ns->zombies_alive;
+    hs.between_waves = ns->between_waves != 0;
+    hs.wave_cooldown_remaining = (float)ns->wave_cooldown_centis * 0.01f;
+    hs.total_kills = (int)ns->total_kills;
     return hs;
 }
 

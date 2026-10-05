@@ -49,6 +49,9 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
         out->wave_number = (uint16_t)waves->wave_number;
         out->wave_active = waves->wave_active ? 1 : 0;
         out->total_kills = (uint16_t)(waves->total_kills & 0xFFFF);
+        out->zombies_alive = (uint16_t)(waves->zombies_alive & 0xFFFF);
+        out->between_waves = waves->between_waves ? 1 : 0;
+        out->wave_cooldown_centis = net_centis(waves->wave_cooldown_timer);
     }
     for (int s = 0; s < player_count && s < NET_MAX_PLAYERS; s++) {
         if (!players || !players[s].in_use) continue;
@@ -80,6 +83,8 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
             ps->hp_centis = net_centis(ecs->healths[p->entity].current);
             ps->hp_max_centis = net_centis(ecs->healths[p->entity].max);
         }
+        ps->beacon_x = p->beacon_pos.x;
+        ps->beacon_y = p->beacon_pos.y;
     }
 
     for (Entity e = 0; e < ECS_MAX_ENTITIES; e++) {
@@ -115,6 +120,9 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
                       ? ecs->velocities[e].vel
                       : (Vec2){0.0f, 0.0f};
         se->hp = (mask & (1u << COMP_HEALTH)) ? ecs->healths[e].current : 0.0f;
+        /* v7: send the real maximum. Health bars used to divide by the starting
+         * value, which stops being true as soon as difficulty scales it. */
+        se->hp_max = (mask & (1u << COMP_HEALTH)) ? ecs->healths[e].max : 0.0f;
         se->flags = 0;
         se->owner = (uint16_t)owner;
 

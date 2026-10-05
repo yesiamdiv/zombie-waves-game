@@ -316,9 +316,18 @@ int main(void) {
             hplayers[i].inventory.points = 1000 + i;
             hplayers[i].inventory.grenades = 3 + i;
             hplayers[i].inventory.launcher_ammo = 7 + i;
+            hplayers[i].beacon_pos = vec2(11.0f * (i + 1), 77.0f * (i + 1));
         }
+        /* (Wave state is set after the build below: net_snapshot_build starts
+         * from a zeroed struct, and it was handed waves == NULL.) */
         CHECK(net_snapshot_build(&ecs, hplayers, MAX_PLAYERS, 1.0f, NULL,
                                  &snap) >= 0);
+        /* Wave state the client HUD needs (B26). Set after the build because
+         * net_snapshot_build zeroes its output and got waves == NULL. */
+        snap.wave_number = 5;
+        snap.wave_active = 1;
+        snap.zombies_alive = 9;
+        snap.total_kills = 21;
         net_server_broadcast_snapshot(&server, &snap);
 
         /* Only clients still connected at this point in the test: earlier
@@ -348,6 +357,14 @@ int main(void) {
             CHECK(c[i].snap.player_states[slot].points == 1000 + slot);
             CHECK(c[i].snap.player_states[slot].grenades == 3 + slot);
             CHECK(c[i].snap.player_states[slot].launcher_ammo == 7 + slot);
+            /* Wave panel (B26) and beacons (B27) must reach the client too. */
+            CHECK(c[i].snap.wave_number == 5);
+            CHECK(c[i].snap.wave_active == 1);
+            CHECK(c[i].snap.zombies_alive == 9);
+            CHECK(c[i].snap.total_kills == 21);
+            CHECK(c[i].snap.player_states[slot].beacon_x ==
+                  11.0f * (slot + 1));
+            CHECK(c[i].snap.player_states[slot].beacon_y == 77.0f * (slot + 1));
             /* And through the mirror, which is what the HUD actually reads. */
             NetMirror m;
             net_mirror_reset(&m);
@@ -356,6 +373,7 @@ int main(void) {
             CHECK(net_mirror_player_state(&m, slot, &hs));
             CHECK(hs.points == 1000 + slot);
             CHECK(hs.weapon == WEAPON_PISTOL);
+            CHECK(hs.beacon_y == 77.0f * (slot + 1));
         }
     }
 

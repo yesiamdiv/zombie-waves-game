@@ -155,11 +155,23 @@ void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
             sprite_draw(renderer, &s, screen.x, screen.y, z, 0.0f, 1.0f);
         }
 
-        /* Health bar over damaged/player entities. */
+        /* Health bar over damaged/player entities.
+         *
+         * The denominator is the host's reported `hp_max`, not the starting
+         * constant. `hp / (PLAYER ? 200 : 100)` was wrong from wave 2 on:
+         * waves.c multiplies zombie max HP by the difficulty multiplier, so the
+         * ratio exceeded 1 and the bar grew past its own background (B28).
+         * Falling back to the old constants only when the host sent no maximum
+         * keeps the bar on-screen for a malformed snapshot instead of NaN. */
         if (e.kind == NET_ENT_PLAYER || e.kind == NET_ENT_ZOMBIE) {
             float bar_h = 5.0f * z;
             float bar_w = (e.kind == NET_ENT_PLAYER ? 30.0f : 24.0f) * z;
-            float ratio = e.hp / (e.kind == NET_ENT_PLAYER ? 200.0f : 100.0f);
+            float hpmax = (e.hp_max > 0.0f)
+                              ? e.hp_max
+                              : (e.kind == NET_ENT_PLAYER ? 200.0f : 100.0f);
+            float ratio = e.hp / hpmax;
+            if (ratio < 0.0f) ratio = 0.0f;
+            if (ratio > 1.0f) ratio = 1.0f;
             SDL_SetRenderDrawColorFloat(renderer, 0.15f, 0.15f, 0.15f, 0.9f);
             SDL_RenderFillRect(renderer, &(SDL_FRect){
                 screen.x - bar_w * 0.5f, screen.y - 24.0f * z, bar_w, bar_h});

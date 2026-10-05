@@ -37,7 +37,8 @@ void hud_track_player_hp(HUD *hud, float current_hp);
  * `valid == false` means "no authoritative source yet"; the HUD then falls back
  * to `local`, which is the correct thing for single-player. */
 typedef struct {
-    bool  valid;
+    bool  valid;             /* false => fall back to the local ECS */
+    /* --- this slot --- */
     bool  alive;
     bool  eliminated;
     float hp;
@@ -47,6 +48,16 @@ typedef struct {
     int   grenades;
     int   launcher_ammo;
     int   weapon;            /* WeaponType */
+    /* --- shared wave state (N4/B26) ---
+     * waves_update() never runs on a render-only client, so the HUD used to
+     * read a WaveSystem full of permanent zeros: "Wave: 0", "Kills: 0", and no
+     * zombie count or countdown at all. */
+    int   wave_number;
+    bool  wave_active;
+    int   zombies_alive;
+    bool  between_waves;
+    float wave_cooldown_remaining;
+    int   total_kills;
 } HudPlayerState;
 
 /* Draws the HUD for ONE player slot (the local/displayed player): health and

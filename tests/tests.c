@@ -1844,6 +1844,77 @@ static void test_net_player_state(void) {
     CHECK(net_decode_snapshot(buf, NET_HDR_SIZE + NET_SNAP_HEADER_BYTES - 1,
                               &hdr, &got, NET_SNAP_MAX_ENTITIES) != 0);
 
+    /* ---- B26: wave state must cross the wire at all ----
+     * waves_update() never runs on a render-only client, so before this the HUD
+     * read a WaveSystem stuck at its init zeros: "Wave: 0", "Kills: 0", no
+     * zombie count, no countdown - for the whole match. */
+    snap.wave_number = 7;
+    snap.wave_active = 1;
+    snap.total_kills = 42;
+    snap.zombies_alive = 13;
+    snap.between_waves = 0;
+    snap.wave_cooldown_centis = 0;
+    len = net_encode_snapshot(buf, (int)sizeof(buf), &hdr, &snap);
+    CHECK(len > 0);
+    CHECK(net_decode_snapshot(buf, len, &hdr, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    CHECK(got.wave_number == 7);
+    CHECK(got.wave_active == 1);
+    CHECK(got.total_kills == 42);
+    CHECK(got.zombies_alive == 13);
+
+    /* Between waves the countdown is what the HUD shows instead. */
+    snap.wave_active = 0;
+    snap.between_waves = 1;
+    snap.wave_cooldown_centis = 350;   /* 3.5s */
+    len = net_encode_snapshot(buf, (int)sizeof(buf), &hdr, &snap);
+    CHECK(net_decode_snapshot(buf, len, &hdr, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    CHECK(got.between_waves == 1);
+    CHECK(got.wave_cooldown_centis == 350);
+
+    /* ---- B28: entity hp_max must travel with the entity ----
+     * The remote health bar divided by a hardcoded 100, but waves.c scales
+     * zombie max HP by the difficulty multiplier, so from wave 2 the bar
+     * overflowed its own background. */
+    Entity z2 = waves_spawn_zombie(&ecs, vec2(400, 400), THEME_GRASSLAND);
+    CHECK(z2 != ECS_NULL_ENTITY);
+    ecs_get_health(&ecs, z2)->max = 175.0f;   /* 100 * 1.75 difficulty */
+    ecs_get_health(&ecs, z2)->current = 87.5f;
+    CHECK(net_snapshot_build(&ecs, players, MAX_PLAYERS, 1.5f, NULL, &snap) >= 0);
+    {
+        bool found = false;
+        for (int i = 0; i < snap.count; i++) {
+            if (snap.entities[i].id != z2) continue;
+            found = true;
+            CHECK(snap.entities[i].hp_max == 175.0f);
+            CHECK(snap.entities[i].hp == 87.5f);
+            /* And the bar must stay inside its own background. */
+            float ratio = snap.entities[i].hp / snap.entities[i].hp_max;
+            CHECK(ratio > 0.49f && ratio < 0.51f);
+        }
+        CHECK(found);
+    }
+    len = net_encode_snapshot(buf, (int)sizeof(buf), &hdr, &snap);
+    CHECK(net_decode_snapshot(buf, len, &hdr, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    {
+        bool found = false;
+        for (int i = 0; i < got.count; i++) {
+            if (got.entities[i].id != z2) continue;
+            found = true;
+            CHECK(got.entities[i].hp_max == 175.0f);
+        }
+        CHECK(found);
+    }
+
+    /* ---- B27: the beacon position is received, not recomputed ---- */
+    players[1].beacon_pos = vec2(1234.5f, -678.25f);
+    CHECK(net_snapshot_build(&ecs, players, MAX_PLAYERS, 1.5f, NULL, &snap) >= 0);
+    len = net_encode_snapshot(buf, (int)sizeof(buf), &hdr, &snap);
+    CHECK(net_decode_snapshot(buf, len, &hdr, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    /* Deliberately not a value the old `spawn + (slot*70, slot*30)` formula
+     * could ever produce, so a reimplementation cannot pass by coincidence. */
+    CHECK(got.player_states[1].beacon_x == 1234.5f);
+    CHECK(got.player_states[1].beacon_y == -678.25f);
+
     /* Negative/oversized game values must not wrap into absurd u16s. */
     players[0].inventory.points = -5;
     players[0].inventory.grenades = 1 << 20;
