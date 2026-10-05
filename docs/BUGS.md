@@ -44,7 +44,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B30 | A client could "buy" from the shop with no effect | `e9e5107` | FIXED |
 | B31 | Zombie animation state never replicated | — | RETRACTED (no code path) |
 | B32 | Client shows a blank screen when its player dies, and never shows its own name tag | — | AUDITED (fix pending) |
-| B33 | Client shop prices are drawn from a frozen local inventory, not host state | — | AUDITED (fix pending) |
+| B33 | Client shop prices are drawn from a frozen local inventory, not host state | `a1c9f36` | FIXED |
 | B34 | Player name tag overlaps the zombie/wave counter | — | AUDITED (fix pending) |
 
 ## Detailed entries

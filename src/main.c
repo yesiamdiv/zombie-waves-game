@@ -522,6 +522,12 @@ static float client_render_time(void) {
  * (B30), which needs a display inventory from the snapshot. */
 static void client_inventory_view(PlayerInventory *view);
 
+/* B33: the single source the shop menu is allowed to read. Both the decision
+ * logic (shop_menu_update) and the drawing (shop_menu_draw) must call this, or
+ * the menu decides what you may buy from host state while rendering the numbers
+ * from the client's unsimulated struct - the exact split B30 existed to end. */
+static PlayerInventory shop_display_inventory(void);
+
 static void advance_client_render_clock(float dt) {
     if (!net_mirror_ready(&game.net_mirror)) return;
 
@@ -917,11 +923,10 @@ static void update(float dt) {
              * inventory, rebuilt from the snapshot, and every purchase leaves
              * as a request for the host to apply. Nothing local is mutated, so
              * the menu can never contradict the next snapshot. */
-            PlayerInventory view = game.players[0].inventory;
+            PlayerInventory view = shop_display_inventory();
             uint8_t request = NET_SHOP_NONE;
             uint8_t *request_out = NULL;
             if (render_only_client()) {
-                client_inventory_view(&view);
                 request_out = &request;
             }
             GameState next = shop_menu_update(&game.shop_menu, &game.input,
@@ -1110,6 +1115,12 @@ static void client_inventory_view(PlayerInventory *view) {
     view->unlocked[WEAPON_GRENADE] = view->grenades > 0;
 }
 
+static PlayerInventory shop_display_inventory(void) {
+    PlayerInventory view = game.players[0].inventory;
+    if (render_only_client()) client_inventory_view(&view);
+    return view;
+}
+
 static HudPlayerState client_self_state(void) {
     HudPlayerState hs = {0};
     if (!render_only_client()) return hs;
@@ -1198,7 +1209,10 @@ static void render(void) {
             if (game.state == GAME_STATE_PAUSED) {
                 pause_menu_draw(game.renderer, &game.pause_menu, win_w, win_h, game.font_large);
             } else if (game.state == GAME_STATE_SHOP) {
-                shop_menu_draw(game.renderer, &game.shop_menu, &game.players[0].inventory, win_w, win_h, game.font_large);
+                /* B33: draw the same view the update path decided with. */
+                PlayerInventory shop_view = shop_display_inventory();
+                shop_menu_draw(game.renderer, &game.shop_menu, &shop_view,
+                               win_w, win_h, game.font_large);
             }
             break;
 
