@@ -33,8 +33,19 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B19 | Clients render entities as flat circles, not sprites (R13-I5) | `f7c44f3` | FIXED |
 | B20 | Zombie size and colour variant never replicated | `f7c44f3` | FIXED |
 | B21 | Pickup subtype never replicated | `f7c44f3` | FIXED |
-| B22 | Client HUD health reads the client's own stale ECS | — | PLANNED |
-| B23 | Client HUD points/weapon/ammo read the client's own stale inventory | — | PLANNED |
+| B22 | Client HUD health reads the client's own stale ECS | `e9d2d71` | FIXED |
+| B23 | Client HUD points/weapon/ammo read the client's own stale inventory | `e9d2d71` | FIXED |
+| B24 | No asset version — peers could connect and render different art | `2219792` | FIXED |
+| B25 | A refused connection was invisible to the player | `2219792` | FIXED |
+| B26 | The client HUD's wave panel never updated | `56cce96` | FIXED |
+| B27 | Beacon positions were re-derived on the client | `56cce96` | FIXED |
+| B28 | Remote health bars divided by a hardcoded maximum | `56cce96` | FIXED |
+| B29 | Particles and effects are not replicated | — | OPEN (accepted) |
+| B30 | A client could "buy" from the shop with no effect | `e9e5107` | FIXED |
+| B31 | Zombie animation state never replicated | — | RETRACTED (no code path) |
+| B32 | Client shows a blank screen when its player dies, and never shows its own name tag | — | AUDITED (fix pending) |
+| B33 | Client shop prices are drawn from a frozen local inventory, not host state | — | AUDITED (fix pending) |
+| B34 | Player name tag overlaps the zombie/wave counter | — | AUDITED (fix pending) |
 
 ## Detailed entries
 
@@ -503,3 +514,100 @@ the mistake is visible instead of quietly reappearing.
   caught it; the codec unit tests could not, because they never made that
   mistake themselves. Worth remembering whenever a `net_decode_*` return value
   is compared.
+
+## B32. A client shows a blank screen when its player dies, and never sees its own name tag
+
+Found 2026-10-05 auditing the UI layer on `main`. High severity.
+
+- **Symptom**: two symptoms, both on the *client* only. (1) When the client's own
+  player dies, the HUD goes completely empty — no respawn countdown, no
+  `ELIMINATED` mark, nothing. (2) The player's coloured name tag never appears
+  in a client's viewport, which is the one place a spectator most needs to know
+  whose view they are looking at.
+- **Root cause**: an inverted flag at the single call site. `hud_draw()` takes a
+  `multi` parameter documented in `src/ui/hud.h:67` as *"When `multi` is set the
+  player's colored name tag is shown"*, and used for two things: the name tag
+  (`src/ui/hud.c:201`) and the post-death overlay (`src/ui/hud.c:126`). The only
+  caller passes `!render_only_client()` (`src/main.c:1195`), which inverts the
+  meaning. `render_only_client()` is true **only** on a connected client, so the
+  argument means "true in single-player, true as host, false as client":
+
+  | session | `render_only_client()` | `multi` passed | should be |
+  |---|---|---|---|
+  | single player | false | **true** | false |
+  | host | false | **true** | true |
+  | client | true | **false** | true |
+
+  The expression is correct only for the host. Every other case is backwards.
+- **Impact**: the death overlay is *skipped entirely* on a client, because
+  `hud_draw` does `if (!alive) { if (multi) {...} return; }` — so a dead client
+  falls straight through the `return` having drawn nothing at all.
+- **Fix**: pass "is this a networked session" rather than the negation of "is
+  this the client", i.e. `game.net_host_mode || render_only_client()`.
+
+## B33. A client's shop prices are drawn from a frozen local inventory
+
+Found 2026-10-05 auditing the UI layer. High severity. **This is a regression
+introduced by the N5 shop commit `e9e5107` — my own bug, caught by the audit
+rather than by any test.**
+
+- **Symptom**: on a co-op client the shop menu's *logic* reflects host state but
+  the *numbers on screen* do not. A purchase that the host refuses leaves the
+  displayed prices, credits and ammo unchanged, and buying medkits/ammo on the
+  client changes nothing visible — because the client is drawing its own
+  unsimulated inventory, which the host never reads.
+- **Root cause**: the N5 fix was applied to the update path but not the draw path.
+  In `GAME_STATE_SHOP` the update builds a snapshot-derived copy via
+  `client_inventory_view(&view)` and hands *that* to `shop_menu_update()`
+  (`src/main.c:920-928`) — correct. But the draw call a few lines later still
+  passes the raw local struct:
+
+  ```c
+  shop_menu_draw(game.renderer, &game.shop_menu,
+                 &game.players[0].inventory, win_w, win_h, game.font_large);
+  ```
+
+  So `shop_menu_update` decides "you already own this" from host state while
+  `shop_menu_draw` renders ownership and prices from stale local state. The two
+  disagree by construction, which is exactly the class of bug B30 was supposed
+  to end.
+- **Why no test caught it**: the N5 assertions exercise `weapons_shop_apply()`,
+  the wire codecs, and the host/client loopback — all of which pass. Nothing
+  compares what `shop_menu_draw` reads against what `shop_menu_update` reads,
+  because that is a wiring property, not a logic property.
+- **Fix**: hoist the same `view` used by the update path into the enclosing
+  scope and draw from that, so the menu cannot present state the host never
+  sent.
+
+## B34. The player's name tag overlaps the wave counter
+
+Found 2026-10-05 auditing the UI layer. Low severity, cosmetic.
+
+- **Symptom**: on a host in multiplayer, during an active wave, the player's name
+  tag is drawn over the "Zombies: N" line and both are unreadable.
+- **Root cause**: two HUD rows share a baseline. The name tag is drawn at
+  `y = 76.0f` (`src/ui/hud.c:205`) and the zombie counter at `y = 75.0f`
+  (`src/ui/hud.c:212`), both at `x = 20.0f`. The "Next wave in..." row has the
+  same collision at `src/ui/hud.c:216`.
+- **Why it was invisible until now**: B32 means the name tag only ever drew on
+  the host, where this overlap is now live. Fixing B32 alone would newly expose
+  the collision on *both* windows, so the two fixes must land together.
+- **Fix**: give the name tag its own row.
+
+## Rejected during this audit (recorded so they are not re-raised)
+
+- **"The health bar can exceed its track / divide by zero."** `src/ui/hud.c:176`
+  clamps `ratio` below but not above, and the `else` branch at
+  `src/ui/hud.c:159-160` has no `hp_max > 0` guard while the `use_auth` branch
+  does. Neither is reachable: `hp->max` is never assigned anywhere after
+  `spawn_player_entity` initialises it to 200, every write to `hp->current`
+  either clamps (`src/items/items.c:110`, `src/world/waves.c:252`) or derives
+  from a percentage the CLI already clamps to 0-100 (`src/main.c:1589-1590`), and
+  the networked values come from the host's own `CHealth`. Worth hardening
+  eventually; not a bug today. (The original report also claimed
+  `--player-hp-pct` was unclamped — the flag is `--player-hp=` and it is clamped.)
+- **"`ecs_get_health(ecs, ECS_NULL_ENTITY)` reads one past `World.healths`."** The
+  accessor genuinely does not bounds-check, so this *would* be an out-of-bounds
+  read — but it is unreachable from `hud_draw`. The local branch sits after
+  `if (!alive) { ... return; }` (`src/ui/hud.c:125-142`), and `alive` is false
+  whenever `local->entity == ECS_NULL_ENTITY`. Not a live bug.
