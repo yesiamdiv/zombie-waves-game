@@ -29,7 +29,11 @@
  *
  * History: 2 -> 3, HELLO gained `map_index` (a v2 peer read that byte as the
  * first character of the host name). 3 -> 4, `NetEntitySnap` gained the
- * appearance block, 26 -> 31 bytes per entry. */
+ * appearance block, 26 -> 31 bytes per entry. 4 -> 5, JOIN and HELLO carry
+ * `NET_ASSET_VERSION` and REJECT carries the host's version for the refused
+ * concern. 5 -> 6, snapshots carry a `NetPlayerState` per slot. 6 -> 7,
+ * entities carry `hp_max`, player states carry `beacon_pos`, snapshots carry
+ * the wave countdown state. */
 #define NET_WIRE_VERSION 7
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
