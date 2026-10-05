@@ -1202,8 +1202,16 @@ static void render(void) {
             /* Must be a named local: the HUD keeps no copy, so an lvalue is
              * needed to pass its address. */
             HudPlayerState self_state = client_self_state();
+            /* B32: this must mean "is anyone else in this session", i.e. show the
+             * slot's name tag and the post-death overlay. It is NOT the negation
+             * of render_only_client(): that expression is true in single-player,
+             * true as host and false as client, so it happened to be right only
+             * for the host. A client then skipped the death overlay entirely
+             * (hud_draw returns early when !alive) and never saw its own name
+             * tag - the one viewport that most needs it. */
+            bool multiplayer = game.net_host_mode || render_only_client();
             hud_draw(game.renderer, &game.hud, &game.ecs, &game.waves,
-                     &game.players[0], &self_state, !render_only_client(),
+                     &game.players[0], &self_state, multiplayer,
                      win_w, win_h, game.font);
 
             if (game.state == GAME_STATE_PAUSED) {
