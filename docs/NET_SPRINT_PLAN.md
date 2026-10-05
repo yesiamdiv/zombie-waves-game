@@ -219,9 +219,11 @@ down, not in the passing of tests.
 - Client-side prediction and reconciliation. The client is currently a pure
   mirror, which is correct but adds input latency. Only worth doing if the
   latency is measured and found bad.
-- Per-entity animation phase over the wire. The host's `system_animation` is not
-  replicated, so walking frames may not match exactly. Same class of issue as
-  N1, smaller visible impact — **N4 will classify it properly**.
+- Per-entity animation phase over the wire. ~~The host's `system_animation` is
+  not replicated, so walking frames may not match.~~ **Retracted in N4:**
+  `COMP_ANIMATION` is never added to any entity and animation state is never
+  read, so nothing animates on either side. This line was a guess, not an
+  observation — see `docs/BUGS.md` B31.
 
 ## Sprint N4 result
 
@@ -238,12 +240,15 @@ nothing — held throughout; every bug was about what the client *displayed* or
 |---|---|
 | **R** replicated | entity transform + HP + max HP + appearance; per-slot inventory, eliminated/respawn, beacon position; wave number/active/kills/zombies-alive/countdown |
 | **D** deterministic | map layout (client loads the host's `map_index` from the HELLO); world spawn point; slot colour (`net_slot_color`, a pure function of the slot) |
-| **A** accepted | particles/effects (B29), animation phase (B31), inter-entity depth ordering |
+| **A** accepted | particles/effects (B29 — real: the host draws them, the client cannot); inter-entity depth ordering |
 | **F** fixed | B26 wave panel, B27 beacon derivation, B28 hardcoded HP max, B30 client shop purchase |
 
-**Deliberately not fixed:** B29 and B31 (cosmetic; costs bandwidth and a new
-entity kind for no gameplay value) and the *real* fix for B30 (a
-purchase-request packet — a feature, not an audit fix).
+**Deliberately not fixed at audit time:** B29 (particles — real but cosmetic;
+replicating short-lived particles costs bandwidth and a new entity kind for no
+gameplay value) and B30, whose real fix needs a purchase-request protocol. B31
+was **retracted**: it was an unverified line from my own planning list, and
+`COMP_ANIMATION` is never added to any entity and never read, so there is no
+animation to diverge.
 
 **New invariant found while auditing:** anything a client displays must be
 either in the snapshot or deliberately cosmetic. The three B26–B28 bugs were all

@@ -152,9 +152,12 @@ of the following need one human two-window run:
 
 ## Still open by decision
 
-- Particles/effects are not replicated (B29, accepted).
-- Animation phase is not replicated (B31, accepted).
-- Co-op shopping does not exist (B30, needs a purchase-request protocol).
+- Particles/effects are not replicated (B29, accepted). Note this one is real:
+  the host draws particles through the generic sprite path and the client has
+  no way to see them.
+- ~~Animation phase is not replicated (B31)~~ — **retracted in N4, not a bug.**
+  `COMP_ANIMATION` is never added to any entity and animation state is never
+  read, so no entity animates on either side. See `docs/BUGS.md` B31.
 - Zombie speed/size variants (`docs/FUTURE_IDEAS.md`) — lowest priority, after
   all of the above, and only with an explicit decision about single-player
   gameplay invariance.

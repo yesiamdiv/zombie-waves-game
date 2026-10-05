@@ -386,7 +386,7 @@ about what the client *displays* or *derives* despite simulating nothing.
 | B28 | Remote zombie health bars overflow at wave 2+ | hardcoded constant | **FIXED (N4)** |
 | B29 | No particles/effects on clients at all | unreplicated cosmetic | ACCEPTED |
 | B30 | Client can open the shop; purchases mutate a local struct the host never sees | authority violation | PARTIALLY FIXED (N4) |
-| B31 | Animation phase not replicated | cosmetic, small | ACCEPTED (N1 note) |
+| B31 | Animation phase not replicated | ~~cosmetic, small~~ | **RETRACTED — not a bug** |
 
 ## B26. The client HUD's wave panel never updated
 
@@ -431,6 +431,26 @@ about what the client *displays* or *derives* despite simulating nothing.
   removes the kind-switch on a gameplay value — the same "switch on `kind` and
   guess" shape that caused R13-I5, one level up.
 - **Status**: FIXED.
+
+### B31 — RETRACTED. "Animation phase is not replicated" was never a bug
+
+I listed this as an N4 candidate in the planning doc (`f09cb29`), under N1's
+"out of scope" list, and then carried it into the audit table without ever
+checking the claim. Checking it now:
+
+- **Nothing ever adds `COMP_ANIMATION`** to any entity — there are zero call
+  sites for it in `src/`.
+- **Nothing ever reads animation state.** `system_animation()` is the only
+  consumer of `CAnimation`, and it only ever advances `current_frame` itself.
+
+So `system_animation()` is a no-op that walks every entity and finds none with
+the component. No entity animates on the host either, therefore nothing can
+diverge, and there is nothing to replicate. It is unused code, not a
+multiplayer divergence.
+
+I should not have promoted an unverified line from a planning list into a
+numbered bug with a disposition. Retracted; recorded here rather than deleted so
+the mistake is visible instead of quietly reappearing.
 
 ## B29. Particles and effects are not replicated
 
