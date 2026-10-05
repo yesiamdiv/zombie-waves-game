@@ -25,12 +25,17 @@ int net_parse_host_port(const char *addr, char *ip, int ip_cap, uint16_t *port) 
     return 0;
 }
 
-static void send_ctrl(ENetPeer *peer, const uint8_t *buf, int len) {
+/* Returns 0 on a clean send, -1 if the packet could not be built or handed to
+ * ENet. A shop request must be able to report that it never left, or the UI
+ * would sit on "pending" forever. */
+static int send_ctrl(ENetPeer *peer, const uint8_t *buf, int len) {
     ENetPacket *pk = enet_packet_create(buf, (size_t)len, ENET_PACKET_FLAG_RELIABLE);
-    if (!pk) return;
+    if (!pk) return -1;
     if (enet_peer_send(peer, NET_CH_CTRL, pk) != 0) {
         enet_packet_destroy(pk);
+        return -1;
     }
+    return 0;
 }
 
 int net_client_init(NetClient *c) {
@@ -113,6 +118,34 @@ int net_client_connect(NetClient *c, const char *ip, uint16_t port,
     c->seq = 0;
     LOG_INFO("NET: client connecting to %s as '%s'", c->host_addr, c->name);
     return 0;
+}
+
+int net_client_send_shop_request(NetClient *c, uint8_t item) {
+    if (!c || !c->server || c->state != NET_CLIENT_CONNECTED) return -1;
+    if (item == NET_SHOP_NONE || item > NET_SHOP_ROCKETS) return -1;
+    if (c->shop_pending) return -1;
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_SHOP_REQUEST, c->seq++, c->slot, 0};
+    uint8_t buf[NET_HDR_SIZE + NET_SHOP_REQUEST_BYTES];
+    int len = net_encode_shop_request(buf, (int)sizeof(buf), &h, item);
+    if (len <= 0) return -1;
+    if (send_ctrl(c->server, buf, len) != 0) return -1;
+    c->shop_item = item;
+    c->shop_pending = true;
+    LOG_DEBUG("NET: shop request sent (item=%u)", item);
+    return 0;
+}
+
+int net_client_take_shop_result(NetClient *c, uint8_t *item, uint8_t *result) {
+    if (!c || !c->shop_has_result) return -1;
+    if (item) *item = c->shop_result_item;
+    if (result) *result = c->shop_result;
+    c->shop_has_result = false;
+    c->shop_pending = false;
+    return 0;
+}
+
+int net_client_shop_requests_pending(const NetClient *c) {
+    return (c && c->shop_pending) ? 1 : 0;
 }
 
 int net_client_rtt_ms(const NetClient *c) {
@@ -347,6 +380,24 @@ void net_client_update(NetClient *c) {
                         }
                     } else {
                         LOG_WARN("NET: malformed events batch from host");
+                    }
+                } else if (h.kind == NET_PKT_SHOP_RESULT) {
+                    uint8_t item = NET_SHOP_NONE, result = 0;
+                    /* Decoders return bytes consumed: failure is < 0. */
+                    if (net_decode_shop_result(ev.packet->data,
+                                               (int)ev.packet->dataLength,
+                                               &h, &item, &result) < 0) {
+                        LOG_WARN("NET: malformed shop result from host");
+                    } else {
+                        c->shop_result_item = item;
+                        c->shop_result = result;
+                        c->shop_has_result = true;
+                        /* The host always answers, so any older request is
+                         * answered too; clear the throttle either way or the
+                         * shop would lock up after one dropped packet. */
+                        c->shop_pending = false;
+                        LOG_INFO("NET: shop item=%u result=%s", item,
+                                 net_shop_result_name(result));
                     }
                 } else if (h.kind == NET_PKT_LEAVE) {
                     uint8_t reason;

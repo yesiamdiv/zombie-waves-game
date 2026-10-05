@@ -518,6 +518,10 @@ static float client_render_time(void) {
     return game.net_render_time;
 }
 
+/* Defined with the other client-mirror helpers further down; used by the shop
+ * (B30), which needs a display inventory from the snapshot. */
+static void client_inventory_view(PlayerInventory *view);
+
 static void advance_client_render_clock(float dt) {
     if (!net_mirror_ready(&game.net_mirror)) return;
 
@@ -746,16 +750,9 @@ static void update(float dt) {
              * whose buttons silently do nothing. Real co-op shopping needs a
              * request/response protocol and is tracked as future work. */
             if (input_key_pressed(&game.input, SDL_SCANCODE_B)) {
-                if (render_only_client()) {
-                    hud_show_message(&game.hud,
-                                     "Shop is host-only (not networked yet)",
-                                     2.5f);
-                    LOG_INFO("Shop blocked: client purchases are not networked");
-                } else {
-                    shop_menu_init(&game.shop_menu);
-                    game.state = GAME_STATE_SHOP;
-                    LOG_INFO("Shop opened");
-                }
+                shop_menu_init(&game.shop_menu);
+                game.state = GAME_STATE_SHOP;
+                LOG_INFO("Shop opened");
                 break;
             }
 
@@ -916,19 +913,37 @@ static void update(float dt) {
         }
 
         case GAME_STATE_SHOP: {
-            /* Defence in depth for B30: a client must never run
-             * shop_menu_update(), because the inventory it would mutate is the
-             * client's own unsimulated copy and the host would contradict it on
-             * the next snapshot. The B press that gets here is already blocked;
-             * this makes the state itself safe. */
+            /* B30. A co-op client gets a *display-only* copy of its
+             * inventory, rebuilt from the snapshot, and every purchase leaves
+             * as a request for the host to apply. Nothing local is mutated, so
+             * the menu can never contradict the next snapshot. */
+            PlayerInventory view = game.players[0].inventory;
+            uint8_t request = NET_SHOP_NONE;
+            uint8_t *request_out = NULL;
             if (render_only_client()) {
-                game.state = GAME_STATE_PLAYING;
-                hud_show_message(&game.hud, "Shop is host-only (not networked yet)",
-                                 2.5f);
-                break;
+                client_inventory_view(&view);
+                request_out = &request;
             }
             GameState next = shop_menu_update(&game.shop_menu, &game.input,
-                                              &game.players[0].inventory);
+                                              &view, request_out);
+            if (request_out && request != NET_SHOP_NONE) {
+                if (net_client_send_shop_request(&game.net_client, request) != 0) {
+                    shop_menu_vset_message(&game.shop_menu,
+                                           "%s", "Request not sent - try again");
+                }
+            }
+            /* Surface the host's verdict. Without this a refusal is invisible:
+             * an unaffordable purchase and one still in flight look identical,
+             * because both leave the numbers unchanged. */
+            if (render_only_client()) {
+                uint8_t ritem = NET_SHOP_NONE, rres = 0;
+                if (net_client_take_shop_result(&game.net_client, &ritem,
+                                                &rres) == 0) {
+                    shop_menu_vset_message(&game.shop_menu, "%s: %s",
+                                           net_shop_item_name(ritem),
+                                           net_shop_result_name(rres));
+                }
+            }
             if (next == GAME_STATE_PLAYING) {
                 game.state = GAME_STATE_PLAYING;
                 LOG_INFO("Shop closed");
@@ -1067,6 +1082,34 @@ static void render_lobby(void) {
  * Before the first snapshot arrives this is also invalid and the HUD falls back
  * to the client's unsimulated ECS, i.e. the old wrong behaviour. That lasts
  * only the first ~50ms of a session, which beats drawing nothing. */
+/* Rebuild this client's *display-only* inventory from the replicated
+ * NetPlayerState, for the shop menu (B30).
+ *
+ * Deliberately a copy of the snapshot, not of `game.players[0].inventory`:
+ * the local one is never simulated on a client, so showing it would display a
+ * frozen set of numbers the host has already contradicted. The menu only ever
+ * reads this copy, and every purchase leaves as a request, so nothing depends
+ * on it being writable. Before the first snapshot the local copy is left as-is
+ * rather than zeroed -- it is wrong, but zeroed would also be wrong, and the
+ * first snapshot lands within ~50ms. */
+static void client_inventory_view(PlayerInventory *view) {
+    NetPlayerState ps;
+    if (!net_mirror_player_state(&game.net_mirror, game.net_client.slot, &ps)) {
+        return;
+    }
+    view->points = (int)ps.points;
+    view->grenades = (int)ps.grenades;
+    view->launcher_ammo = (int)ps.launcher_ammo;
+    view->current = (WeaponType)ps.weapon;
+    for (int w = 0; w < WEAPON_COUNT; w++) {
+        view->unlocked[w] = (ps.unlocked_mask & (1u << w)) != 0;
+    }
+    /* Pistol is never for sale, so an all-zero mask would otherwise render the
+     * shop as if nothing at all were owned. */
+    view->unlocked[WEAPON_PISTOL] = true;
+    view->unlocked[WEAPON_GRENADE] = view->grenades > 0;
+}
+
 static HudPlayerState client_self_state(void) {
     HudPlayerState hs = {0};
     if (!render_only_client()) return hs;
@@ -1165,6 +1208,31 @@ static void render(void) {
     }
 
     SDL_RenderPresent(game.renderer);
+}
+
+/* Host: drain pending purchase requests and apply them to the owning slot. */
+static void apply_net_shop_requests(void) {
+    if (!game.net_host_mode) return;
+    for (int s = 1; s < MAX_PLAYERS; s++) {
+        if (!game.players[s].in_use) continue;
+        uint8_t item = NET_SHOP_NONE;
+        if (net_server_take_shop_request(&game.net_server, s, &item) != 0) continue;
+        int after = 0;
+        /* weapons_shop_apply() is the single implementation of "equip this,
+         * buying it if needed" -- shared with the single-player shop's rules and
+         * covered by tests. The net layer only picks the slot. */
+        ShopResult res = weapons_shop_apply(&game.players[s].inventory,
+                                            (int)item, &after);
+        net_server_send_shop_result(&game.net_server, s, item, (uint8_t)res);
+        if (res == SHOP_RES_OK || res == SHOP_RES_OWNED) {
+            LOG_INFO("NET: slot %d bought/selected %s (points %d)",
+                     s, net_shop_item_name(item), after);
+        } else {
+            LOG_INFO("NET: slot %d refused %s: %s", s,
+                     net_shop_item_name(item),
+                     net_shop_result_name((uint8_t)res));
+        }
+    }
 }
 
 /* Host: fold each remote player's latest wire input into their slot's
@@ -1382,6 +1450,7 @@ static void step_frame(float dt) {
     /* Fold remote players' wire input into their slots (host), and stream the
      * local input up (client). */
     apply_net_inputs();
+    apply_net_shop_requests();
     send_net_input(dt);
 
     update(dt);

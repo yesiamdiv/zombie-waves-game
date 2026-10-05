@@ -256,6 +256,20 @@ either in the snapshot or deliberately cosmetic. The three B26–B28 bugs were a
 
 ## Definition of done for the branch
 
-N1, N2, N3 and N4 all accepted; `AGENTS.md` gates green; `docs/BUGS.md` B19–B23
-resolved with commit refs plus any N4 findings; `docs/PENDING_VERIFICATION.md`
-lists what still needs a human two-window run; branch pushed; `main` untouched.
+N1, N2, N3, N4 and N5 all accepted; `AGENTS.md` gates green; `docs/BUGS.md`
+B19–B23 resolved with commit refs plus any N4 findings; B30 fixed by the N5
+purchase-request protocol and B31 retracted as never having been a bug;
+`docs/PENDING_VERIFICATION.md` lists what still needs a human two-window run;
+branch pushed; `main` untouched.
+
+### N5 — co-op shop (B30)
+
+Asked for directly rather than planned as a sprint: co-op purchases must work,
+not merely stop lying. Wire version 7 -> 8, two reliable packets
+(`NET_PKT_SHOP_REQUEST`, `NET_PKT_SHOP_RESULT`). The host resolves the
+purchasing slot from its own connection record, applies the change through
+`weapons_shop_apply()` in the weapons layer, and answers every request —
+including refusals, so the client can say *why*. Nothing on the client mutates:
+the menu renders a snapshot-derived copy and every press becomes a request.
+Verified by 296 new assertions (economy rules, wire round trips, and a real
+loopback purchase against a live host), but **not yet seen on screen**.

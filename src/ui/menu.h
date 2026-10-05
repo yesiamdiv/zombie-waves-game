@@ -2,6 +2,7 @@
 #define MENU_H
 
 #include <SDL3/SDL.h>
+#include <stdarg.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include "core/input.h"
 #include "weapons/weapons.h"
@@ -79,12 +80,23 @@ void map_select_free(MapSelectMenu *menu);
 void pause_menu_init(PauseMenu *menu);
 void gameover_init(GameOverScreen *go, int score, int wave, int kills);
 void shop_menu_init(ShopMenu *menu);
+/* Same as the internal setter the shop's own options use; exposed so the host's
+ * verdict on a networked purchase can be written into the menu. Takes a
+ * va_list because that verdict is usually assembled by the caller. */
+void shop_menu_vset_message(ShopMenu *menu, const char *fmt, ...);
 
 GameState menu_update(MainMenu *menu, InputState *input, float dt);
 GameState map_select_update(MapSelectMenu *menu, InputState *input);
 GameState pause_menu_update(PauseMenu *menu, InputState *input);
 GameState gameover_update(GameOverScreen *go, InputState *input);
-GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv);
+/* When `request_out` is NULL the caller is authoritative and the shop applies
+ * purchases straight to `inv` (single player and the host). When it is
+ * non-NULL the caller is a co-op client: nothing local is mutated, the pressed
+ * option is written out as a NET_SHOP_* id for the host to resolve, and a
+ * "requesting..." message is shown. `*request_out` must be initialised to
+ * NET_SHOP_NONE by the caller; it is only written when a request is raised. */
+GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv,
+                           uint8_t *request_out);
 
 void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_h, TTF_Font *font);
 void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, int screen_h, TTF_Font *font);

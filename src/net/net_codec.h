@@ -36,6 +36,15 @@ int net_encode_reject(uint8_t *buf, int cap, const NetHeader *h, uint8_t reason,
 int net_decode_reject(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason,
                       uint32_t *host_version);
 
+/* Co-op shop (B30). The request body is one byte; the result adds the
+ * NET_SHOP_RES_* code so a failure can be reported rather than guessed at. */
+int net_encode_shop_request(uint8_t *buf, int cap, const NetHeader *h, uint8_t item);
+int net_decode_shop_request(const uint8_t *buf, int len, NetHeader *h, uint8_t *item);
+int net_encode_shop_result(uint8_t *buf, int cap, const NetHeader *h,
+                           uint8_t item, uint8_t result);
+int net_decode_shop_result(const uint8_t *buf, int len, NetHeader *h,
+                           uint8_t *item, uint8_t *result);
+
 int net_encode_player_list(uint8_t *buf, int cap, const NetPlayerInfo *players,
                            int count);
 int net_decode_player_list(const uint8_t *buf, int len, NetHeader *h,

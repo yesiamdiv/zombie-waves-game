@@ -37,7 +37,7 @@ find out why it was duplicated.
 
 | Version | Declared in | Current | Guards | Bump when |
 |---|---|---|---|---|
-| `NET_WIRE_VERSION` | `src/net/net.h` | **7** | Byte layout of every net packet body | Any field is added/removed/resized/ reordered in any packet body |
+| `NET_WIRE_VERSION` | `src/net/net.h` | **8** | Byte layout of every net packet body | Any field is added/removed/resized/ reordered in any packet body |
 | `NET_WORLD_GEN_VERSION` | `src/net/net.h` | **2** | Two peers derive the *same world* | Map format, world generation, theme selection, or spawn rules change |
 | `NET_ASSET_VERSION` | `src/net/net.h` | **1** | Two peers ship the *same art* | Any file in `assets/` is added, removed, resized, or replaced, **including `src/net/net_art.c`** (ids resolve to pixel sizes the wire divides by) |
 | `MAP_FORMAT_VERSION` | map loader | *(planned)* | A `.map` file means the same thing | The map grammar changes at all |

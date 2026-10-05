@@ -33,8 +33,9 @@
  * `NET_ASSET_VERSION` and REJECT carries the host's version for the refused
  * concern. 5 -> 6, snapshots carry a `NetPlayerState` per slot. 6 -> 7,
  * entities carry `hp_max`, player states carry `beacon_pos`, snapshots carry
- * the wave countdown state. */
-#define NET_WIRE_VERSION 7
+ * the wave countdown state. 7 -> 8, added NET_PKT_SHOP_REQUEST and
+ * NET_PKT_SHOP_RESULT so co-op clients can actually spend points (B30). */
+#define NET_WIRE_VERSION 8
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
@@ -79,7 +80,9 @@ enum {
     NET_PKT_INPUT      = 6,  /* client -> host: control state (latest-wins) */
     NET_PKT_SNAPSHOT   = 7,  /* host -> clients: 20 Hz entity world state */
     /* Reliable helper traffic (channel 0, after the handshake). */
-    NET_PKT_EVENTS     = 8   /* host -> clients: curated GE_* event batches */
+    NET_PKT_EVENTS     = 8,  /* host -> clients: curated GE_* event batches */
+    NET_PKT_SHOP_REQUEST = 9, /* client -> host: "buy this", reliable */
+    NET_PKT_SHOP_RESULT  = 10 /* host -> client: purchase outcome */
 };
 
 /* Input bitmasks for NET_PKT_INPUT. move_flags holds the 4 direction bits;
@@ -259,6 +262,60 @@ typedef struct {
 int net_snapshot_build(const World *ecs, const Player *players, int player_count,
                        float sim_time, const WaveSystem *waves, NetSnapshot *out);
 
+/* Shop items on the wire. These deliberately alias the weapons-domain ids
+ * rather than redeclaring a parallel set: the host must not be able to
+ * translate a client's request wrongly, and the cheapest way to guarantee that
+ * is to have only one numbering. The static asserts below make adding a domain
+ * item without adding its wire id a compile error instead of a silent "unknown
+ * item" for every client. A request means "equip this, buying it first if I do
+ * not own it" -- the same thing the single-player shop does. */
+#define NET_SHOP_NONE     SHOP_ITEM_NONE
+#define NET_SHOP_PISTOL   SHOP_ITEM_PISTOL
+#define NET_SHOP_SWORD    SHOP_ITEM_SWORD
+#define NET_SHOP_GRENADES SHOP_ITEM_GRENADES
+#define NET_SHOP_LAUNCHER SHOP_ITEM_LAUNCHER
+#define NET_SHOP_ROCKETS  SHOP_ITEM_ROCKETS
+
+_Static_assert(NET_SHOP_NONE == 0, "wire id 0 must stay 'none'");
+_Static_assert(NET_SHOP_PISTOL == 1, "wire ids must match SHOP_ITEM_*");
+_Static_assert(NET_SHOP_SWORD == 2, "wire ids must match SHOP_ITEM_*");
+_Static_assert(NET_SHOP_GRENADES == 3, "wire ids must match SHOP_ITEM_*");
+_Static_assert(NET_SHOP_LAUNCHER == 4, "wire ids must match SHOP_ITEM_*");
+_Static_assert(NET_SHOP_ROCKETS == 5, "wire ids must match SHOP_ITEM_*");
+
+/* Why a purchase did not happen. Carried explicitly so the client can tell
+ * "you cannot afford that" from "that is still in flight" -- both of which
+ * otherwise look identical while the host is a frame behind. */
+#define NET_SHOP_RES_OK      SHOP_RES_OK
+#define NET_SHOP_RES_POINTS  SHOP_RES_POINTS
+#define NET_SHOP_RES_LOCKED  SHOP_RES_LOCKED
+#define NET_SHOP_RES_OWNED   SHOP_RES_OWNED
+#define NET_SHOP_RES_UNKNOWN SHOP_RES_UNKNOWN
+
+_Static_assert(NET_SHOP_RES_OK == 0, "wire result 0 must stay 'ok'");
+_Static_assert(NET_SHOP_RES_POINTS == 1, "wire results must match SHOP_RES_*");
+_Static_assert(NET_SHOP_RES_LOCKED == 2, "wire results must match SHOP_RES_*");
+_Static_assert(NET_SHOP_RES_OWNED == 3, "wire results must match SHOP_RES_*");
+_Static_assert(NET_SHOP_RES_UNKNOWN == 4, "wire results must match SHOP_RES_*");
+
+/* Client -> host purchase request. Reliable and ordered (NET_CH_CTRL): unlike
+ * the per-frame input, a purchase must not be quietly dropped by the channel.
+ * The requesting slot comes from `header.from_slot`, which the host validates
+ * against its own roster -- the body cannot name someone else. */
+typedef struct {
+    uint8_t item;  /* NET_SHOP_* */
+} NetShopRequest;
+#define NET_SHOP_REQUEST_BYTES 1
+
+/* Host -> client outcome for one request. Sent for every request the host
+ * acts on, including failures, so the client never has to infer the answer
+ * from an inventory that did or did not change. */
+typedef struct {
+    uint8_t item;    /* NET_SHOP_*, echoed so a late reply can be matched */
+    uint8_t result;  /* NET_SHOP_RES_* */
+} NetShopResult;
+#define NET_SHOP_RESULT_BYTES 2
+
 /* REJECT reasons */
 enum {
     NET_REJECT_NONE = 0,
@@ -306,6 +363,11 @@ static inline SDL_FColor net_slot_color(int slot) {
 
 /* Convenience: human-readable names for logs/tests. */
 const char *net_pkt_kind_name(int kind);
+
+/* Shop outcome/item names for logs and UI text, so a refusal reads as
+ * "not enough points" instead of a bare code. */
+const char *net_shop_result_name(uint8_t result);
+const char *net_shop_item_name(uint8_t item);
 const char *net_reject_reason_name(int reason);
 
 /* Human-readable refusal text for the menu (sprint N2). Names both versions and

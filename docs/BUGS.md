@@ -385,7 +385,7 @@ about what the client *displays* or *derives* despite simulating nothing.
 | B27 | Beacons positioned by a formula duplicated in two places | fragile derivation | **FIXED (N4)** |
 | B28 | Remote zombie health bars overflow at wave 2+ | hardcoded constant | **FIXED (N4)** |
 | B29 | No particles/effects on clients at all | unreplicated cosmetic | ACCEPTED |
-| B30 | Client can open the shop; purchases mutate a local struct the host never sees | authority violation | PARTIALLY FIXED (N4) |
+| B30 | Client can open the shop; purchases mutate a local struct the host never sees | authority violation | FIXED (N5) — **unproven on screen** |
 | B31 | Animation phase not replicated | ~~cosmetic, small~~ | **RETRACTED — not a bug** |
 
 ## B26. The client HUD's wave panel never updated
@@ -472,11 +472,34 @@ the mistake is visible instead of quietly reappearing.
   the next snapshot.
 - **Root cause**: `GAME_STATE_SHOP` is reachable on a client, and
   `shop_menu_update()` is handed `&game.players[0].inventory` — the client's own
-  unsimulated struct. There is no purchase-request packet, so there is nothing
+  unsimulated struct. There was no purchase-request packet, so there was nothing
   the client *could* legitimately do.
-- **Fix (partial, deliberate)**: N4 blocks client purchases with an explicit
-  "host only, not networked yet" message instead of letting the UI imply the
-  purchase worked. Making it actually work needs a request/response protocol and
-  is out of scope for a display-audit sprint.
-- **Status**: PARTIALLY FIXED — the lying UI is gone; real co-op shopping is
-  still unimplemented and is the obvious next feature.
+- **Fix (N4, interim)**: blocked client purchases with an explicit "host only,
+  not networked yet" message instead of letting the UI imply the purchase
+  worked. Honest, but it left the feature missing.
+- **Fix (N5, real)**: co-op shopping now works. Wire version 7 -> 8 adds two
+  reliable packets: `NET_PKT_SHOP_REQUEST` (client -> host, one item byte) and
+  `NET_PKT_SHOP_RESULT` (host -> client, item + `NET_SHOP_RES_*` reason).
+  - The host resolves the slot from its own `peer->data`, **never** from the
+    packet's `from_slot`, so one client cannot spend another's points.
+  - A request means "equip this, buying it first if not owned" — the same
+    semantics as the single-player shop, so host and solo player cannot drift.
+  - The rule lives in `weapons_shop_apply()` (weapons layer, where the economy
+    is) rather than in the net layer, so it is unit-testable; the net layer only
+    chooses the slot. Wire ids alias `SHOP_ITEM_*` with `_Static_assert`s, so
+    the host cannot mistranslate a client's id.
+  - The client's menu displays a snapshot-derived copy
+    (`client_inventory_view()`) and mutates nothing; every press leaves as a
+    request.
+  - The host answers **every** request, including refusals. Without that a
+    refusal is invisible: an unaffordable purchase and one still in flight both
+    leave the numbers unchanged, and the player cannot tell them apart.
+- **Status**: FIXED in code — **unproven on screen**. See
+  `docs/PENDING_VERIFICATION.md` for the two-window check.
+- **Note on a bug found while building this**: the first version of the host
+  handler tested the decoder's return with `!= 0`, but every decoder in this
+  codebase returns the number of bytes consumed, so success is `8`, not `0`.
+  Every request was rejected as malformed. The end-to-end loopback test is what
+  caught it; the codec unit tests could not, because they never made that
+  mistake themselves. Worth remembering whenever a `net_decode_*` return value
+  is compared.

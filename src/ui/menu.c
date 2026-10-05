@@ -7,12 +7,28 @@
 #include <math.h>
 #include <stdarg.h>
 
+/* va_list core. C has no way to forward `...` into another variadic call, so
+ * anything that needs to write a formatted message it did not receive the
+ * arguments for goes through this. */
+static void shop_vset_message(ShopMenu *menu, const char *fmt, va_list args) {
+    vsnprintf(menu->message, sizeof(menu->message), fmt, args);
+    menu->msg_timer = 2.0f;
+}
+
 static void shop_set_message(ShopMenu *menu, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    vsnprintf(menu->message, sizeof(menu->message), fmt, args);
+    shop_vset_message(menu, fmt, args);
     va_end(args);
-    menu->msg_timer = 2.0f;
+}
+
+/* Public form of the shop's message setter, used for the host's verdict on a
+ * networked purchase (B30) where the text is assembled by the caller. */
+void shop_menu_vset_message(ShopMenu *menu, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    shop_vset_message(menu, fmt, args);
+    va_end(args);
 }
 
 void menu_set_message(MainMenu *menu, const char *fmt, ...) {
@@ -509,7 +525,8 @@ void shop_menu_init(ShopMenu *menu) {
     menu->message[0] = '\0';
 }
 
-GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv) {
+GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv,
+                           uint8_t *request_out) {
     if (menu->msg_timer > 0) menu->msg_timer -= 1.0f / 60.0f;
 
     if (input_key_pressed(input, SDL_SCANCODE_UP) || input_key_pressed(input, SDL_SCANCODE_W)) {
@@ -529,6 +546,28 @@ GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *i
 
     if (input_key_pressed(input, SDL_SCANCODE_RETURN) ||
         input_key_pressed(input, SDL_SCANCODE_SPACE)) {
+        /* Co-op client: never mutate the local inventory. The host owns
+         * points and unlocks, and the snapshot copies arrive a frame later, so
+         * a local purchase here would invent money and then be contradicted by
+         * the next snapshot. Ask instead. The same "equip, buying if needed"
+         * meaning is used on both sides. */
+        if (request_out) {
+            uint8_t want = NET_SHOP_NONE;
+            switch (menu->selected_option) {
+                case 0: want = NET_SHOP_PISTOL;   break;
+                case 1: want = NET_SHOP_SWORD;    break;
+                case 2: want = NET_SHOP_GRENADES; break;
+                case 3: want = NET_SHOP_LAUNCHER; break;
+                case 4: want = NET_SHOP_ROCKETS;  break;
+                case 5: /* Close */
+                default:
+                    return GAME_STATE_PLAYING;
+            }
+            *request_out = want;
+            shop_set_message(menu, "Requesting %s...", net_shop_item_name(want));
+            return GAME_STATE_SHOP;
+        }
+
         switch (menu->selected_option) {
             case 0: /* Pistol */
                 weapons_select(inv, WEAPON_PISTOL);

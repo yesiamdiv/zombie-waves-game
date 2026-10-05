@@ -105,6 +105,23 @@ void net_server_shutdown(NetServer *s) {
     s->state = NET_SERVER_OFFLINE;
 }
 
+int net_server_take_shop_request(NetServer *s, int slot, uint8_t *item_out) {
+    if (!s || slot < 1 || slot >= NET_MAX_PLAYERS) return -1;
+    if (!s->shop_valid[slot]) return -1;
+    s->shop_valid[slot] = false;
+    if (item_out) *item_out = s->shop_item[slot];
+    return 0;
+}
+
+void net_server_send_shop_result(NetServer *s, int slot, uint8_t item, uint8_t result) {
+    if (!s || slot < 1 || slot >= NET_MAX_PLAYERS) return;
+    if (!s->slot_used[slot] || !s->slot_peers[slot]) return;
+    uint8_t buf[NET_HDR_SIZE + NET_SHOP_RESULT_BYTES];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_SHOP_RESULT, 0, (uint8_t)slot, 0};
+    int len = net_encode_shop_result(buf, (int)sizeof(buf), &h, item, result);
+    if (len > 0) send_ctrl(s->slot_peers[slot], buf, len);
+}
+
 int net_server_player_count(const NetServer *s) {
     if (!s) return 0;
     int n = 0;
@@ -275,6 +292,35 @@ void net_server_update(NetServer *s) {
                              h.version, NET_WIRE_VERSION);
                     reject_and_drop(s, ev.peer, NET_REJECT_VERSION,
                                     NET_FLAG_VERSION_MISMATCH);
+                    enet_packet_destroy(ev.packet);
+                    break;
+                }
+
+                if (h.kind == NET_PKT_SHOP_REQUEST) {
+                    /* Co-op purchase (B30). The slot is resolved from the
+                     * host's own peer->data record, never from the body's
+                     * from_slot -- otherwise one client could spend another
+                     * player's points. Placed after the version check so a
+                     * pre-v8 peer cannot reach it at all. */
+                    uint8_t item = NET_SHOP_NONE;
+                    int rslot = peer_slot(ev.peer);
+                    /* Decoders return the number of bytes consumed, so a
+                     * failure is < 0 -- not != 0. */
+                    int dr = net_decode_shop_request(ev.packet->data,
+                                                     (int)ev.packet->dataLength,
+                                                     &h, &item);
+                    if (dr < 0 ||
+                        rslot < 1 || rslot >= NET_MAX_PLAYERS || !s->slot_used[rslot]) {
+                        s->bad_packets++;
+                        LOG_WARN("NET: bad shop request from slot=%d (dec=%d)",
+                                 rslot, dr);
+                        enet_packet_destroy(ev.packet);
+                        break;
+                    }
+                    s->shop_item[rslot] = item;
+                    s->shop_valid[rslot] = true;
+                    s->shop_requests++;
+                    LOG_DEBUG("NET: shop request slot=%d item=%u", rslot, item);
                     enet_packet_destroy(ev.packet);
                     break;
                 }

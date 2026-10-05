@@ -35,10 +35,20 @@ typedef struct {
     NetInput inputs[NET_MAX_PLAYERS];
     bool input_valid[NET_MAX_PLAYERS];
 
+    /* Pending co-op shop purchases, drained by the host once per frame. The
+     * net layer deliberately does not touch PlayerInventory -- it only
+     * collects validated requests, exactly as it collects inputs. One slot
+     * deep per roster slot is enough: the client re-sends on failure and a
+     * stale repeat would cost the player money for something they already
+     * have, so a newer request overwrites an unconsumed older one. */
+    uint8_t shop_item[NET_MAX_PLAYERS];
+    bool shop_valid[NET_MAX_PLAYERS];
+
     uint64_t joins;
     uint64_t rejects;
     uint64_t bad_packets;
     uint64_t rx_inputs;
+    uint64_t shop_requests;
     uint64_t snaps_sent;
     uint64_t events_sent;
     char status[96];
@@ -56,6 +66,16 @@ void net_server_shutdown(NetServer *s);
 /* Pump ENet events once per frame (connection accept, handshake, roster
  * broadcasts). Call both in the lobby and during play. */
 void net_server_update(NetServer *s);
+
+/* Take the oldest unconsumed purchase request for `slot` (or -1). Host side,
+ * once per frame, before the sim tick. `slot` 0 is the local host and never has
+ * a pending request -- the host's own purchases are applied directly. */
+int net_server_take_shop_request(NetServer *s, int slot, uint8_t *item_out);
+
+/* Send the outcome of a purchase the host just resolved. `result` is a
+ * NET_SHOP_RES_* code. Reliable, so it cannot be lost the way an unreliable
+ * packet would be. */
+void net_server_send_shop_result(NetServer *s, int slot, uint8_t item, uint8_t result);
 
 /* Number of occupied slots (local host included). */
 int net_server_player_count(const NetServer *s);

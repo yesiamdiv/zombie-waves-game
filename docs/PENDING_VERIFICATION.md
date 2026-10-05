@@ -146,9 +146,25 @@ of the following need one human two-window run:
 - [ ] **Zombie health bars stay inside their background at wave 3+.** Before
       N4 they overflowed, because the bar divided by the starting HP while
       difficulty was scaling the real maximum.
-- [ ] **Client pressing B** shows "Shop is host-only (not networked yet)"
-      instead of opening a shop whose purchases do nothing.
 - [ ] **Client dead/eliminated overlay** matches the host's game mode.
+
+### N5 — co-op shop (B30)
+
+- [ ] **Client shop prices and balance come from the host.** With B open on the
+      client, the displayed points must equal the host's points for that slot,
+      and must change when the host earns or spends.
+- [ ] **Buying on the client works.** Press ENTER on the Grenades row with
+      enough points: the client's grenades go up by one pack *and* the host's
+      copy for that slot goes up, visible in the host's own shop or HUD.
+- [ ] **Buying points the client cannot afford shows "not enough points"** and
+      spends nothing on either side. The refusal must be legible, not silent.
+- [ ] **Rockets before the launcher says "requires another item first"**, not
+      "not enough points" — the player is not short of money.
+- [ ] **Selecting an already-owned weapon equips it for the client** and charges
+      nothing; the client's HUD weapon name follows.
+- [ ] **The client's numbers never jump backwards locally**, i.e. nothing
+      mutates the client's own inventory. Watching the displayed points stay put
+      until the next snapshot is the expected behaviour, not a bug.
 
 ## Still open by decision
 

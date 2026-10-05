@@ -1189,6 +1189,255 @@ static void test_map_registry_loads(void) {
  * is carried rather than defaulting to 0 and passing by accident. */
 #define TEST_HELLO_MAP 2
 
+/* B30 economy: a request must move exactly the points it should and grant
+ * exactly what it should -- no more, no less. The failure that actually
+ * matters is a refusal that still charges someone, or a purchase that grants
+ * nothing, so every refusal path is asserted to leave the inventory bit-for-bit
+ * as it was. */
+static void test_weapons_shop_apply(void) {
+    LOG_INFO("--- Test: shop request economy (B30) ---");
+
+    /* Unaffordable sword: nothing changes at all. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = SWORD_COST - 1;
+        int before_points = inv.points;
+        int after = -1;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_SWORD, &after) == SHOP_RES_POINTS);
+        CHECK(inv.points == before_points);
+        CHECK(!inv.unlocked[WEAPON_SWORD]);
+        CHECK(after == before_points);
+    }
+
+    /* Affordable sword: charged once, unlocked, equipped. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = SWORD_COST;
+        int after = -1;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_SWORD, &after) == SHOP_RES_OK);
+        CHECK(inv.points == 0);
+        CHECK(after == 0);
+        CHECK(inv.unlocked[WEAPON_SWORD]);
+        CHECK(inv.current == WEAPON_SWORD);
+    }
+
+    /* Owning it already must not charge again. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = 500;
+        inv.unlocked[WEAPON_SWORD] = true;
+        int after = -1;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_SWORD, &after) == SHOP_RES_OWNED);
+        CHECK(inv.points == 500);
+        CHECK(after == 500);
+        CHECK(inv.current == WEAPON_SWORD);
+    }
+
+    /* Grenade pack: correct cost, correct count, and it equips. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = GRENADE_PACK_COST;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_GRENADES, NULL) == SHOP_RES_OK);
+        CHECK(inv.points == 0);
+        CHECK(inv.grenades == GRENADES_PER_PACK);
+        CHECK(inv.current == WEAPON_GRENADE);
+        /* The first pack is what unlocks the grenade weapon; weapons_select()
+         * would have refused above if it did not. */
+        CHECK(inv.unlocked[WEAPON_GRENADE]);
+    }
+
+    /* Launcher: costs LAUNCHER_COST, grants starter rockets. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = LAUNCHER_COST + LAUNCHER_AMMO_COST;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_LAUNCHER, NULL) == SHOP_RES_OK);
+        CHECK(inv.points == LAUNCHER_AMMO_COST);
+        CHECK(inv.unlocked[WEAPON_LAUNCHER]);
+        CHECK(inv.launcher_ammo == LAUNCHER_STARTER_ROCKETS);
+        CHECK(inv.current == WEAPON_LAUNCHER);
+    }
+
+    /* Rockets without the launcher: LOCKED, not POINTS. The player is not
+     * short of money, so telling them to earn points would be a lie. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = 100000;
+        int after = -1;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_ROCKETS, &after) == SHOP_RES_LOCKED);
+        CHECK(inv.points == 100000);
+        CHECK(inv.launcher_ammo == 0);
+        CHECK(after == 100000);
+    }
+
+    /* Rockets with the launcher but no money: POINTS. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = 10;
+        inv.unlocked[WEAPON_LAUNCHER] = true;
+        inv.launcher_ammo = 3;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_ROCKETS, NULL) == SHOP_RES_POINTS);
+        CHECK(inv.launcher_ammo == 3);
+        CHECK(inv.points == 10);
+    }
+
+    /* Rockets properly funded: adds a pack and leaves the weapon alone. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = LAUNCHER_AMMO_COST;
+        inv.unlocked[WEAPON_LAUNCHER] = true;
+        inv.launcher_ammo = 3;
+        inv.current = WEAPON_LAUNCHER;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_ROCKETS, NULL) == SHOP_RES_OK);
+        CHECK(inv.launcher_ammo == 3 + ROCKETS_PER_PACK);
+        CHECK(inv.points == 0);
+        CHECK(inv.current == WEAPON_LAUNCHER);
+    }
+
+    /* Pistol: free, and it must never fail. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = 0;
+        inv.current = WEAPON_LAUNCHER;
+        CHECK(weapons_shop_apply(&inv, SHOP_ITEM_PISTOL, NULL) == SHOP_RES_OK);
+        CHECK(inv.current == WEAPON_PISTOL);
+        CHECK(inv.points == 0);
+    }
+
+    /* Unknown ids (an out-of-date client, or a corrupt byte) must change
+     * nothing rather than fall through to a purchase. */
+    {
+        PlayerInventory inv;
+        weapons_inventory_init(&inv);
+        inv.points = 9999;
+        for (int bad = SHOP_ITEM_ROCKETS + 1; bad < 64; bad++) {
+            inv.unlocked[WEAPON_SWORD] = false;
+            CHECK(weapons_shop_apply(&inv, bad, NULL) == SHOP_RES_UNKNOWN);
+            CHECK(inv.points == 9999);
+            CHECK(!inv.unlocked[WEAPON_SWORD]);
+        }
+    }
+
+    /* Every wire id must name a real item, or a stale client asking for one
+     * would be told "unknown item" for something it believes is valid. */
+    for (int it = NET_SHOP_PISTOL; it <= NET_SHOP_ROCKETS; it++) {
+        CHECK(it == SHOP_ITEM_PISTOL + (it - NET_SHOP_PISTOL));
+        CHECK(strcmp(net_shop_item_name((uint8_t)it), "unknown") != 0);
+    }
+}
+
+/* B30: co-op shop request/result. The codec is the easy half; the properties
+ * worth pinning down are the ones a future edit could quietly break:
+ *   - a request round-trips its item byte unchanged
+ *   - a result round-trips BOTH bytes (item + reason), because a result that
+ *     lost its reason would leave the client guessing why nothing happened
+ *   - unknown/empty ids survive the wire so the host, not the wire, decides
+ *     what is valid (an unknown id must be answered, not dropped)
+ *   - truncated bodies are rejected rather than read past the end
+ *   - a result from the wrong kind is refused, so a HOST->CLIENT-only packet
+ *     can never be mistaken for a request */
+static void test_net_codec_shop(void) {
+    LOG_INFO("--- Test: co-op shop wire format (B30) ---");
+
+    /* REQUEST round trip. */
+    {
+        uint8_t buf[NET_HDR_SIZE + NET_SHOP_REQUEST_BYTES];
+        NetHeader in = {NET_WIRE_VERSION, NET_PKT_SHOP_REQUEST, 7, 3, 0};
+        CHECK(net_encode_shop_request(buf, (int)sizeof(buf), &in,
+                                      NET_SHOP_LAUNCHER) == NET_HDR_SIZE + 1);
+        NetHeader out;
+        uint8_t item = 0;
+        CHECK(net_decode_shop_request(buf, NET_HDR_SIZE + 1, &out, &item) ==
+              NET_HDR_SIZE + 1);
+        CHECK(out.kind == NET_PKT_SHOP_REQUEST);
+        CHECK(out.from_slot == 3);
+        CHECK(item == NET_SHOP_LAUNCHER);
+        /* Body is exactly one byte: no room for a hidden second field. */
+        CHECK(net_encode_shop_request(buf, NET_HDR_SIZE, &in,
+                                      NET_SHOP_SWORD) == -1);
+        /* Truncated body must not decode. */
+        CHECK(net_decode_shop_request(buf, NET_HDR_SIZE, &out, &item) == -1);
+        /* A result packet must not pass as a request. Its own buffer, since a
+         * 2-byte body does not fit the 1-byte one above. */
+        uint8_t rbuf[NET_HDR_SIZE + NET_SHOP_RESULT_BYTES];
+        NetHeader rh = {NET_WIRE_VERSION, NET_PKT_SHOP_RESULT, 0, 0, 0};
+        CHECK(net_encode_shop_result(rbuf, (int)sizeof(rbuf), &rh,
+                                     NET_SHOP_SWORD,
+                                     NET_SHOP_RES_POINTS) ==
+              NET_HDR_SIZE + NET_SHOP_RESULT_BYTES);
+        CHECK(net_decode_shop_request(rbuf, NET_HDR_SIZE + 2, &out, &item) == -1);
+        /* And a body that does not fit must be refused, not truncated. */
+        CHECK(net_encode_shop_result(buf, (int)sizeof(buf), &rh,
+                                     NET_SHOP_SWORD,
+                                     NET_SHOP_RES_POINTS) == -1);
+    }
+
+    /* RESULT round trip, all reason codes. */
+    {
+        uint8_t buf[NET_HDR_SIZE + NET_SHOP_RESULT_BYTES];
+        for (uint8_t r = 0; r <= 5; r++) {
+            NetHeader in = {NET_WIRE_VERSION, NET_PKT_SHOP_RESULT, 9, 2, 0};
+            CHECK(net_encode_shop_result(buf, (int)sizeof(buf), &in,
+                                         NET_SHOP_ROCKETS, r) ==
+                  NET_HDR_SIZE + 2);
+            NetHeader out;
+            uint8_t item = 0, res = 0xFF;
+            CHECK(net_decode_shop_result(buf, NET_HDR_SIZE + 2, &out,
+                                         &item, &res) == NET_HDR_SIZE + 2);
+            CHECK(item == NET_SHOP_ROCKETS);
+            CHECK(res == r);
+        }
+        /* Missing the reason byte must fail, not report OK. */
+        NetHeader rh = {NET_WIRE_VERSION, NET_PKT_SHOP_RESULT, 0, 0, 0};
+        net_encode_shop_result(buf, (int)sizeof(buf), &rh, NET_SHOP_SWORD,
+                               NET_SHOP_RES_OK);
+        NetHeader out;
+        uint8_t item = 0, res = 0;
+        CHECK(net_decode_shop_result(buf, NET_HDR_SIZE + 1, &out,
+                                     &item, &res) == -1);
+        CHECK(net_decode_shop_request(buf, NET_HDR_SIZE + 2, &out, &item) == -1);
+    }
+
+    /* Every item id survives the wire, including ones the host will refuse. The
+     * host must be the one to reject, so that an out-of-date client's id gets
+     * an honest answer instead of silence. */
+    {
+        uint8_t buf[NET_HDR_SIZE + NET_SHOP_REQUEST_BYTES];
+        for (uint8_t it = 0; it <= 7; it++) {
+            NetHeader in = {NET_WIRE_VERSION, NET_PKT_SHOP_REQUEST, 0, 1, 0};
+            CHECK(net_encode_shop_request(buf, (int)sizeof(buf), &in, it) ==
+                  NET_HDR_SIZE + 1);
+            NetHeader out;
+            uint8_t got = 0;
+            CHECK(net_decode_shop_request(buf, NET_HDR_SIZE + 1, &out,
+                                          &got) == NET_HDR_SIZE + 1);
+            CHECK(got == it);
+        }
+    }
+
+    /* Names must not be empty for real ids, or the client would print nothing. */
+    CHECK(strcmp(net_shop_item_name(NET_SHOP_PISTOL), "Pistol") == 0);
+    CHECK(strcmp(net_shop_item_name(NET_SHOP_NONE), "none") == 0);
+    CHECK(strcmp(net_shop_result_name(NET_SHOP_RES_POINTS), "not enough points") == 0);
+    CHECK(strcmp(net_pkt_kind_name(NET_PKT_SHOP_REQUEST), "shop_request") == 0);
+    CHECK(strcmp(net_pkt_kind_name(NET_PKT_SHOP_RESULT), "shop_result") == 0);
+    /* Every real item id must name itself, or the client prints a blank. */
+    for (uint8_t it = NET_SHOP_PISTOL; it <= NET_SHOP_ROCKETS; it++) {
+        CHECK(strcmp(net_shop_item_name(it), "unknown") != 0);
+    }
+    for (uint8_t r = 0; r <= NET_SHOP_RES_UNKNOWN; r++) {
+        CHECK(strcmp(net_shop_result_name(r), "invalid") != 0);
+    }
+}
+
 static void test_net_codec(void) {
     LOG_INFO("--- Test: wire codec byte-exact round trips ---");
 
@@ -2073,6 +2322,8 @@ int tests_run_all(void) {
     test_map_registry_loads();
     test_sword_sweep_hits();
     test_zombie_contact_and_slow();
+    test_weapons_shop_apply();
+    test_net_codec_shop();
     test_net_codec();
     test_net_codec_game();
     test_net_art_table();

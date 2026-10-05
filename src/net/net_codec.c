@@ -241,6 +241,44 @@ int net_decode_reject(const uint8_t *buf, int len, NetHeader *h, uint8_t *reason
 
 /* --------------------------------------------------------- PLAYER LIST */
 
+int net_encode_shop_request(uint8_t *buf, int cap, const NetHeader *h, uint8_t item) {
+    if (!buf || !h || cap < NET_HDR_SIZE) return -1;
+    int off = 0;
+    if (net_hdr_encode(buf, h) != 0) return -1;
+    off = NET_HDR_SIZE;
+    if (put_u8(buf, cap, &off, item) != 0) return -1;
+    return off;
+}
+
+int net_decode_shop_request(const uint8_t *buf, int len, NetHeader *h, uint8_t *item) {
+    if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
+    if (h->kind != NET_PKT_SHOP_REQUEST) return -1;
+    int off = NET_HDR_SIZE;
+    if (get_u8(buf, len, &off, item) != 0) return -1;
+    return off;
+}
+
+int net_encode_shop_result(uint8_t *buf, int cap, const NetHeader *h,
+                           uint8_t item, uint8_t result) {
+    if (!buf || !h || cap < NET_HDR_SIZE) return -1;
+    int off = 0;
+    if (net_hdr_encode(buf, h) != 0) return -1;
+    off = NET_HDR_SIZE;
+    if (put_u8(buf, cap, &off, item) != 0) return -1;
+    if (put_u8(buf, cap, &off, result) != 0) return -1;
+    return off;
+}
+
+int net_decode_shop_result(const uint8_t *buf, int len, NetHeader *h,
+                           uint8_t *item, uint8_t *result) {
+    if (decode_hdr_from_packet(h, buf, len) != 0) return -1;
+    if (h->kind != NET_PKT_SHOP_RESULT) return -1;
+    int off = NET_HDR_SIZE;
+    if (get_u8(buf, len, &off, item) != 0) return -1;
+    if (get_u8(buf, len, &off, result) != 0) return -1;
+    return off;
+}
+
 int net_encode_player_list(uint8_t *buf, int cap, const NetPlayerInfo *players,
                            int count) {
     if (!buf || cap < NET_HDR_SIZE) return -1;
@@ -492,7 +530,33 @@ const char *net_pkt_kind_name(int kind) {
         case NET_PKT_LEAVE:       return "leave";
         case NET_PKT_INPUT:       return "input";
         case NET_PKT_SNAPSHOT:    return "snapshot";
+        case NET_PKT_EVENTS:      return "events";
+        case NET_PKT_SHOP_REQUEST: return "shop_request";
+        case NET_PKT_SHOP_RESULT:  return "shop_result";
         default:                  return "unknown";
+    }
+}
+
+const char *net_shop_result_name(uint8_t result) {
+    switch (result) {
+        case NET_SHOP_RES_OK:      return "ok";
+        case NET_SHOP_RES_POINTS:  return "not enough points";
+        case NET_SHOP_RES_LOCKED:  return "requires another item first";
+        case NET_SHOP_RES_OWNED:   return "already owned";
+        case NET_SHOP_RES_UNKNOWN: return "unknown item";
+        default:                   return "invalid";
+    }
+}
+
+const char *net_shop_item_name(uint8_t item) {
+    switch (item) {
+        case NET_SHOP_PISTOL:   return "Pistol";
+        case NET_SHOP_SWORD:    return "Sword";
+        case NET_SHOP_GRENADES: return "Grenades x5";
+        case NET_SHOP_LAUNCHER: return "Launcher";
+        case NET_SHOP_ROCKETS:  return "Rockets x5";
+        case NET_SHOP_NONE:     return "none";
+        default:                return "unknown";
     }
 }
 

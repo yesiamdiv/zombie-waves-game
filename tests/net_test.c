@@ -377,6 +377,114 @@ int main(void) {
         }
     }
 
+    /* ===================== co-op shop end to end (B30) ====================
+     * The unit tests prove weapons_shop_apply() moves the right numbers, and
+     * the codec tests prove the bytes survive. Neither proves the request
+     * actually reaches the right slot on the right connection and comes back
+     * labelled. This drives a real client over the real transport.
+     *
+     * Uses a fresh server so the inventory below is definitely the host's. */
+    {
+        NetServer srv;
+        NetClient buyer;
+        if (net_server_host(&srv, TEST_PORT + 1, "ShopHost", TEST_SEED,
+                            NET_WORLD_GEN_VERSION, 0) != 0) {
+            LOG_ERROR("FAIL: shop host would not start");
+            g_failed++;
+        } else {
+            net_client_init(&buyer);
+            if (net_client_connect(&buyer, "127.0.0.1", TEST_PORT + 1,
+                                   "Buyer") != 0) {
+                g_failed++;
+                LOG_ERROR("FAIL: buyer connect failed");
+            }
+            double dl = now_ms() + 2000.0;
+            while (buyer.state != NET_CLIENT_CONNECTED && now_ms() < dl) {
+                service(&srv, &buyer, 1);
+            }
+            CHECK(buyer.state == NET_CLIENT_CONNECTED);
+            CHECK(buyer.slot == 1);
+
+            /* The host's slot-1 inventory is the only one that exists here;
+             * give it points and an empty record, as a real session would. */
+            PlayerInventory host_inv;
+            weapons_inventory_init(&host_inv);
+            host_inv.points = SWORD_COST;
+
+            /* Request that must be granted. */
+            CHECK(net_client_send_shop_request(&buyer, NET_SHOP_SWORD) == 0);
+            /* One in flight: a second press must not queue a second purchase,
+             * which would otherwise charge twice for one keypress. */
+            CHECK(net_client_send_shop_request(&buyer, NET_SHOP_SWORD) == -1);
+            uint8_t item = 0, res = 0xFF;
+            bool answered = false;
+            dl = now_ms() + 2000.0;
+            while (now_ms() < dl) {
+                service(&srv, &buyer, 1);
+                /* The host drains requests like main.c does each frame. */
+                uint8_t want = NET_SHOP_NONE;
+                while (net_server_take_shop_request(&srv, (int)buyer.slot,
+                                                    &want) == 0) {
+                    int after = 0;
+                    ShopResult r = weapons_shop_apply(&host_inv, (int)want, &after);
+                    net_server_send_shop_result(&srv, (int)buyer.slot, want,
+                                                (uint8_t)r);
+                }
+                if (net_client_take_shop_result(&buyer, &item, &res) == 0) {
+                    answered = true;
+                    break;
+                }
+            }
+            CHECK(answered);
+            CHECK(item == NET_SHOP_SWORD);
+            CHECK(res == NET_SHOP_RES_OK);
+            /* The host's money moved exactly once. */
+            CHECK(host_inv.points == 0);
+            CHECK(host_inv.unlocked[WEAPON_SWORD]);
+            CHECK(host_inv.current == WEAPON_SWORD);
+            /* And the client's pending flag was cleared by the reply, so the
+             * shop is usable again instead of stuck on "requesting...". */
+            CHECK(net_client_shop_requests_pending(&buyer) == 0);
+
+            /* A second, unaffordable request must come back POINTS and leave
+             * the balance alone -- the client needs to be able to tell the
+             * player why, rather than the numbers just not moving. */
+            host_inv.points = 1;
+            CHECK(net_client_send_shop_request(&buyer, NET_SHOP_LAUNCHER) == 0);
+            answered = false;
+            dl = now_ms() + 2000.0;
+            while (now_ms() < dl) {
+                service(&srv, &buyer, 1);
+                uint8_t want = NET_SHOP_NONE;
+                while (net_server_take_shop_request(&srv, (int)buyer.slot,
+                                                    &want) == 0) {
+                    int after = 0;
+                    ShopResult r = weapons_shop_apply(&host_inv, (int)want, &after);
+                    net_server_send_shop_result(&srv, (int)buyer.slot, want,
+                                                (uint8_t)r);
+                }
+                if (net_client_take_shop_result(&buyer, &item, &res) == 0) {
+                    answered = true;
+                    break;
+                }
+            }
+            CHECK(answered);
+            CHECK(res == NET_SHOP_RES_POINTS);
+            CHECK(host_inv.points == 1);
+            CHECK(!host_inv.unlocked[WEAPON_LAUNCHER]);
+
+            /* Refuses must not arrive as out-of-range ids. */
+            CHECK(item == NET_SHOP_LAUNCHER);
+
+            /* Requests are refused before CONNECTED rather than queued. */
+            CHECK(net_client_send_shop_request(&buyer, NET_SHOP_NONE) == -1);
+            CHECK(net_client_send_shop_request(&buyer, NET_SHOP_ROCKETS + 40) == -1);
+
+            net_client_shutdown(&buyer);
+            net_server_shutdown(&srv);
+        }
+    }
+
     /* ------------------------------------------------------------ teardown */
     for (int i = 0; i < 3; i++) net_client_shutdown(&c[i]);
     net_server_shutdown(&server);

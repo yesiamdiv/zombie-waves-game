@@ -55,6 +55,16 @@ typedef struct {
     int pending_wave_count;
     bool has_pending_wave;
 
+    /* Co-op shop (B30). The client may only *ask*: `shop_pending` throttles
+     * one in-flight request per keypress and `shop_item` remembers what was
+     * asked so a late reply can still be labelled. The outcome lands in
+     * `shop_result`/`shop_result_item`, read and cleared by the shop UI. */
+    uint8_t shop_item;
+    uint8_t shop_result_item;
+    uint8_t shop_result;
+    bool shop_pending;
+    bool shop_has_result;
+
     uint16_t seq;
     bool left;                   /* intentional leave (LEAVE sent) */
     bool server_stopped;         /* host disconnected / left */
@@ -84,6 +94,20 @@ void net_client_shutdown(NetClient *c);
 void net_client_update(NetClient *c);
 
 /* Round trip to the host in ms, or -1 when not connected. */
+/* Co-op shop (B30). Ask the host to apply a purchase to *this client's* slot.
+ * Reliable and ordered, unlike the per-frame input, because dropping a
+ * purchase silently would look like a broken button. Returns 0 on send, -1 if
+ * not connected or a request is already in flight. */
+int net_client_send_shop_request(NetClient *c, uint8_t item);
+
+/* Host's answer to the last request: NET_SHOP_RES_* in `*result`, and the item
+ * it was for in `*item`. Returns 0 when one is waiting (and clears it), -1
+ * when nothing has arrived since the last call. */
+int net_client_take_shop_result(NetClient *c, uint8_t *item, uint8_t *result);
+
+/* Number of purchase requests still unanswered. */
+int net_client_shop_requests_pending(const NetClient *c);
+
 int net_client_rtt_ms(const NetClient *c);
 
 /* Send one input sample to the host (channel 1, unreliable latest-wins).
