@@ -46,7 +46,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B32 | Client shows a blank screen when its player dies, and never shows its own name tag | `e5c6dec` | FIXED |
 | B33 | Client shop prices are drawn from a frozen local inventory, not host state | `d5da693` | FIXED |
 | B34 | Player name tag overlaps the zombie/wave counter | `50a2365` | FIXED |
-| B35 | A client's own name tag shows "Player" in the wrong colour | — | AUDITED (fix pending) |
+| B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
 
 ## Detailed entries
 
