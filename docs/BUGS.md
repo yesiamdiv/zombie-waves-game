@@ -46,6 +46,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B32 | Client shows a blank screen when its player dies, and never shows its own name tag | `e5c6dec` | FIXED |
 | B33 | Client shop prices are drawn from a frozen local inventory, not host state | `d5da693` | FIXED |
 | B34 | Player name tag overlaps the zombie/wave counter | `50a2365` | FIXED |
+| B35 | A client's own name tag shows "Player" in the wrong colour | — | AUDITED (fix pending) |
 
 ## Detailed entries
 
@@ -611,3 +612,39 @@ Found 2026-10-05 auditing the UI layer. Low severity, cosmetic.
   read — but it is unreachable from `hud_draw`. The local branch sits after
   `if (!alive) { ... return; }` (`src/ui/hud.c:125-142`), and `alive` is false
   whenever `local->entity == ECS_NULL_ENTITY`. Not a live bug.
+
+## B35. A client's own name tag reads "Player" in the wrong colour
+
+Found 2026-10-05, **as a direct consequence of fixing B32**. High severity for a
+UI defect: the one element B32 existed to restore labelled the wrong player.
+
+- **Symptom**: with B32 fixed, a client's HUD finally draws a name tag — and it
+  says `Player` in the single-player default colour, regardless of what the
+  client typed for `--name=`.
+- **Root cause**: `hud_draw` renders the tag from `local->name` / `local->color`,
+  where `local` is `&game.players[0]`. On a render-only client that slot is never
+  simulated, and `reset_game()` fills it with the literal name `"Player"` and
+  `COLOR_BLUE` (`src/main.c:188-195`) — the same values single-player uses. The
+  client's real identity lives in `game.net_client.slot` and its name in
+  `net_player_name`; neither reaches the tag.
+- **Why it was missed**: before B32 the tag never drew on a client at all, so the
+  wrong name was invisible. Fixing B32 made a latent wrong-value bug visible.
+  Worth noting as a class: a tag that draws nothing cannot be wrong, so any fix
+  that makes it draw has to check *what* it draws.
+- **Fix**: the host already echoes every player's name back in the roster, and the
+  lobby screen uses it correctly (`src/main.c:1052-1057`). The HUD's
+  `HudPlayerState` gains `name` / `slot_color` / `has_identity`, filled from the
+  roster entry matching `net_client.slot`. Falls back to `local` when there is no
+  authoritative identity, which is the correct single-player path.
+
+## Rejected during the multiplayer sweep (same session)
+
+- **"A client's slot-0 beacon is re-derived and can drift."**
+  `sync_client_beacon_slots()` skips slot 0 on a client because it holds a
+  "real local entity" (`src/main.c:301`), leaving `beacon_pos` at the client's own
+  `world_get_spawn_point` rather than reading it from the snapshot like every
+  other slot. It agrees today only because `beacon_pos` is written exactly once,
+  at respawn (`src/players.c:75`), and never moved afterwards. So there is no
+  divergence today, but the skip is load-bearing on a property nothing enforces —
+  the day slot 0's beacon becomes movable, this silently disagrees. Worth a
+  follow-up, not a bug now.

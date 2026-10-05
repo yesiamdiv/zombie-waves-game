@@ -1139,6 +1139,20 @@ static HudPlayerState client_self_state(void) {
     hs.launcher_ammo = (int)ps.launcher_ammo;
     hs.weapon = (int)ps.weapon;
 
+    /* B35: identity from the host's roster. The HUD's name tag used to read
+     * game.players[0].name, which on a client is the literal "Player" that
+     * reset_game() passes and the single-player default colour - so the tag
+     * named the wrong player in the wrong colour. `net_player_name` is the
+     * client's own requested name, which the host echoes back in the roster. */
+    for (int i = 0; i < game.net_client.roster_count; i++) {
+        const NetPlayerInfo *info = &game.net_client.roster[i];
+        if (info->slot != game.net_client.slot) continue;
+        snprintf(hs.name, sizeof(hs.name), "%s", info->name);
+        hs.slot_color = net_slot_color(info->slot);
+        hs.has_identity = true;
+        break;
+    }
+
     /* Wave panel (B26). Same snapshot, same reason: waves_update() is below
      * the render_only_client() break, so game.waves is frozen at its init
      * values on a client. */

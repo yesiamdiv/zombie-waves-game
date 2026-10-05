@@ -7,6 +7,7 @@
 #include "core/input.h"
 #include "world/waves.h"
 #include "weapons/weapons.h"
+#include "net/net.h"          /* NET_NAME_CAP */
 
 struct Player; /* forward decl; hud.c includes players.h */
 
@@ -48,6 +49,15 @@ typedef struct {
     int   grenades;
     int   launcher_ammo;
     int   weapon;            /* WeaponType */
+    /* --- identity (B35) ---
+     * The name tag used to read `local->name` / `local->color`. On a render-only
+     * client `local` is slot 0's unsimulated Player, whose name is the literal
+     * "Player" from reset_game() and whose colour is the single-player default -
+     * so once the tag was made visible on clients (B32) it labelled them with
+     * the wrong name in the wrong colour. Both come from the host's roster. */
+    char  name[NET_NAME_CAP];
+    SDL_FColor slot_color;
+    bool  has_identity;      /* false => use `local`'s name/colour */
     /* --- shared wave state (N4/B26) ---
      * waves_update() never runs on a render-only client, so the HUD used to
      * read a WaveSystem full of permanent zeros: "Wave: 0", "Kills: 0", and no

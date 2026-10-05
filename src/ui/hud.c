@@ -201,12 +201,21 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
      * B34: this shares the left column with the wave and zombie rows, which sit
      * at y=50 and y=75 on a 25px rhythm. It used to draw at y=76, one pixel
      * from the zombie counter and on top of it. It takes the next row down
-     * instead of nudging the baseline. */
+     * instead of nudging the baseline.
+     * B35: identity comes from `auth` when the host supplied it. `local` is the
+     * unsimulated slot-0 Player on a client, so its name is a placeholder. */
     if (multi && local && local->name[0] != '\0') {
         SDL_FColor name_color = local->color;
-        name_color.a = 0.9f;
-        snprintf(buf, sizeof(buf), "%s", local->name);
-        draw_text(renderer, font, buf, 20.0f, 100.0f, name_color);
+        const char *name = local->name;
+        if (use_auth && auth->has_identity) {
+            name_color = auth->slot_color;
+            name = auth->name;
+        }
+        if (name[0] != '\0') {
+            name_color.a = 0.9f;
+            snprintf(buf, sizeof(buf), "%s", name);
+            draw_text(renderer, font, buf, 20.0f, 100.0f, name_color);
+        }
     }
 
     /* Zombies remaining */
