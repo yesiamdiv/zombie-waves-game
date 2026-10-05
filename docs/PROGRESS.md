@@ -107,3 +107,101 @@ DEV work interleaved (team structure per `AGENTS.md`).
 
 ### Blocked
 - None.
+---
+
+## Session 2026-10-05 — net-protocol → `main`, then a UI/asset/multiplayer audit
+
+### PM — planned
+- Merge the whole of `feature/net-protocol` into `main` and push it.
+- Resume the audit of UI, assets and multiplayer for real bugs, incomplete
+  behaviour, and wrong implementations.
+
+### DEV — done (merge)
+- **I5 retrospective written** (`docs/I5_FIX.md`, `c8a5dde`) and indexed in
+  `docs/README.md`. Documents the fix as *transmitting appearance* — and, more
+  usefully, why the first recorded decision for I5 (mirror the host's shape
+  constructors client-side, explicitly rejecting sprite geometry on the wire) was
+  wrong and got reversed: duplicating the shape rule makes two windows agree only
+  until one side changes, so the client keeps guessing and now there are two
+  guesses to keep in sync.
+- **Merged to `main`** as a **fast-forward** (`398f8d1..c8a5dde`), pushed.
+  `main` was sitting exactly on `feature/multiplayer`'s tip, so nothing could
+  conflict and no merge commit was needed. Untracked WIP in the main worktree
+  (`docs/CROSS_BRANCH_CONFLICTS.md`, `playtesting_prompts/qa_recheck/findings/`,
+  `session-ses_f745.md`) was left untouched throughout.
+- **Gates re-verified in `main`'s own worktree**, not inherited from the branch:
+  Release zero warnings, `zombie_tests` 1186/1186, `ctest` 3/3, seed-42
+  single-player log byte-identical.
+
+### DEV — done (audit: UI)
+Read the UI layer; verified every candidate against the code before filing it.
+**Two of five did not survive**, and are recorded as rejected so they are not
+re-raised as new findings:
+- Health-bar ratio exceeding its track, and a divide by zero — unreachable. Every
+  write to `hp->current` clamps (`items.c:110`, `waves.c:252`) or derives from a
+  percentage the CLI already clamps to 0-100, and `hp->max` is never assigned
+  after init. (The original claim also named `--player-hp-pct`; the flag is
+  `--player-hp=` and it *is* clamped.)
+- `ecs_get_health(ecs, ECS_NULL_ENTITY)` reading one past `World.healths` — real
+  in the accessor, but unreachable from `hud_draw`, which returns earlier when
+  `!alive`.
+
+Three confirmed, all fixed:
+- **B32 (`e5c6dec`)** — `hud_draw`'s `multi` argument was `!render_only_client()`,
+  which is true in single-player, true as host, false as client: right only for
+  the host. A client whose player died got a **completely blank HUD**, because
+  `hud_draw` does `if (!alive) { if (multi) {...} return; }` and skipped the
+  overlay entirely; and the name tag never drew on a client at all.
+- **B33 (`d5da693`)** — **my own regression from N5.** The snapshot-derived shop
+  view was threaded into `shop_menu_update()` but not `shop_menu_draw()`, so the
+  client menu decided what you may buy from host state and rendered the numbers
+  from its own frozen struct. No test caught it: the N5 assertions cover
+  `weapons_shop_apply()`, the codecs and the loopback, and none of them care
+  which pointer the draw call receives.
+- **B34 (`50a2365`)** — the name tag drew at y=76 against the zombie counter at
+  y=75. Only reachable on a host, because B32 meant it never drew on a client;
+  fixing B32 exposes it on both windows, so they land together.
+
+### DEV — done (audit: assets)
+- `gen_assets.py --verify` — **33 textures, byte-identical regen**, tree clean.
+- `NET_ART_*` table is complete in both directions: all 9 entity textures have an
+  art id, all 9 ids are used, every `textures/**.png` referenced in `src/` exists
+  on disk. (`textures/ground.png` appears only inside a doc comment.)
+- No zombie size/speed variants are generated, so there is nothing for the art
+  table to disagree about.
+
+### DEV — done (audit: multiplayer)
+Swept for remaining client-invented state. Beacons (B27), wave panel (B26), health
+bars (B28), appearance (B19-B21), per-slot HUD state (B22/B23) and the shop
+(B30/B33) all read host-authoritative values. One rejected candidate recorded: a
+client's slot-0 beacon is skipped by `sync_client_beacon_slots()` and so never
+read from the snapshot — it agrees today only because `beacon_pos` is written
+once at respawn and never moved. Follow-up, not a bug.
+
+One further bug, found *because* B32 made the name tag visible on clients:
+- **B35 (`7d0cb15`)** — the tag drew `local->name` / `local->color` from the
+  unsimulated slot-0 `Player`, whose name is the literal `"Player"` and whose
+  colour is the single-player default. A client that joined as `Guest` saw
+  `Player` in the wrong colour. Identity now comes from the host's roster via
+  `HudPlayerState`, the same path the lobby screen already used.
+
+Worth recording as a class: **a tag that draws nothing cannot be wrong**, so any
+fix that makes it start drawing has to check *what* it now draws.
+
+### PM — review
+Four bugs found and fixed in one audit pass; four commits, one per fix. Suite
+held at 1186/1186, `ctest` 3/3, Release zero warnings, single-player
+byte-identical — unchanged throughout, because none of the fixes touch the
+simulation. All four are visual/HUD defects, so **the gates prove nothing about
+them**; the two-window checklist is in `docs/PENDING_VERIFICATION.md`.
+
+Also repaired documentation drift: `docs/BUGS.md`'s tracking table had stopped at
+B23 with B22/B23 still marked PLANNED though both shipped in `e9d2d71`; B24-B30
+had no rows at all; and B27/B28 cited `f09cb29` as their fix when that commit is
+**docs-only** — the fix is `56cce96`. Misattributing a planning doc to a code fix
+is how a bug gets re-declared open.
+
+### Blocked
+- Nothing blocking.
+- Every fix in this session is visually unverified by construction: `render()`
+  returns immediately when `game.headless` is set.

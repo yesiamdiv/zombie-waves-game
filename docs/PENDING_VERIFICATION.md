@@ -166,6 +166,49 @@ of the following need one human two-window run:
       mutates the client's own inventory. Watching the displayed points stay put
       until the next snapshot is the expected behaviour, not a bug.
 
+### N5 — co-op shop (B30)
+
+- [ ] **Client shop prices and balance come from the host.** With B open on the
+      client, the displayed points must equal the host's points for that slot,
+      and must change when the host earns or spends. *This is the check that
+      would have caught B33, where the drawn numbers came from the client's own
+      frozen struct while the menu's decisions came from the host.*
+- [ ] **Buying on the client works.** Press ENTER on the Grenades row with
+      enough points: the client's grenades go up by one pack *and* the host's
+      copy for that slot goes up, visible in the host's own shop or HUD.
+- [ ] **Buying points the client cannot afford shows "not enough points"** and
+      spends nothing on either side. The refusal must be legible, not silent.
+- [ ] **Rockets before the launcher says "requires another item first"**, not
+      "not enough points" — the player is not short of money.
+- [ ] **Selecting an already-owned weapon equips it for the client** and charges
+      nothing; the client's HUD weapon name follows.
+- [ ] **The client's numbers never jump backwards locally**, i.e. nothing
+      mutates the client's own inventory. Watching the displayed points stay put
+      until the next snapshot is the expected behaviour, not a bug.
+
+### 2026-10-05 UI audit — B32 to B35
+
+Found by reading the UI layer on `main` after the net-protocol merge. Every
+candidate was checked against the code before being filed; two were rejected and
+are recorded in `docs/BUGS.md` so they are not re-raised. All four are fixed in
+code, all four gates are green, and **all four are visual or HUD defects, so
+none of them is proven by any test in this repo.** Two windows:
+
+- [ ] **B32 — a client that dies shows something.** Respawn countdown or
+      `ELIMINATED`, centered, instead of an empty HUD. Before the fix the
+      overlay was skipped entirely on clients.
+- [ ] **B32 — single-player no longer shows the multiplayer death overlay.**
+      It read `multi` as true in single-player and drew "Respawning at beacon"
+      before handing off to the game-over screen. Confirm the normal
+      game-over screen is all you see.
+- [ ] **B35 — the name tag shows your own name in your own colour.** Join with
+      `--name=Guest` and confirm the client HUD says `Guest` in slot 1's colour,
+      not the literal `Player` in the single-player default.
+- [ ] **B34 — the name tag does not sit on the zombie counter.** Both are in the
+      left column during an active wave; the tag moved from y=76 to y=100.
+- [ ] **The host still shows its own name tag** (B32 changed the flag the host
+      already passed correctly, so this is a regression check, not a new check).
+
 ## Still open by decision
 
 - Particles/effects are not replicated (B29, accepted). Note this one is real:
