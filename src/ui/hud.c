@@ -197,12 +197,16 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     draw_text(renderer, font, buf, 20.0f, 50.0f, wave_color);
 
     /* Player-colored name tag (multiplayer): ties this HUD to the slot's
-     * beacon color so spectators/players can tell whose view they are on. */
+     * beacon color so spectators/players can tell whose view they are on.
+     * B34: this shares the left column with the wave and zombie rows, which sit
+     * at y=50 and y=75 on a 25px rhythm. It used to draw at y=76, one pixel
+     * from the zombie counter and on top of it. It takes the next row down
+     * instead of nudging the baseline. */
     if (multi && local && local->name[0] != '\0') {
         SDL_FColor name_color = local->color;
         name_color.a = 0.9f;
         snprintf(buf, sizeof(buf), "%s", local->name);
-        draw_text(renderer, font, buf, 20.0f, 76.0f, name_color);
+        draw_text(renderer, font, buf, 20.0f, 100.0f, name_color);
     }
 
     /* Zombies remaining */
