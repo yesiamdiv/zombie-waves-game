@@ -118,6 +118,11 @@ exact, and accepting corruption as merely-out-of-date would have hidden it.
 
 ## Sprint N3 — host-authoritative client state (DEV)
 
+**Status: DONE — `e9d2d71`.** `NET_WIRE_VERSION` 5 → 6: snapshots carry a
+`NetPlayerState` per roster slot (HP, inventory, eliminated/respawn), and
+`hud_draw()` takes an authoritative view instead of reading the client's own
+ECS. Tests 868, ctest 3/3.
+
 **Goal.** The client never displays its own state for anything the host owns.
 
 **Scope.**
@@ -217,6 +222,32 @@ down, not in the passing of tests.
 - Per-entity animation phase over the wire. The host's `system_animation` is not
   replicated, so walking frames may not match exactly. Same class of issue as
   N1, smaller visible impact — **N4 will classify it properly**.
+
+## Sprint N4 result
+
+**Status: DONE — `56cce96`.** `NET_WIRE_VERSION` 6 → 7. Tests 890, ctest 3/3.
+
+Method held up: auditing *after* N1–N3 found three more real divergences
+(B26/B27/B28) that no earlier sprint had looked for, and each had a plausible
+"it obviously works" story. The standing invariant — the `render_only_client()`
+break at `main.c:765` sits above every system call, so a client simulates
+nothing — held throughout; every bug was about what the client *displayed* or
+*re-derived* despite simulating nothing.
+
+| Bucket | Items |
+|---|---|
+| **R** replicated | entity transform + HP + max HP + appearance; per-slot inventory, eliminated/respawn, beacon position; wave number/active/kills/zombies-alive/countdown |
+| **D** deterministic | map layout (client loads the host's `map_index` from the HELLO); world spawn point; slot colour (`net_slot_color`, a pure function of the slot) |
+| **A** accepted | particles/effects (B29), animation phase (B31), inter-entity depth ordering |
+| **F** fixed | B26 wave panel, B27 beacon derivation, B28 hardcoded HP max, B30 client shop purchase |
+
+**Deliberately not fixed:** B29 and B31 (cosmetic; costs bandwidth and a new
+entity kind for no gameplay value) and the *real* fix for B30 (a
+purchase-request packet — a feature, not an audit fix).
+
+**New invariant found while auditing:** anything a client displays must be
+either in the snapshot or deliberately cosmetic. The three B26–B28 bugs were all
+"the client had a plausible-looking number to display and displayed it".
 
 ## Definition of done for the branch
 

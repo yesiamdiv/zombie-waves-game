@@ -128,4 +128,33 @@ Each needs a real on-device two-instance run with a human looking at the screen.
 - [ ] The host's console shows `NET: refused peer ... reason=asset mismatch`.
 - [ ] A full server (2 players, 3rd joins) still refuses politely.
 
-## Sprint N3 (client state) — not started
+## Sprint N3 + N4 (client state, wave panel, beacons, health bars)
+
+Headless proves the values *arrive*; nothing here proves they are *drawn*. All
+of the following need one human two-window run:
+
+- [ ] **Client HP bar moves** when the host takes damage. Before N3 the client
+      bar was frozen at its join-time value.
+- [ ] **Client points / ammo / weapon** update as the host earns/spends them.
+- [ ] **Client wave panel** shows the real wave number, zombie count and
+      "Next wave in Xs". Before N4 it read `Wave: 0` / `Kills: 0` forever.
+- [ ] **Client Kills/Score** match the host's.
+- [ ] **Client respawn countdown** appears and counts down (a dead slot has no
+      entity, so this state comes only from the per-slot block).
+- [ ] **Beacons sit where the host's beacons sit.** Before N4 the client
+      recomputed their positions from a copy of the host's formula.
+- [ ] **Zombie health bars stay inside their background at wave 3+.** Before
+      N4 they overflowed, because the bar divided by the starting HP while
+      difficulty was scaling the real maximum.
+- [ ] **Client pressing B** shows "Shop is host-only (not networked yet)"
+      instead of opening a shop whose purchases do nothing.
+- [ ] **Client dead/eliminated overlay** matches the host's game mode.
+
+## Still open by decision
+
+- Particles/effects are not replicated (B29, accepted).
+- Animation phase is not replicated (B31, accepted).
+- Co-op shopping does not exist (B30, needs a purchase-request protocol).
+- Zombie speed/size variants (`docs/FUTURE_IDEAS.md`) — lowest priority, after
+  all of the above, and only with an explicit decision about single-player
+  gameplay invariance.
