@@ -28,6 +28,7 @@ something in this repo was already broken by breaking it once.
 | File | What |
 |---|---|
 | `BUGS.md` | B1–B23+ with symptom / root cause / fix / commit SHA |
+| `I5_FIX.md` | **how the "client renders dots, not sprites" fix works** — the rejected obvious fix, and why guessing on the client is an authority violation |
 | `R13_BUGFIX_TRACKER.md` | the multiplayer fix series and its gates |
 | `PENDING_VERIFICATION.md` | **believed working but unproven** — read before claiming a visual fix |
 | `PROGRESS.md` | session log: what was found and done |
