@@ -28,7 +28,7 @@ Single source of truth for every bug the playtester agent reported against the
 | R13-I1 | Major | Client stutter | **FIXED** | `60033a1` |
 | R13-N2 | Minor | Legacy `main` won't compile | NOT ACTIONABLE — see below | — |
 | R13-I4 | Question | Host pause freezes client | **FIXED** (decision below) | `a555040` |
-| R13-I5 | Major | Client draws dots, not sprites | **OPEN — fix planned (N1)** | — |
+| R13-I5 | Major | Client draws dots, not sprites | **FIXED in `f7c44f3` — appearance replicated; **unproven on screen**** | — |
 | R13-I6 | Major | Remote spawns at host's feet | **FIXED** | `HEAD` |
 
 ## Fixed in `bc6d87c` (round 1)

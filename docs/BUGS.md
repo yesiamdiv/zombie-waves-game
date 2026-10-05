@@ -310,8 +310,12 @@ rationale: `docs/NET_PROTOCOL_DESIGN.md`; work: `docs/NET_SPRINT_PLAN.md`.
 - **Root cause**: `hud.c:140` calls `ecs_get_health(ecs, local->entity)` on the
   local ECS, but a render-only client never simulates, so that entity is never
   damaged. The authoritative value is already on the wire as `NetEntitySnap.hp`.
-- **Fix**: read HP from the mirror entity for the local slot. Sprint N3.
-- **Status**: PLANNED.
+- **Fix**: `e9d2d71` replicates a `NetPlayerState` per roster slot in the
+  snapshot (`NET_WIRE_VERSION` 5 → 6) and `hud_draw()` reads HP from it.
+- **Status**: FIXED in code — **unproven on screen**. Note it could *not* be
+  read from `NetEntitySnap.hp` as originally planned: `slot_entities[s]` is 0
+  whenever the host has the player dead, so a dead client — exactly when the
+  respawn overlay matters — would have had no entity to ask.
 
 ### B23. Client HUD points / weapon / ammo are the client's own stale inventory
 - **Symptom**: a client's points, weapon, grenade and launcher-ammo readouts do
@@ -320,9 +324,17 @@ rationale: `docs/NET_PROTOCOL_DESIGN.md`; work: `docs/NET_SPRINT_PLAN.md`.
   client never simulates. The host *does* relay `GE_POINTS`, `GE_ITEM_PICKUP`
   and `GE_KILL` (`main.c:1214`), but `drain_net_events()` only logs them and
   applies them to nothing.
-- **Fix**: apply the relayed events to a client-side display inventory, keeping
-  the host authoritative. Sprint N3.
-- **Status**: PLANNED.
+- **Fix**: `e9d2d71` replicates the inventory itself (points, grenades,
+  launcher ammo, selected weapon, unlocked mask) in the same per-slot block.
+- **Status**: FIXED in code — **unproven on screen**.
+- **Deviation from plan, deliberately.** The plan said to *derive* the display
+  inventory by applying relayed `GE_POINTS` / `GE_ITEM_PICKUP` events. Deriving
+  it was the wrong call and would have shipped a subtler bug than the one being
+  fixed: events can be missed, arrive out of order, or simply have not happened
+  yet, and the join-time baseline is not on the wire at all — so a client would
+  have started every session at zero and climbed toward the truth at the mercy
+  of the event stream. Replicating the authoritative value instead cannot
+  drift. Deriving is only safe when the two peers provably start identical.
 
 ## B24. No asset version — peers could connect and render different art
 
