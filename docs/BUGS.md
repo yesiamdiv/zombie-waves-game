@@ -47,7 +47,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B33 | Client shop prices are drawn from a frozen local inventory, not host state | `d5da693` | FIXED |
 | B34 | Player name tag overlaps the zombie/wave counter | `50a2365` | FIXED |
 | B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
-| B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | — | AUDITED (fix pending) |
+| B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | `704090c` | FIXED |
 
 ## Detailed entries
 
