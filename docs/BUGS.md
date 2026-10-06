@@ -48,7 +48,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B34 | Player name tag overlaps the zombie/wave counter | `50a2365` | FIXED |
 | B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
 | B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | `704090c` | FIXED |
-| B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | — | PLANNED |
+| B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
 
 ## Detailed entries
 
@@ -756,3 +756,10 @@ not a record.
   input for zero-latency feedback. That is an enhancement, it is compatible with
   this fix (dedupe by the host's bullet entity id), and it is not needed to
   close the gap.
+- **Fixed in `acdffff`.** Gates re-run: `-Werror` build clean, `ctest` 3/3,
+  `zombie_tests` 1186/0, and two `--seed=42` SP runs **byte-identical at
+  125938 bytes / 1603 lines — the same bytes as before the change**, which is
+  the concrete proof that widening the filter cannot reach single-player.
+  On the wire: a joined client's log goes from **0** `PLAYER_SHOT` events to
+  **96** (host emitted 101; the 5 absent are shots fired before it connected),
+  each carrying origin, direction and weapon class.
