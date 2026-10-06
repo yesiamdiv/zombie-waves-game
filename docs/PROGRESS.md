@@ -220,3 +220,75 @@ is how a bug gets re-declared open.
 - Nothing blocking.
 - Every fix in this session is visually unverified by construction: `render()`
   returns immediately when `game.headless` is set.
+
+## Session 2026-10-06 — Gates re-verified, co-op mechanism check, backlog
+
+### PM — decisions committed first
+- **`458fb9b`** — the two unreachable UI findings were *deferred*, not rejected;
+  retitled the section in `BUGS.md`, `PROGRESS.md` and `PENDING_VERIFICATION.md`
+  and filed them as tickets in `FUTURE_IDEAS.md` (health-bar guards, slot-0
+  beacon, `ecs.h` accessors). The ECS ticket was rewritten after reading
+  `ecs_get_entity_index()` (`src/ecs/ecs.c:73`): it already guards, but returns
+  `ECS_MAX_ENTITIES`, which is one past the end of a 2048-long array — the cheap
+  fix is to return `ECS_MAX_ENTITIES - 1`, and the earlier "return NULL" advice
+  was wrong because the accessors are `static inline` in the header.
+- **`4b3df18`** — Windows build/run parked as a low-priority backlog task at the
+  user's instruction, with the reported symptoms (blank menu, assorted visual
+  problems on an old build) recorded as *to re-confirm*, not as diagnosed cause.
+  The user also scoped this session: confirm mechanisms, don't go deep on visuals.
+
+### DEV — gates, re-run against the current tree
+- Release `-Werror` build clean; `zombie_tests` 1186/1186; `ctest` 3/3.
+- **Single-player byte-identity holds**: two `--seed=42 --run-seconds=25
+  --ai=bot --headless` runs produce **byte-identical** logs (125938 bytes,
+  1603 lines), wave 1 is exactly `8 zombies, interval: 1.90s, difficulty: 1.00`,
+  and the log ends on `t=25.000` — i.e. it is complete, not truncated.
+
+### DEV — co-op mechanism check (headless host + client, both `--ai=bot`)
+Host `--auto-start --run-seconds=60 --seed=42`, client joined 8s later with
+`--run-seconds=52 --seed=43`, events written under `build/verify/`.
+- Host: `WAVE 1 STARTED (8 zombies, interval: 1.90s, difficulty: 1.00)` →
+  `broadcast player list (2 players)` → `Spawned remote player entity for slot 1
+  ('Guest')` → `WAVE 1 COMPLETE (total kills: 8)` → `WAVE 2 STARTED (13 zombies,
+  interval: 1.75s, difficulty: 1.15)`.
+- Client: 52× `CLIENT mirror seq=... wave=2 ents=17`, i.e. the mirror tracks the
+  host through a wave transition.
+- **The client's gameplay events match the host's counts exactly** — `KILL`
+  16/16, `POINTS` 15/15, `DAMAGE` 82/82, `ITEM_PICKUP` 1/1, `PLAYER_HEALTH` 1/1.
+  Client `ENTITY_SPAWN` 0 is expected: the client builds its view from the
+  snapshot mirror, not a local spawner. Both logs run to their full
+  `--run-seconds` (`t=60.000` / `t=52.000`).
+
+### Finding — `--auto-start` makes wave 1 single-player sized (harness artifact, not a bug)
+`waves_start_wave()` takes the budget from `player_count` *at the moment the wave
+starts*. With `--auto-start` the host starts the match before any client exists,
+so wave 1 is computed as one player (8 zombies) and its `WAVE_START` is relayed
+before the client has connected — a client joining that way never sees it.
+Wave 2, started with both players present, correctly applies the per-player
+bonus (13 = 11 + 2). Real play is unaffected: the host presses Enter only after
+clients have joined. Recorded here rather than as a bug row.
+
+### DEV — false alarm worth recording: `/tmp` is quota'd
+Empty and 4096-byte-aligned event logs looked like an unflushed exit (SIGKILL
+before `event_bus_flush`). It was neither: `/tmp` is a RAM-backed tmpfs hitting
+a per-user quota (`EDQUOT — Disk quota exceeded`), so writes silently produced
+0-byte files while pipes still worked. `event_bus_flush()` ends in `fflush()` every
+frame and the SP log terminates exactly on `--run-seconds`, so the bus is fine.
+**Write verification artifacts under `build/` (ignored, real disk), never
+`/tmp`.** Scratch was moved to `build/verify/` so it cannot be staged.
+
+### DEV — numeric re-check of the name-tag geometry (B34)
+Pixel analysis of a captured host window during an active wave: red counter ink
+occupies y79–91, blue name-tag ink y104–116 → a 13 px gap, no overlap, and the
+host's own tag is present in slot-0 blue. This confirms geometry only — the text
+content was never read, and the guest frame showed no red/blue band at all, so
+B35's colour on the *client* is still unproven.
+
+### Blocked
+- Visual confirmation remains open by construction: no `grim`/`gnome-screenshot`/
+  `xdotool`/imagemagick, the GNOME screenshot portal returns response `2`, and
+  XWayland's root is not the composited screen so region grabs come back black
+  (`ffmpeg -f x11grab -window_id <xid>` does work). The model also cannot view
+  images, so every check stays numeric. `docs/PENDING_VERIFICATION.md`'s
+  two-window checklist (B32 client death screen, SP overlay absent) is still the
+  outstanding item.
