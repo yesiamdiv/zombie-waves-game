@@ -1741,13 +1741,13 @@ static void test_net_codec_game(void) {
         snap.count = 3;
         snap.entities[0] = (NetEntitySnap){0, NET_ENT_PLAYER,
                                            {100.0f, 200.0f}, {0.0f, 0.0f},
-                                           100.0f, 0, 0};
+                                           100.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
         snap.entities[1] = (NetEntitySnap){88, NET_ENT_ZOMBIE,
                                            {10.25f, -5.5f}, {30.0f, -12.0f},
-                                           44.0f, 0, 0};
+                                           44.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
         snap.entities[2] = (NetEntitySnap){120, NET_ENT_BULLET,
                                            {55.0f, 33.0f}, {600.0f, 400.0f},
-                                           0.0f, 0, 1};
+                                           0.0f, 0, 1, 0, 0, 0, {0, 0, 0}};
         NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 7, 0, 0};
         int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
         CHECK(len > NET_HDR_SIZE);
@@ -2185,7 +2185,7 @@ static void test_net_mirror_interp(void) {
     s0.sim_time = 0.0f;
     s0.slot_entities[0] = 7;
     s0.count = 1;
-    s0.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {0, 0}, {0, 0}, 200.0f, 0, 0};
+    s0.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {0, 0}, {0, 0}, 200.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
     net_mirror_push(&m, &s0);
     CHECK(net_mirror_ready(&m));
     /* Single snapshot: full-weight regardless of t. */
@@ -2199,7 +2199,7 @@ static void test_net_mirror_interp(void) {
     s1.sim_time = 1.0f;
     s1.slot_entities[0] = 7;
     s1.count = 1;
-    s1.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {100, 20}, {0, 0}, 150.0f, 0, 0};
+    s1.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {100, 20}, {0, 0}, 150.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
     net_mirror_push(&m, &s1);
 
     /* Blend 0 -> older, 1 -> newer, 0.5 -> midpoint. */
@@ -2220,8 +2220,8 @@ static void test_net_mirror_interp(void) {
     s2.sim_time = 2.0f;
     s2.slot_entities[0] = 7;
     s2.count = 2;
-    s2.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {200, 0}, {0, 0}, 100.0f, 0, 0};
-    s2.entities[1] = (NetEntitySnap){11, NET_ENT_ZOMBIE, {55, 0}, {0, 0}, 50.0f, 0, 0};
+    s2.entities[0] = (NetEntitySnap){7, NET_ENT_PLAYER, {200, 0}, {0, 0}, 100.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
+    s2.entities[1] = (NetEntitySnap){11, NET_ENT_ZOMBIE, {55, 0}, {0, 0}, 50.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
     net_mirror_push(&m, &s2);
     CHECK(net_mirror_sample(&m, 11, 0.25f, &e));
     CHECK(e.kind == NET_ENT_ZOMBIE);
@@ -2262,14 +2262,14 @@ static void test_net_events_codec(void) {
     NetSnapshot a = {0};
     a.sim_time = 0.0f;
     a.count = 2;
-    a.entities[0] = (NetEntitySnap){42, NET_ENT_ZOMBIE, {0, 0}, {0, 0}, 50.0f, 0, 0};
-    a.entities[1] = (NetEntitySnap){7, NET_ENT_PLAYER, {1, 1}, {0, 0}, 100.0f, 0, 0};
+    a.entities[0] = (NetEntitySnap){42, NET_ENT_ZOMBIE, {0, 0}, {0, 0}, 50.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
+    a.entities[1] = (NetEntitySnap){7, NET_ENT_PLAYER, {1, 1}, {0, 0}, 100.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
     net_mirror_push(&m, &a);
     NetSnapshot b = {0};
     b.sim_time = 0.05f;
     b.count = 2;
-    b.entities[0] = (NetEntitySnap){42, NET_ENT_ZOMBIE, {10, 0}, {0, 0}, 12.0f, 0, 0};
-    b.entities[1] = (NetEntitySnap){7, NET_ENT_PLAYER, {2, 2}, {0, 0}, 100.0f, 0, 0};
+    b.entities[0] = (NetEntitySnap){42, NET_ENT_ZOMBIE, {10, 0}, {0, 0}, 12.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
+    b.entities[1] = (NetEntitySnap){7, NET_ENT_PLAYER, {2, 2}, {0, 0}, 100.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
     uint16_t dead[1] = {42};
     net_mirror_push_removing(&m, &b, dead, 1);
     CHECK(m.newer.count == 1);

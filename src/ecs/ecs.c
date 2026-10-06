@@ -67,6 +67,9 @@ bool ecs_has_component(World *world, Entity entity, ComponentType type) {
 }
 
 uint32_t ecs_get_entity_index(World *world, Entity entity) {
+    /* Entities are dense array indices, so no lookup is needed; `world` is
+     * kept for API stability with the rest of the module. */
+    (void)world;
     if (entity >= ECS_MAX_ENTITIES) return ECS_MAX_ENTITIES;
     return entity;
 }

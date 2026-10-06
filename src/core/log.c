@@ -69,9 +69,11 @@ void log_msg(LogLevel level, const char *file, int line, const char *fmt, ...) {
     basename = basename ? basename + 1 : file;
 
     if (level >= g_logger.console_level) {
-        fprintf(stderr, "%s %s %s:%d: %s%s\n",
-                timestamp, level_strings[level], basename, line,
-                msg, RESET_COLOR);
+        /* level_colors[] existed but was never applied, so every line ended in
+         * a RESET_COLOR escape with no colour ever opened. Use it. */
+        fprintf(stderr, "%s %s%s %s:%d: %s%s\n",
+                timestamp, level_colors[level], level_strings[level],
+                basename, line, msg, RESET_COLOR);
         fflush(stderr);
     }
 

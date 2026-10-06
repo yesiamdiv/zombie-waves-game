@@ -5,6 +5,7 @@
 #define BULLET_DAMAGE 25.0f
 
 void system_collision(World *ecs, GameWorld *world) {
+    (void)world; /* terrain collision is folded into system_movement (world.c) */
     /* Collect all entities with colliders */
     Entity colliders[ECS_MAX_ENTITIES];
     int count = 0;

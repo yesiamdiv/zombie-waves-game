@@ -47,6 +47,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B33 | Client shop prices are drawn from a frozen local inventory, not host state | `d5da693` | FIXED |
 | B34 | Player name tag overlaps the zombie/wave counter | `50a2365` | FIXED |
 | B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
+| B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | — | AUDITED (fix pending) |
 
 ## Detailed entries
 
@@ -648,3 +649,52 @@ UI defect: the one element B32 existed to restore labelled the wrong player.
   divergence today, but the skip is load-bearing on a property nothing enforces —
   the day slot 0's beacon becomes movable, this silently disagrees. Worth a
   follow-up, not a bug now.
+
+## B36. The documented "-Werror, zero warnings" gate was never enabled
+
+Found 2026-10-05 while running the gate as AGENTS.md describes it. Medium
+severity — a process defect rather than a shipped one, and it had been silently
+green for a long time.
+
+- **Symptom**: none. Every build reported success, and the standing instructions
+  in `AGENTS.md` say a change is only done when there is "a clean Release build
+  with `-Werror` and zero warnings in project sources."
+- **Root cause**: `CMakeLists.txt` contained **no warning flags at all** — no
+  `-Wall`, no `-Wextra`, no `-Werror`, no `target_compile_options` anywhere. The
+  compiler's default warning set does not cover unused parameters, sign-compare,
+  type-limits or missing field initializers, so the build was genuinely
+  "warning-free" while saying nothing. The gate was checking for a condition the
+  build was never capable of producing.
+- **How it was found**: compiling the project's own translation units from
+  `compile_commands.json` with `-Wall -Wextra -Werror` showed **5 of 39 units
+  failing** — and then, once those were fixed, several more behind them. Two
+  `net_spike` / `log.c` warnings only appeared *after* the first batch, because
+  the build stops at the first `-Werror` and had never gotten that far.
+- **Fix**: `PROJECT_WARNINGS` applied to every project target (and **only** those
+  targets — fetched SDL3 sources have their own unused-parameter and sign-compare
+  warnings, and inheriting ours would break them).
+
+What the newly-enabled gate surfaced:
+
+| Where | Warning | Nature |
+|---|---|---|
+| `src/ecs/ecs.c` | unused `world` parameter | API kept, marked unused |
+| `src/systems/collision.c` | unused `world` parameter | marked unused |
+| `src/main.c:1296` | `in.weapon >= WEAPON_PISTOL` always true | `uint8_t >= 0`, dead guard |
+| `tests/tests.c`, `tests/net_test.c` | missing `owner` / `art` / `size_q` / `tint` initializers | 10 `NetEntitySnap` literals |
+| `tests/net_spike.c` | dead `g_failed` | unused static variable |
+| `src/core/log.c` | dead `level_colors` | see below |
+
+The last one was a real latent bug rather than a lint: `level_colors[]` was
+declared but never read, while `RESET_COLOR` **was** emitted at the end of every
+console line. So each log line ended in an escape sequence that reset a colour
+that had never been set — the array's obvious purpose, coloring by level, had
+never been wired up. It is now applied.
+
+**Note on the count**: the 10 `NetEntitySnap` literals are incomplete rather than
+wrong — the omitted fields are trailing and zero-filled by C, so the tests were
+correct throughout. `-Wmissing-field-initializers` is here because a *partial*
+snapshot literal is exactly the pattern that goes stale when a field is appended
+to `NetEntitySnap` - `owner` and the v7 appearance fields were both added after
+these literals were written. It did not happen to cost anything here, since the
+omitted fields were trailing; the warning makes it visible next time.

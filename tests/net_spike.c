@@ -182,8 +182,6 @@ typedef struct {
     PeerStats peers[MAX_CLIENTS + 1]; /* indexed by client id */
 } Host;
 
-static int g_failed = 0;
-
 #define LOGP(fmt, ...) \
     printf(fmt "\n", ##__VA_ARGS__)
 

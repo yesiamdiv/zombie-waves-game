@@ -1293,7 +1293,7 @@ static void apply_net_inputs(void) {
         p->input.world_aim = true;
         if (in.buttons & NET_INPUT_BTN_SHOOT) p->input.mouse_buttons[0] = true;
 
-        if (in.weapon >= WEAPON_PISTOL && (int)in.weapon <= WEAPON_LAUNCHER &&
+        if ((int)in.weapon <= WEAPON_LAUNCHER &&
             p->inventory.current != (WeaponType)in.weapon) {
             weapons_select(&p->inventory, (WeaponType)in.weapon);
         }

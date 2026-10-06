@@ -236,8 +236,10 @@ int main(void) {
     snap.slot_entities[0] = 101;
     snap.slot_entities[1] = 202;
     snap.count = 2;
-    snap.entities[0] = (NetEntitySnap){101, NET_ENT_PLAYER, {10, 20}, {0, 0}, 100.0f, 0, 0};
-    snap.entities[1] = (NetEntitySnap){303, NET_ENT_ZOMBIE, {300, 400}, {50, 0}, 25.0f, 0, 0};
+    snap.entities[0] = (NetEntitySnap){101, NET_ENT_PLAYER, {10, 20}, {0, 0},
+                                       100.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
+    snap.entities[1] = (NetEntitySnap){303, NET_ENT_ZOMBIE, {300, 400}, {50, 0},
+                                       25.0f, 0, 0, 0, 0, 0, {0, 0, 0}};
     net_server_broadcast_snapshot(&server, &snap);
     for (int i = 0; i < 2; i++) {
         service(&server, c, 2);
