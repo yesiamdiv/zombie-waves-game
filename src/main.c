@@ -1409,11 +1409,17 @@ static void relay_net_events(void) {
         if (ev->sid <= last_relay_sid) continue;
         if (ev->sid > last_relay_sid) last_relay_sid = ev->sid;
         /* R13-D1: GE_POINTS/GE_DAMAGE/GE_ITEM_PICKUP must cross the wire too,
-         * or a joined client can never evidence scoring/credit in its log. */
+         * or a joined client can never evidence scoring/credit in its log.
+         * B37: GE_PLAYER_SHOT likewise - it is emitted only by host-side
+         * simulation (player_input/grenades/rockets) and a render-only client
+         * runs none of that, so without this a client hears no gunshot at all.
+         * Payload is spawn origin (x,y), direction (a,b) and weapon class
+         * (kind). The enum value already exists, so no wire bump. */
         if (ev->type == GE_ENTITY_DEATH || ev->type == GE_WAVE_START ||
             ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL ||
             ev->type == GE_POINTS || ev->type == GE_DAMAGE ||
-            ev->type == GE_ITEM_PICKUP || ev->type == GE_HOST_PAUSE) {
+            ev->type == GE_ITEM_PICKUP || ev->type == GE_HOST_PAUSE ||
+            ev->type == GE_PLAYER_SHOT) {
             batch[n++] = (NetRelayedEvent){
                 (uint8_t)ev->type, (uint8_t)ev->kind,
                 (uint16_t)ev->entity,
