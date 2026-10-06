@@ -114,3 +114,42 @@ discovered halfway through:
 Acceptance when it is picked up: still byte-identical for a fixed seed, wave 1
 still `8 zombies, interval: 1.90s, difficulty: 1.00`, and the size→speed mapping
 written down as a table rather than a formula buried in a spawn function.
+
+## Windows build & run (low priority — explicitly parked 2026-10-06)
+
+Requested 2026-10-06: **make the game build and run on Windows properly.**
+Logged low priority on purpose — nothing below is blocking Linux work.
+
+Two reported symptoms, from an **old build** on Windows:
+
+1. **Nothing visible on the menu screen** — the menu came up blank/empty.
+2. **Game visual problems** — reported alongside, detail still loose.
+
+Both were seen on a build that predates the current work, so **step one when
+this is picked up is to reproduce on current `main`, not to diagnose from these
+notes.** Treat the above as a symptom list to confirm or discard, not a root
+cause.
+
+Where to look once reproduced, ordered by how often this class of bug bites:
+
+- **Renderer flags at window creation.** A blank menu with a working game loop
+  usually means the menu draws through a path that no-ops on that backend
+  (missing `SDL_RENDERER_ACCELERATED` fallback, or no software renderer tried
+  if accelerated creation fails).
+- **Colour channel order.** Windows/GDI and some GL contexts differ on
+  byte order from what the art assumes; a wholesale tint or garbled sprites
+  points here rather than at the asset itself.
+- **Asset path separators and cwd.** `TTF_OpenFont` and the asset manager build
+  paths with `/`. Fine on Windows too, but if the process cwd differs from
+  where the exe landed, every asset silently fails and you get an untextured or
+  empty screen — check whether the font even loaded (`main.c:445` has a
+  fallback chain already).
+- **High-DPI.** Windows scales by a per-monitor factor; if the renderer uses
+  logical vs pixel units inconsistently, text can land off-screen or at zero
+  size while geometry still draws.
+
+Acceptance when picked up: menu renders with visible text and art on Windows;
+a window opens showing the world and HUD; and **none of this may change Linux
+behaviour** — same `-Werror` clean build, `ctest` 3/3, and the byte-identical
+seed-42 gate still pass. If any fix is platform-specific, it must be behind a
+platform ifdef rather than a behavioural branch the sim can observe.
