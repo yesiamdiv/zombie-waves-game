@@ -135,8 +135,9 @@ DEV work interleaved (team structure per `AGENTS.md`).
 
 ### DEV — done (audit: UI)
 Read the UI layer; verified every candidate against the code before filing it.
-**Two of five did not survive**, and are recorded as rejected so they are not
-re-raised as new findings:
+**Two of five did not survive as live bugs** — both unreachable, and now
+ticketed in `docs/FUTURE_IDEAS.md` (Engineering, deferred) rather than closed.
+Recorded in `docs/BUGS.md` so they are not re-raised as new findings:
 - Health-bar ratio exceeding its track, and a divide by zero — unreachable. Every
   write to `hp->current` clamps (`items.c:110`, `waves.c:252`) or derives from a
   percentage the CLI already clamps to 0-100, and `hp->max` is never assigned
@@ -144,7 +145,21 @@ re-raised as new findings:
   `--player-hp=` and it *is* clamped.)
 - `ecs_get_health(ecs, ECS_NULL_ENTITY)` reading one past `World.healths` — real
   in the accessor, but unreachable from `hud_draw`, which returns earlier when
-  `!alive`.
+  `!alive`. Scoping note written into the ticket: `ecs_get_entity_index` *does*
+  check but returns `ECS_MAX_ENTITIES`, which for a 2048-long array is itself one
+  past the end — so the existing guard emits exactly the unsafe index, and
+  clamping it to `- 1` is the fix that touches no caller.
+
+**"Rejected" was the wrong word for all three**, and that is now corrected in
+`BUGS.md`/`PENDING_VERIFICATION.md`: closing a real defect as "not a bug" because
+something else happens to check is how it gets re-introduced silently. They are
+deferred with their reachability evidence intact.
+
+Also pruned a stale entry: `FUTURE_IDEAS.md` still carried "camera world-bounds
+clamp so the void beyond map edges isn't visible" as open work, but B6 fixed it in
+`8967a99` (`src/world/camera.c:27`, applied at `src/main.c:867`) and
+`test_camera_clamp_world` covers it. Removed rather than reworded — a finished
+item listed as a backlog idea invites someone to do it twice.
 
 Three confirmed, all fixed:
 - **B32 (`e5c6dec`)** — `hud_draw`'s `multi` argument was `!render_only_client()`,
@@ -173,8 +188,8 @@ Three confirmed, all fixed:
 ### DEV — done (audit: multiplayer)
 Swept for remaining client-invented state. Beacons (B27), wave panel (B26), health
 bars (B28), appearance (B19-B21), per-slot HUD state (B22/B23) and the shop
-(B30/B33) all read host-authoritative values. One rejected candidate recorded: a
-client's slot-0 beacon is skipped by `sync_client_beacon_slots()` and so never
+(B30/B33) all read host-authoritative values. One deferred candidate recorded:
+a client's slot-0 beacon is skipped by `sync_client_beacon_slots()` and so never
 read from the snapshot — it agrees today only because `beacon_pos` is written
 once at respawn and never moved. Follow-up, not a bug.
 

@@ -44,8 +44,54 @@ sprint.
 - Cache text surfaces in the HUD/menus (every `draw_text*` makes a new
   surface+texture per frame).
 - Cap `item_spawn_timer`-based free item spawns per wave.
-- Camera world-bounds clamp so the void beyond map edges isn't visible
-  (esp. small maps like snow 34x34).
+- **Health-bar render guards** (from the 2026-10-05 UI audit — checked, found
+  unreachable, deliberately *not* fixed then).
+  `src/ui/hud.c` clamps `ratio` below but not above, and the local branch reads
+  `hp->max` with no `> 0` guard while the `use_auth` branch has one. Nothing
+  reaches either today: `hp->max` is never assigned after init, and every write
+  to `hp->current` clamps (`src/items/items.c:110`, `src/world/waves.c:252`) or
+  derives from a percentage the CLI already clamps to 0-100. Worth doing anyway —
+  the asymmetry between the two branches means a future `use_auth`-only change
+  can't protect the other one. Cheap: `hp_max > 0 ? : 1.0f` and `if (ratio > 1)
+  ratio = 1;`, plus a test that `hp_max == 0` doesn't produce NaN.
+- **Read slot 0's beacon from the snapshot on a client** (2026-10-05 audit).
+  `sync_client_beacon_slots()` (`src/main.c:302`) skips slot 0 because it holds
+  a "real local entity", leaving `beacon_pos` at the client's own spawn guess
+  instead of reading it from the snapshot like every other slot. It agrees today
+  only because `beacon_pos` is written exactly once, at respawn
+  (`src/players.c:75`), and never moved — so the skip is load-bearing on a
+  property nothing enforces, and slot 0 silently diverges the day beacons become
+  movable. Drop the `continue` and let it read from the mirror like the rest.
+- **Bounds guard in the `ecs.h` component accessors** (same audit, same
+  reasoning). All of them — `ecs_get_health`, `ecs_get_position`,
+  `ecs_get_sprite`, and the rest — do
+  `&w-><array>[ecs_get_entity_index(w, e)]` with no range check of their own.
+  `ecs_get_entity_index` *does* check (`src/ecs/ecs.c:73`) and returns
+  `ECS_MAX_ENTITIES` for an out-of-range entity — but the arrays are
+  `ECS_MAX_ENTITIES` long, so index 2048 is itself one past the end. The guard
+  hands back exactly the invalid value it should have prevented, and neither the
+  accessors nor any caller compare against it. So the one place that could make
+  this safe currently guarantees the unsafe access. Unreachable from `hud_draw`
+  only because an earlier `if (!alive) return;` happens to catch it; that
+  protects the accessor from nowhere, and every other caller gets no such
+  protection.
+
+  **Scope it before picking it up — it is not one line:**
+  - The accessors are `static inline` in the header with ~10 callers that
+    dereference the result immediately (`*ecs_get_health(ecs, e) = ...`,
+    `hp->current += ...`). Making them return NULL would mean a null check at
+    every call site; that is the real work, and it changes the module's contract.
+  - The fix belongs in `ecs_get_entity_index` and applies to *all* accessors at
+    once, so it cannot be done for health alone without leaving the identical
+    hole open in position/sprite/collider/velocity.
+
+  The cheap half that is still worth taking: change that single return from
+  `ECS_MAX_ENTITIES` to `ECS_MAX_ENTITIES - 1` so the access is in bounds by
+  construction, and assert in debug builds when it clamps. Fixes the
+  memory-unsafety without touching a caller. Tradeoff: a null entity then
+  silently reads a live component instead of crashing, so the assert is what
+  makes it debuggable.
+
 ## Zombie speed variants (lowest priority — after N1–N4)
 
 Requested 2026-10-03: **make some zombies fast and some slow, sized accordingly**

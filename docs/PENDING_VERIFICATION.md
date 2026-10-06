@@ -189,10 +189,11 @@ of the following need one human two-window run:
 ### 2026-10-05 UI audit — B32 to B35
 
 Found by reading the UI layer on `main` after the net-protocol merge. Every
-candidate was checked against the code before being filed; two were rejected and
-are recorded in `docs/BUGS.md` so they are not re-raised. All four are fixed in
-code, all four gates are green, and **all four are visual or HUD defects, so
-none of them is proven by any test in this repo.** Two windows:
+candidate was checked against the code before being filed; two turned out
+unreachable and are now backlog tickets in `docs/FUTURE_IDEAS.md` rather than
+closed — details in `docs/BUGS.md`, so they are not re-raised as new findings.
+All four are fixed in code, all four gates are green, and **all four are visual
+or HUD defects, so none of them is proven by any test in this repo.** Two windows:
 
 - [ ] **B32 — a client that dies shows something.** Respawn countdown or
       `ELIMINATED`, centered, instead of an empty HUD. Before the fix the

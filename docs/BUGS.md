@@ -294,9 +294,9 @@ rationale: `docs/NET_PROTOCOL_DESIGN.md`; work: `docs/NET_SPRINT_PLAN.md`.
   their own character.
 - **Root cause**: `system_render_mirror()` (`src/systems/render.c:97`) is a
   second, independent renderer used for every client frame via `render_only_client()`
-  (`src/main.c:1051`). `NetEntitySnap` carries only `{id, kind, pos, vel, hp,
+  (`src/main.c:1346`). `NetEntitySnap` carries only `{id, kind, pos, vel, hp,
   flags, owner}` — never an appearance — so the mirror hardcodes a size per kind
-  and calls `sprite_circle()` at `render.c:152`.
+  and calls `sprite_circle()` at `render.c:154`.
 - **Fix**: `f7c44f3` transmits appearance (`art`, `size_q`, `tint[3]`) in the
   snapshot and the mirror reproduces the host's sprite verbatim. The per-kind
   size table is deleted. `NET_WIRE_VERSION` 3 -> 4.
@@ -527,10 +527,10 @@ Found 2026-10-05 auditing the UI layer on `main`. High severity.
   in a client's viewport, which is the one place a spectator most needs to know
   whose view they are looking at.
 - **Root cause**: an inverted flag at the single call site. `hud_draw()` takes a
-  `multi` parameter documented in `src/ui/hud.h:67` as *"When `multi` is set the
+  `multi` parameter documented in `src/ui/hud.h:77` as *"When `multi` is set the
   player's colored name tag is shown"*, and used for two things: the name tag
-  (`src/ui/hud.c:201`) and the post-death overlay (`src/ui/hud.c:126`). The only
-  caller passes `!render_only_client()` (`src/main.c:1195`), which inverts the
+  (`src/ui/hud.c:207`) and the post-death overlay (`src/ui/hud.c:126`). The only
+  caller passed `!render_only_client()` (`src/main.c:1227`), which inverts the
   meaning. `render_only_client()` is true **only** on a connected client, so the
   argument means "true in single-player, true as host, false as client":
 
@@ -561,7 +561,7 @@ rather than by any test.**
 - **Root cause**: the N5 fix was applied to the update path but not the draw path.
   In `GAME_STATE_SHOP` the update builds a snapshot-derived copy via
   `client_inventory_view(&view)` and hands *that* to `shop_menu_update()`
-  (`src/main.c:920-928`) — correct. But the draw call a few lines later still
+  (`src/main.c:926`) — correct. But the draw call a few lines later still
   passes the raw local struct:
 
   ```c
@@ -587,32 +587,44 @@ Found 2026-10-05 auditing the UI layer. Low severity, cosmetic.
 
 - **Symptom**: on a host in multiplayer, during an active wave, the player's name
   tag is drawn over the "Zombies: N" line and both are unreadable.
-- **Root cause**: two HUD rows share a baseline. The name tag is drawn at
-  `y = 76.0f` (`src/ui/hud.c:205`) and the zombie counter at `y = 75.0f`
-  (`src/ui/hud.c:212`), both at `x = 20.0f`. The "Next wave in..." row has the
-  same collision at `src/ui/hud.c:216`.
+- **Root cause**: two HUD rows shared a baseline. The name tag was drawn at
+  `y = 76.0f` and the zombie counter at `y = 75.0f`, both at `x = 20.0f`, so
+  one-pixel-apart rows with full font height on top of each other. The
+  "Next wave in..." row had the same collision. Fixed in `50a2365`; the rows
+  now sit at `y = 100.0f` (`src/ui/hud.c:217`) against `y = 75.0f`
+  (`src/ui/hud.c:224`) and `y = 75.0f` (`src/ui/hud.c:228`).
 - **Why it was invisible until now**: B32 means the name tag only ever drew on
   the host, where this overlap is now live. Fixing B32 alone would newly expose
   the collision on *both* windows, so the two fixes must land together.
 - **Fix**: give the name tag its own row.
 
-## Rejected during this audit (recorded so they are not re-raised)
+## Checked in this audit, deferred to a later sprint
 
-- **"The health bar can exceed its track / divide by zero."** `src/ui/hud.c:176`
+Both below are **real weaknesses in the code, just not reachable today.** They
+are recorded with the evidence that makes them unreachable, because that evidence
+is what the person fixing them has to re-check — and both are ticketed in
+`docs/FUTURE_IDEAS.md` under *Engineering (deferred)*. Do not re-file them as new
+bugs, and do not treat "unreachable" as "fine": in each case the safety is an
+accident of something else, not an invariant of the thing being called.
+
+- **"The health bar can exceed its track / divide by zero."** `src/ui/hud.c:174`
   clamps `ratio` below but not above, and the `else` branch at
-  `src/ui/hud.c:159-160` has no `hp_max > 0` guard while the `use_auth` branch
+  `src/ui/hud.c:160` has no `hp_max > 0` guard while the `use_auth` branch
   does. Neither is reachable: `hp->max` is never assigned anywhere after
   `spawn_player_entity` initialises it to 200, every write to `hp->current`
   either clamps (`src/items/items.c:110`, `src/world/waves.c:252`) or derives
-  from a percentage the CLI already clamps to 0-100 (`src/main.c:1589-1590`), and
-  the networked values come from the host's own `CHealth`. Worth hardening
-  eventually; not a bug today. (The original report also claimed
+  from a percentage the CLI already clamps to 0-100 (`src/main.c:1625-1626`), and
+  the networked values come from the host's own `CHealth`. **Deferred**, not
+  rejected — the two branches being asymmetric means a future change on only one
+  side cannot keep the other safe. (The original report also claimed
   `--player-hp-pct` was unclamped — the flag is `--player-hp=` and it is clamped.)
 - **"`ecs_get_health(ecs, ECS_NULL_ENTITY)` reads one past `World.healths`."** The
   accessor genuinely does not bounds-check, so this *would* be an out-of-bounds
   read — but it is unreachable from `hud_draw`. The local branch sits after
-  `if (!alive) { ... return; }` (`src/ui/hud.c:125-142`), and `alive` is false
-  whenever `local->entity == ECS_NULL_ENTITY`. Not a live bug.
+  `if (!alive) { ... return; }` (`src/ui/hud.c:125-143`), and `alive` is false
+  whenever `local->entity == ECS_NULL_ENTITY`. **Deferred**: the caller happens
+  to check, which protects the accessor from nowhere. The accessor is exported
+  and any other caller gets no such protection.
 
 ## B35. A client's own name tag reads "Player" in the wrong colour
 
@@ -625,7 +637,7 @@ UI defect: the one element B32 existed to restore labelled the wrong player.
 - **Root cause**: `hud_draw` renders the tag from `local->name` / `local->color`,
   where `local` is `&game.players[0]`. On a render-only client that slot is never
   simulated, and `reset_game()` fills it with the literal name `"Player"` and
-  `COLOR_BLUE` (`src/main.c:188-195`) — the same values single-player uses. The
+  `COLOR_BLUE` (`src/main.c:188-196`) — the same values single-player uses. The
   client's real identity lives in `game.net_client.slot` and its name in
   `net_player_name`; neither reaches the tag.
 - **Why it was missed**: before B32 the tag never drew on a client at all, so the
@@ -638,17 +650,18 @@ UI defect: the one element B32 existed to restore labelled the wrong player.
   roster entry matching `net_client.slot`. Falls back to `local` when there is no
   authoritative identity, which is the correct single-player path.
 
-## Rejected during the multiplayer sweep (same session)
+## Checked during the multiplayer sweep, deferred to a later sprint
 
 - **"A client's slot-0 beacon is re-derived and can drift."**
   `sync_client_beacon_slots()` skips slot 0 on a client because it holds a
-  "real local entity" (`src/main.c:301`), leaving `beacon_pos` at the client's own
+  "real local entity" (`src/main.c:302`), leaving `beacon_pos` at the client's own
   `world_get_spawn_point` rather than reading it from the snapshot like every
   other slot. It agrees today only because `beacon_pos` is written exactly once,
   at respawn (`src/players.c:75`), and never moved afterwards. So there is no
   divergence today, but the skip is load-bearing on a property nothing enforces —
-  the day slot 0's beacon becomes movable, this silently disagrees. Worth a
-  follow-up, not a bug now.
+  the day slot 0's beacon becomes movable, this silently disagrees. **Deferred,
+  not rejected** — ticketed in `docs/FUTURE_IDEAS.md` under
+  *Engineering (deferred)*, alongside the two from the UI audit.
 
 ## B36. The documented "-Werror, zero warnings" gate was never enabled
 
