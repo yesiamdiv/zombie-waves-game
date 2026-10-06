@@ -48,6 +48,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B34 | Player name tag overlaps the zombie/wave counter | `50a2365` | FIXED |
 | B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
 | B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | `704090c` | FIXED |
+| B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | — | PLANNED |
 
 ## Detailed entries
 
@@ -711,3 +712,47 @@ snapshot literal is exactly the pattern that goes stale when a field is appended
 to `NetEntitySnap` - `owner` and the v7 appearance fields were both added after
 these literals were written. It did not happen to cost anything here, since the
 omitted fields were trailing; the warning makes it visible next time.
+
+## B37. A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed
+
+Recorded 2026-10-06. Raised by the `[assets]` agent (question Q2 in the
+`agents/` channel), who wanted the relay change and would not make it
+unilaterally because it changes what crosses the wire. The relay list is owned
+by `[net]`, who took it. **Decision written down here before any code, per
+`AGENTS.md` workflow rule 4** — the coordination channel is gitignored and is
+not a record.
+
+- **Symptom**: on a joining client there is no gunshot sound for *anyone* in
+  the match — not the client's own weapon, not the host's. In co-op, half the
+  players hear nothing at all when a shot is fired.
+- **Root cause**: `GE_PLAYER_SHOT` is emitted from exactly three places, all of
+  which are host-side simulation — `src/systems/player_input.c:107`
+  (`GEK_BULLET`), `src/systems/grenades.c:126` (`GEK_GRENADE`),
+  `src/systems/rockets.c:52` (`GEK_ROCKET`) — and it is **not in the curation
+  list** in `relay_net_events()` (`src/main.c`, the `R13-D1` filter that
+  forwards entity deaths, wave starts, health, kills, points, damage, item
+  pickups and host pause). A client cannot compensate, because
+  `update()` returns at `if (render_only_client())` (`src/main.c:794-802`)
+  *before* the systems loop, so a client runs no simulation and emits no shot
+  of its own. Both paths are empty: nothing to relay, nothing to derive.
+- **How it was found**: analysis by the assets agent while designing
+  `AUDIO_PLAN.md`, not a failing test — no gate can see a missing sound.
+- **Fix (decided)**: add `GE_PLAYER_SHOT` to the `relay_net_events()` filter.
+  Deliberately *not* accompanied by a version bump, and deliberately *not*
+  solved by deriving audio from the snapshot mirror:
+  - **No `NET_WIRE_VERSION` bump.** `GE_PLAYER_SHOT` is already in the enum
+    (`src/events/event_bus.h`, value 1) and `NetRelayedEvent` already carries
+    `type, kind, entity, x, y, a, b`. This widens a *filter*, not a layout, so
+    no field is added, removed, resized or reordered. An older peer that
+    receives it already knows the enum and re-emits it harmlessly; it simply
+    plays no sound.
+  - **Single-player is untouched by construction.** `relay_net_events()`
+    returns immediately unless `game.net_host_mode` is set, so in SP the
+    widened filter is never evaluated. The SP byte-identity gate cannot move.
+  - **The payload is already sufficient for audio**: `x,y` is the spawn origin,
+    `a,b` the direction, and `kind` distinguishes bullet / grenade / rocket —
+    origin plus weapon class for every shooter in the match.
+- **Deliberately out of scope**: playing the local player's own shot from local
+  input for zero-latency feedback. That is an enhancement, it is compatible with
+  this fix (dedupe by the host's bullet entity id), and it is not needed to
+  close the gap.
