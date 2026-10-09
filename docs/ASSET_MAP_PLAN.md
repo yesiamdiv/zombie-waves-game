@@ -78,4 +78,8 @@ runtime-loadable pixel art so any asset can be swapped without code changes.
 6. Tests, EXTENDING.md docs, build verification.
 
 ## Worktree
-`git worktree add .../open-world-zombie-waves-assets -b feature/assets-maps`
+`git -C <main> worktree add worktrees/assets -b feature/assets-maps`
+
+The worktree lives inside the main checkout (`<main>/worktrees/assets`); the old
+beside-the-checkout path is gone. See
+[`docs/knowledge/worktree-layout.md`](knowledge/worktree-layout.md).
