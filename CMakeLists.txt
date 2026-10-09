@@ -5,34 +5,22 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Fetch dependencies into ONE shared cache instead of per build directory.
-# Every build dir used to grow its own copy of SDL3 and friends (~1.6 GB each),
-# which is pure waste: the fetched sources and their compiled output are the
-# same everywhere. Pointing every configure at the same base dir makes them
-# download and build exactly once and be reused by every variant and worktree.
+# Fetch dependencies into ONE shared, persistent cache instead of per build dir.
+# Every build dir used to grow its own ~1.6 GB _deps tree (SDL3, SDL_ttf,
+# SDL_image, ENet); pointing every configure at the same base dir fetches and
+# compiles them once and reuses them across every variant and worktree. It also
+# keeps them out of /tmp, which on this machine is a RAM-backed tmpfs with a
+# per-user quota that a CMake _deps tree can exhaust.
+#
 # An explicit -D FETCHCONTENT_BASE_DIR=... still wins; this only supplies the
-# default for a fresh cache.
-if(NOT FETCHCONTENT_BASE_DIR)
+# default for a fresh cache. The populated cache is bound to one generator, so
+# configure with -G Ninja unless you point at a cache populated by another one.
+if(NOT FETCHCONTENT_BASE_DIR AND DEFINED ENV{HOME})
     set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/cmake-deps" CACHE PATH
         "Shared FetchContent cache (downloads + builds), reused across build dirs")
 endif()
 
 include(FetchContent)
-
-# Shared, persistent dependency cache. SDL3/ENet/SDL_ttf/SDL_image are fetched
-# and compiled once into $HOME/.cache/cmake-deps and reused by every build
-# variant and worktree, instead of ~1.6 GB per build dir. This also keeps them
-# out of the build tree and out of /tmp, which on this machine is a RAM-backed
-# tmpfs with a per-user quota that a CMake _deps tree can exhaust.
-#
-# NOTE: the populated state lives under this directory and is bound to one
-# generator. Configure with -G Ninja (the generator used to populate it) or the
-# shared subbuilds will refuse a different generator. Override the location with
-# -DFETCHCONTENT_BASE_DIR=... if needed.
-if(NOT DEFINED FETCHCONTENT_BASE_DIR AND DEFINED ENV{HOME})
-    set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/cmake-deps" CACHE PATH
-        "Shared FetchContent dependency cache (see AGENTS.md build rules)")
-endif()
 
 FetchContent_Declare(
     SDL3
