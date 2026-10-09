@@ -3,8 +3,8 @@
 Single source of truth for every bug the playtester agent reported against the
 `feature/multiplayer` worktree, and where each one stands.
 
-- **Worktree:** `open-world-zombie-waves-multiplayer`
-- **Branch:** `feature/multiplayer`
+- **Worktree:** `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves/worktrees/multiplayer`
+- **Branch:** `feature/net-protocol`
 - **Playtest reports:** `playtesting_prompts/findings/`
   - `DEV_FIX_REPORT_R13_2026-09-25.md` — headless M1–M4 run
   - `07_R13_interactive_device_test_2026-09-25.md` — manual 2-instance on-device run

@@ -14,8 +14,8 @@
 
 | Item | Value |
 |------|-------|
-| Branch | `feature/multiplayer` |
-| Worktree | `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves-multiplayer` |
+| Branch | `feature/net-protocol` |
+| Worktree | `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves/worktrees/multiplayer` |
 | Build dir | `<worktree>/build` (inside the worktree, separate from main's build) |
 | Base | `395e3ae docs: add multiplayer requirements and design plan` |
 | Mode of work | Autonomous; all work on the worktree branch, small commits |
@@ -45,8 +45,10 @@ Multiplayer specifics:
 
 ### Worktree / git hygiene
 
-- `git worktree add -b feature/multiplayer ../open-world-zombie-waves-multiplayer HEAD`
-  done on **2026-09-18**.
+- Created `git worktree add -b feature/multiplayer ../open-world-zombie-waves-multiplayer HEAD`
+  on **2026-09-18**; moved on **2026-10-09** with `git worktree move` to
+  `<main>/worktrees/multiplayer` on branch `feature/net-protocol` (the layout now
+  used by every worktree).
 - `main` (at commit `395e3ae`) is the branch base.
 - **IMPORTANT:** the `main` working tree currently contains **uncommitted single-player
   gameplay WIP** the user is developing separately (sword sweep rework, player
