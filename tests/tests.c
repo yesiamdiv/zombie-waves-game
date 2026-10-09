@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #include "core/log.h"
 #include "ecs/ecs.h"
@@ -27,6 +28,24 @@ float g_zombie_speed_mult = 1.0f;
 
 static int tests_passed = 0;
 static int tests_failed = 0;
+
+#ifndef TEST_TMP_DIR
+#define TEST_TMP_DIR "test-tmp"
+#endif
+
+/* Test scratch lives under the build tree, never /tmp: on this machine /tmp is
+ * a RAM-backed tmpfs with a per-user quota a test run can exhaust. CMake sets
+ * TEST_TMP_DIR to ${CMAKE_BINARY_DIR}/test-tmp; the fallback keeps a direct
+ * build usable. */
+static void test_tmp_init(void) {
+    (void)mkdir(TEST_TMP_DIR, 0755);
+}
+
+static const char *test_tmp_path(const char *name) {
+    static char buf[1024];
+    snprintf(buf, sizeof(buf), "%s/%s", TEST_TMP_DIR, name);
+    return buf;
+}
 
 #define CHECK(expr)                                                      \
     do {                                                                 \
@@ -415,7 +434,7 @@ static void test_wave_system(void) {
 
 static void test_items(void) {
     LOG_INFO("--- Test: Items ---");
-    const char *path = "/tmp/opencode/test_items_events.log";
+    const char *path = test_tmp_path("test_items_events.log");
     remove(path);
 
     EventBus *bus = event_bus_init(path);
@@ -635,7 +654,7 @@ static void test_wave_completion(void) {
 
 static void test_script_aim_shot(void) {
     LOG_INFO("--- Test: Scripted AI aim/shoot ---");
-    const char *path = "/tmp/opencode/script_test_shoot.script";
+    const char *path = test_tmp_path("script_test_shoot.script");
     FILE *f = fopen(path, "w");
     if (!f) {
         LOG_ERROR("Cannot create temp script file");
@@ -667,7 +686,7 @@ static void test_script_aim_shot(void) {
     CHECK(drv.done);
 
     /* Quit action propagates through the driver. */
-    const char *quit_path = "/tmp/opencode/script_test_quit.script";
+    const char *quit_path = test_tmp_path("script_test_quit.script");
     f = fopen(quit_path, "w");
     if (f) {
         fprintf(f, "@0.0 quit\n");
@@ -722,7 +741,7 @@ static void test_wave_timeout(void) {
 
 static void test_event_stream(void) {
     LOG_INFO("--- Test: Gameplay event stream ---");
-    const char *path = "/tmp/opencode/test_events.log";
+    const char *path = test_tmp_path("test_events.log");
     remove(path);
 
     EventBus *bus = event_bus_init(path);
@@ -2340,6 +2359,7 @@ int tests_run_all(void) {
 }
 
 int main(void) {
+    test_tmp_init();
     log_init(NULL, LOG_DEBUG, LOG_TRACE);
     srand(42);
     int result = tests_run_all();

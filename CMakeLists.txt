@@ -100,6 +100,10 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 add_executable(zombie_tests tests/tests.c)
 target_compile_options(zombie_tests PRIVATE ${PROJECT_WARNINGS})
 target_link_libraries(zombie_tests PRIVATE zombie_core)
+# Test scratch goes under the build tree, never /tmp (this machine's /tmp is a
+# RAM-backed tmpfs with a per-user quota). See tests/tests.c test_tmp_path().
+target_compile_definitions(zombie_tests PRIVATE
+    TEST_TMP_DIR="${CMAKE_BINARY_DIR}/test-tmp")
 
 # ---------------------------------------------------------------------------
 # Networking spike: standalone ENet loopback connectivity + packet codec proof
