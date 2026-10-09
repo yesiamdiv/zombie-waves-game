@@ -49,6 +49,8 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
 | B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | `704090c` | FIXED |
 | B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
+| B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | OPEN |
+| B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | — | OPEN |
 
 ## Detailed entries
 
@@ -763,3 +765,84 @@ not a record.
   On the wire: a joined client's log goes from **0** `PLAYER_SHOT` events to
   **96** (host emitted 101; the 5 absent are shots fired before it connected),
   each carrying origin, direction and weapon class.
+
+## B38. Snapshot entity count is a u8 but the declared maximum is 1024
+
+Found 2026-10-06 by code inspection during the multiplayer coverage audit.
+Latent — no run has hit it, because a normal snapshot carries tens of entities.
+
+- **Symptom (latent)**: if a snapshot ever carried more than 255 entities, the
+  count would be silently truncated on the wire and the client would mirror a
+  wrong number of them. No error, no log, no test failure — the frame just
+  arrives with entities missing.
+- **Root cause**: `NetSnapshot.count` is an `int` and
+  `NET_SNAP_MAX_ENTITIES` is **1024**, with the send buffer sized for 1024
+  entries, but the count field is written and read as a single byte:
+  `net_encode_snapshot()` checks only `count > NET_SNAP_MAX_ENTITIES` and then
+  does `put_u8(buf, cap, &off, (uint8_t)snap->count)`, and
+  `net_decode_snapshot()` reads it back with `get_u8`. 256 becomes 0, 257
+  becomes 1, and so on. The three limits (struct `int`, 1024 cap, u8 wire) do
+  not agree.
+- **Why it has not bitten yet**: a wave tops out around
+  `5 + wave*3 + (players-1)*2` zombies; with bullets, grenades, rockets, items
+  and players in flight, a busy four-player wave is still well under 255. It is
+  a large-horde / heavy-spam ceiling, not an everyday one.
+- **Fix options** (decide as part of the animation wire change, see the
+  `agents/` next-phase topic):
+  1. widen the count to `u16` — correct and future-proof, but it is a packet
+     body change, so `NET_WIRE_VERSION` 8 -> 9 and a `test_net_codec` update;
+  2. lower `NET_SNAP_MAX_ENTITIES` to 255 and add an explicit encoder guard so
+     overflow fails loudly instead of silently — no wire change, but it caps
+     the world at 255 replicated entities while `ECS_MAX_ENTITIES` is 2048.
+- **Never** leave the cast in place with neither guard: it is the silent
+  version of the failure.
+
+## B39. `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending
+
+Found 2026-10-06 in the same audit. The same class as B37 — a host-only event
+the client has no way to reconstruct.
+
+- **Symptom**: a client's own event log contains `WAVE_START` but never
+  `WAVE_END`. Confirmed on a real co-op run: host logged `WAVE_END` once,
+  client zero. Anything a client-side consumer would want to trigger on wave
+  completion (a "wave clear" sound, a banner) has no event to key off.
+- **Root cause**: `GE_WAVE_END` is emitted only at `src/world/waves.c:271`,
+  and `waves_update()` never runs on a render-only client. It is absent from
+  the `relay_net_events()` filter in `src/main.c` — the same list B37 just
+  joined.
+- **The HUD is not affected**: the wave panel reads the snapshot
+  (`wave_active`, `between_waves`, `wave_cooldown_centis`), which is why B26
+  did not catch this. The gap is in the *event* stream, not the state mirror.
+- **Fix**: add `GE_WAVE_END` to the relay filter, exactly as B37 did for
+  `GE_PLAYER_SHOT` — no wire bump, the enum value already exists. Not taken
+  unilaterally because it is part of the next-phase audio/animation scope;
+  see the `agents/` topic.
+
+## B40. Sword blades are not replicated (a visible weapon effect is missing on clients)
+
+Found 2026-10-06 in the same audit. Same family as B29.
+
+- **Symptom**: a client cannot see another player's spinning sword. Bullets,
+  grenades and rockets are replicated, so every other weapon is visible; the
+  sword is the one that is not.
+- **Root cause**: `net_snapshot_build()` maps only `PLAYER`, `ZOMBIE`,
+  `BULLET`, `GRENADE`, `ROCKET` and `ITEM` component tags
+  (`src/net/net_snapshot.c`), and comments the rest away with
+  "swords/particles are visuals, not replicated". A sword entity carries none
+  of the six tags, so it is skipped.
+- **Why it is a real gap and not just cosmetics**: unlike a particle, the sword
+  *is* the weapon — a client fighting alongside a sword user cannot see the
+  blade at all, which is a gameplay-legibility problem, not just polish.
+- **Status**: OPEN. Options are to replicate it as a new entity kind, to hang it
+  off the owning player's snapshot entry, or to let the client derive it from
+  the owner's position and tick — the last is derivation, which this project has
+  been burned by (B19-B23). Decide with animation; see the `agents/` topic.
+- **Related robustness note found at the same time**: snapshot entity ids are
+  raw ECS array indices (`se->id = (uint16_t)e`) and the ECS reuses freed
+  indices with no generation counter (`src/ecs/ecs.c`). The client mirror keys
+  by that id. A dead entity's index can be handed to a new entity before the
+  client has processed the death event, so an id can briefly mean a different
+  thing; the interpolator would stretch the new entity from the old position.
+  Low impact and unobserved, but it is why an id is not a stable identity, and
+  it belongs in the animation/next-phase discussion (animation state keyed by
+  raw id inherits the same caveat).
