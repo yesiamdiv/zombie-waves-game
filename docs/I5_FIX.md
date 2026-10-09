@@ -167,7 +167,12 @@ anywhere as "done", it means **fixed in code**, and those five boxes are what
 - Do not add a client-side fallback for a missing appearance field. A fallback is
   the original bug. If the host did not send it, draw nothing and log it.
 - Adding an art id is a one-line append in `net_art.h` / `net_art.c`. It does not
-  need a wire bump, and it should not be given one.
+  need a **wire** bump, and it should not be given one — the `art` byte already
+  exists. It *does* need `NET_ASSET_VERSION` bumped in the same commit, because
+  that number is handshake-checked and a peer with the old art table would
+  otherwise draw the wrong frame (or hit `net_art_spec()` returning NULL for an id
+  past its `NET_ART_COUNT`). "No wire bump" is not "no version at all"; the two
+  numbers guard different things. See `docs/VERSIONING.md` §2.
 - Any *new* field in the appearance block is a wire change: bump
   `NET_WIRE_VERSION`, update `NET_SNAP_ENTRY_BYTES`, update the history comment
   on the `#define`, and update `test_net_snapshot_build`'s length assertion.
