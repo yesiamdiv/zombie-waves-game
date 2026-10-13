@@ -39,9 +39,9 @@ Carried 2026-10-09; owner answered 2026-10-13. Recorded in
 | D2 | `GE_WAVE_END` (B39) go — free, no wire bump, no SP-output change. | NT1 | **GO.** |
 | D3 | `GE_EXPLOSION` go — new `GameEventType`; **re-baselines the SP events log**; rides the audio commit and is re-verified jointly. | NT2, AT7 | **GO** (features first, re-baseline as needed). |
 | D4 | Are animation and audio still planned? | AT1-AT7 | **PLANNED, still in the PLANNING PHASE** (nothing coded). Starts only after the other blockers clear and net+assets finish current work. |
-| D5 | Branch + worktree names/location for animation & audio. | AT2 | **HELD** — owner will specify ("this case is complicated, I'll tell you by the end"). |
-| D6 | Separate hired agents, or tasks on `assets`? | AT2-AT7 | Hire later, after clutter clears + planning done. PM recommends separate agents. |
-| D7 | Where do the planning docs get committed? | AT1 | **Into the knowledge-docs system (`docs/knowledge/`), not main or worktrees/assets.** |
+| D5 | Branch + worktree names/location for animation & audio. | AT2 | **RESOLVED** — `animation`→`worktrees/animation`/`feature/animation-assets`; `audio`→`worktrees/audio`/`feature/audio`; animation first, audio rebased. Owner cuts them via `git worktree add -b`. Not `--create-worktree`. |
+| D6 | Separate hired agents, or tasks on `assets`? | AT2-AT7 | Hire later, after clutter clears + planning done. PM recommends separate `animation` and `audio` agents. Seated chats in main's OpenCode, NOT per-agent OpenCode. |
+| D7 | Where do the planning docs live? | AT1 | **RESOLVED** — `docs/knowledge/` is the docs system of record; migrate the planning set into topics. See `knowledge/docs-system`. |
 | D8 | net's worktree identity / push. | net's lane | **RESOLVED** — cwd is always main; the lane is a worktree inside it. net lands its main work, declares it, then switches; **no push without owner's go.** See `knowledge/worktree-layout`. |
 | D9 | Commit `docs/SPRINT_PLAN.md` to main? | PM | Left to PM judgement. |
 
@@ -69,7 +69,7 @@ Statuses are the board's; a task is only assigned once its owner confirms it.
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| NT1 | Relay `GE_WAVE_END` (B39): one-line filter add in `relay_net_events()` + `BUGS.md` close-out. Free — no wire bump, relay early-returns in SP. | D2 ✔ | **UNBLOCKED (D2 GO)** — land after net's main-work transition (D8) |
+| NT1 | Relay `GE_WAVE_END` (B39): filter add in `relay_net_events()` + `BUGS.md` close-out. Free — no wire bump, relay early-returns in SP. | D2 ✔ | **DONE `feature/net-protocol@e94eb0e`** |
 | NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters) **with** the SP events-log re-baseline, jointly re-verified with `assets`. | D3 ✔, audio start | **UNBLOCKED (D3 GO)** but rides AT7 — after audio starts |
 | NT3 | B38 snapshot count: if design B, fold a `u16` into the `NET_WIRE_VERSION` 8→9 bump; if design A, lower `NET_SNAP_MAX_ENTITIES` to 255 **with a loud encoder guard**. | A-vs-B spike | blocked (measurement) |
 | NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind (option 1), inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Rides NT3's bump if B. | D1 ✔, animation start | **IN SCOPE (D1)** — rides the animation lane (D4 planning phase) |
@@ -81,8 +81,8 @@ Statuses are the board's; a task is only assigned once its owner confirms it.
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT`) **into the knowledge-docs system (`docs/knowledge/`), not a `docs(plan):` commit on main or `worktrees/assets`** (D7). Fill the branch/worktree names left as "PM's call" (D5). | D5 | blocked (D5 naming) |
-| AT2 | Cut `feature/animation-assets` and `feature/audio` (worktrees per D5), from a commit — never from a dirty tree. | D5, D6 | blocked (owner D5) |
+| AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT`) **into `docs/knowledge/` topics** (D7). Names now known (D5): animation→`feature/animation-assets`, audio→`feature/audio`. | main clean | **READY** |
+| AT2 | Owner cuts `worktrees/animation`+`feature/animation-assets` and `worktrees/audio`+`feature/audio` by hand (`git worktree add -b`), animation first. **Hard precondition: main committed/clean + gate green** — cut from the commit, never a dirty tree. | main clean, AT1 | blocked (owner onboarding) |
 | AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | blocked |
 | AT4 | Animation Phases A–C, strictly downstream of the snapshot (no RNG, no sim feedback). **Design-A only:** the ~60–80 `net_art` appends + `NET_ASSET_VERSION` 1→2 apply only if the spike picks A; the append touches the frozen `net.h`/`net_art.*` so it goes through the freeze protocol with `net`. | AT3 | blocked |
 | AT5 | Animation Phase D — **blocked on a human two-window I5 check**, not on a gate. | human | blocked (human) |
