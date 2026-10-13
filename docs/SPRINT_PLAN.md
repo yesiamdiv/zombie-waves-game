@@ -65,30 +65,36 @@ Hard-blocked on a human:
 
 Statuses are the board's; a task is only assigned once its owner confirms it.
 
+**Priority (owner, 2026-10-13):** each agent finishes its **current/established**
+work first. **PRIORITY 1 = current work; NEXT STAGE = animation/audio and
+everything that rides it, not started until Priority 1 is done and main is
+clean + gate green.** Confirmed with both devs: net's Priority 1 is effectively
+done (only NT3, spike-gated); assets' Priority 1 is AT1 alone.
+
 ### net — netcode lane (`worktrees/multiplayer`, `feature/net-protocol`)
 
-| ID | Task | Depends on | Status |
+| ID | Task | Depends on | Priority / Status |
 |---|---|---|---|
-| NT1 | Relay `GE_WAVE_END` (B39): filter add in `relay_net_events()` + `BUGS.md` close-out. Free — no wire bump, relay early-returns in SP. | D2 ✔ | **DONE `feature/net-protocol@e94eb0e`** |
-| NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters) **with** the SP events-log re-baseline, jointly re-verified with `assets`. | D3 ✔, audio start | **UNBLOCKED (D3 GO)** but rides AT7 — after audio starts |
-| NT3 | B38 snapshot count: if design B, fold a `u16` into the `NET_WIRE_VERSION` 8→9 bump; if design A, lower `NET_SNAP_MAX_ENTITIES` to 255 **with a loud encoder guard**. | A-vs-B spike | blocked (measurement) |
-| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind (option 1), inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Rides NT3's bump if B. | D1 ✔, animation start | **IN SCOPE (D1)** — rides the animation lane (D4 planning phase) |
-| NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | blocked (external) |
-| NT6 | Purge `/tmp/opencode` scratch paths from `tests/tests.c` (tmpfs quota hazard); move to a build-tree temp path. | — | **DONE `f260c55`** (gate re-run by net) |
-| NT7 | B32–B35 human two-window screen check. | a human | blocked (human) |
+| NT1 | Relay `GE_WAVE_END` (B39): filter add in `relay_net_events()` + `BUGS.md` close-out. Free — no wire bump, relay early-returns in SP. | D2 ✔ | P1 · **DONE `feature/net-protocol@e94eb0e`** |
+| NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters) **with** the SP events-log re-baseline, jointly re-verified with `assets`. | D3 ✔, audio start | NEXT STAGE |
+| NT3 | B38 snapshot count: if design B, fold a `u16` into the `NET_WIRE_VERSION` 8→9 bump; if design A, lower `NET_SNAP_MAX_ENTITIES` to 255 **with a loud encoder guard**. Spike-gated; belongs to the bump window. | A-vs-B spike | P1 (unactionable) — parked until the spike |
+| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind (option 1), inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Rides NT3's bump if B. | D1 ✔, animation start | NEXT STAGE |
+| NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | NEXT STAGE |
+| NT6 | Purge `/tmp/opencode` scratch paths from `tests/tests.c` (tmpfs quota hazard). | — | P1 · **DONE `f260c55`** |
+| NT7 | B32–B35 human two-window screen check on `feature/net-protocol`. | a human | P1 verification debt · blocked (human) |
 
 ### assets — animation/audio lane (`worktrees/assets`, `feature/assets-maps`)
 
-| ID | Task | Depends on | Status |
+| ID | Task | Depends on | Priority / Status |
 |---|---|---|---|
-| AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT`) **into `docs/knowledge/` topics** (D7). Names now known (D5): animation→`feature/animation-assets`, audio→`feature/audio`. | main clean | **READY** |
-| AT2 | Owner cuts `worktrees/animation`+`feature/animation-assets` and `worktrees/audio`+`feature/audio` by hand (`git worktree add -b`), animation first. **Hard precondition: main committed/clean + gate green** — cut from the commit, never a dirty tree. | main clean, AT1 | blocked (owner onboarding) |
-| AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | blocked |
-| AT4 | Animation Phases A–C, strictly downstream of the snapshot (no RNG, no sim feedback). **Design-A only:** the ~60–80 `net_art` appends + `NET_ASSET_VERSION` 1→2 apply only if the spike picks A; the append touches the frozen `net.h`/`net_art.*` so it goes through the freeze protocol with `net`. | AT3 | blocked |
-| AT5 | Animation Phase D — **blocked on a human two-window I5 check**, not on a gate. | human | blocked (human) |
-| AT6 | Audio Phase-0 spike: vendor miniaudio; soft-fail headless; trigger audit; no-double-fire counting log; reload; gunfire latency (AUDIO_PLAN §4/§5) → verdict into `knowledge/`. | AT2 | blocked |
-| AT7 | Audio phases; `GE_EXPLOSION` SP re-baseline rides this commit and is re-verified jointly with `net`. | AT6, D3 | blocked |
-| AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211` (untracked, rides the D7 docs commit). net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md:721,791,819,839` **left as history** (PM call, `knowledge/worktree-layout`); the `2026-09-18` creation command kept as annotated history. `AGENTS.md:151,154` + `:57-60` still held for D9; `*_AGENT.md` placeholders for D5. | — | **DONE `362e60e`** |
+| AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT` + `CROSS_BRANCH_CONFLICTS`) **into `docs/knowledge/` topics** (D7). | main clean | P1 · **IN PROGRESS (assets)** |
+| AT2 | Owner cuts `worktrees/animation`+`feature/animation-assets` and `worktrees/audio`+`feature/audio` by hand (`git worktree add -b`), animation first. Precondition: main committed/clean + gate green. | main clean, AT1 | NEXT STAGE (owner onboarding) |
+| AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | NEXT STAGE |
+| AT4 | Animation Phases A–C, strictly downstream of the snapshot (no RNG, no sim feedback). **Design-A only:** the ~60–80 `net_art` appends + `NET_ASSET_VERSION` 1→2 apply only if the spike picks A; goes through the freeze protocol with `net`. | AT3 | NEXT STAGE |
+| AT5 | Animation Phase D — **blocked on a human two-window I5 check**, not on a gate. | human | NEXT STAGE · blocked (human) |
+| AT6 | Audio Phase-0 spike: vendor miniaudio; soft-fail headless; trigger audit; no-double-fire counting log; reload; gunfire latency → verdict into `knowledge/`. | AT2 | NEXT STAGE |
+| AT7 | Audio phases; `GE_EXPLOSION` SP re-baseline rides this commit and is re-verified jointly with `net`. | AT6, D3 | NEXT STAGE |
+| AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
 
 ### shared
 
