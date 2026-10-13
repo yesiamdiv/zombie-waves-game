@@ -1416,6 +1416,7 @@ static void relay_net_events(void) {
          * Payload is spawn origin (x,y), direction (a,b) and weapon class
          * (kind). The enum value already exists, so no wire bump. */
         if (ev->type == GE_ENTITY_DEATH || ev->type == GE_WAVE_START ||
+            ev->type == GE_PLAYER_SHOT || ev->type == GE_WAVE_END ||
             ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL ||
             ev->type == GE_POINTS || ev->type == GE_DAMAGE ||
             ev->type == GE_ITEM_PICKUP || ev->type == GE_HOST_PAUSE ||
