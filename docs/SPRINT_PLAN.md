@@ -69,7 +69,9 @@ Statuses are the board's; a task is only assigned once its owner confirms it.
 work first. **PRIORITY 1 = current work; NEXT STAGE = animation/audio and
 everything that rides it, not started until Priority 1 is done and main is
 clean + gate green.** Confirmed with both devs: net's Priority 1 is effectively
-done (only NT3, spike-gated); assets' Priority 1 is AT1 alone.
+done (only NT3, spike-gated); assets' Priority 1 was AT1 alone. **PRIORITY 1 is
+now COMPLETE team-wide (`a25d9ba`) — main tracked tree clean + gate green; the
+next stage opens on the owner's go.**
 
 ### net — netcode lane (`worktrees/multiplayer`, `feature/net-protocol`)
 
@@ -87,7 +89,7 @@ done (only NT3, spike-gated); assets' Priority 1 is AT1 alone.
 
 | ID | Task | Depends on | Priority / Status |
 |---|---|---|---|
-| AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT` + `CROSS_BRANCH_CONFLICTS`) **into `docs/knowledge/` topics** (D7). | main clean | P1 · **IN PROGRESS (assets)** |
+| AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT` + `CROSS_BRANCH_CONFLICTS`) **into `docs/knowledge/` topics** (D7). | main clean | P1 · **DONE `a25d9ba`** — main tracked tree clean, gate green |
 | AT2 | Owner cuts `worktrees/animation`+`feature/animation-assets` and `worktrees/audio`+`feature/audio` by hand (`git worktree add -b`), animation first. Precondition: main committed/clean + gate green. | main clean, AT1 | NEXT STAGE (owner onboarding) |
 | AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | NEXT STAGE |
 | AT4 | Animation Phases A–C, strictly downstream of the snapshot (no RNG, no sim feedback). **Design-A only:** the ~60–80 `net_art` appends + `NET_ASSET_VERSION` 1→2 apply only if the spike picks A; goes through the freeze protocol with `net`. | AT3 | NEXT STAGE |
