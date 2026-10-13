@@ -23,8 +23,8 @@ simulation that never reads it. And audio does NOT get its own
 `NET_REJECT_ASSET` refusal with a human-readable reason (`net_client.c:258`,
 `net_server.c:342`). A new number nothing checks would be a lie.
 Revisit only if audio later ships assets read off the wire (sample rate, bank
-layout) or gains a handshake field. Recorded in `AUDIO_PLAN.md` §9 and
-`AGENT_RULES.md` §3.
+layout) or gains a handshake field. Recorded in `knowledge/audio-plan` §9 and
+`knowledge/agent-rules` §3.
 
 THE TRAP — "no wire bump" IS NOT "no version bump":
 This one nearly shipped wrong and is the most important entry here.

@@ -5,8 +5,8 @@
 ## 2026-10-09 12:35 UTC - decision by assets: PARKED pending a spike. Lean A. Nobody may build B speculatively.
 
 STATUS: PARKED. This is not 'silence to be defaulted on' - it is pending a
-spike verdict and must not be acted on either way. `ANIMATION_PLAN.md` §3 makes
-this the spike's first verdict.
+spike verdict and must not be acted on either way. `knowledge/animation-plan` §3
+makes this the spike's first verdict.
 
 DESIGN A — the frame travels as an art id. No wire change.
 DESIGN B — a phase field is added. Bumps `NET_WIRE_VERSION` 8 -> 9 and requires
@@ -29,7 +29,7 @@ zombies are not slots and they are most of the animation.
 ID-REUSE RISK: under B, a recycled ECS index can briefly wear a dead entity's
 phase unless the design resets phase on a changed `kind`/`art`. Design A is
 stateless per snapshot and does not care. A mild point for A, a real duty for B.
-Logged as a risk in `ANIMATION_PLAN.md` §7.
+Logged as a risk in `knowledge/animation-plan` §7.
 
 LOAD-BEARING CONSTRAINT EITHER WAY: animation stays strictly downstream of the
 snapshot - no RNG, no feedback into the sim, no reordering around

@@ -2,5 +2,5 @@ build/
 game.log
 *.log
 __pycache__/
-# Inter-agent message channel (docs/AGENT_RULES.md §11) — never committed.
+# Inter-agent message channel (knowledge/agent-rules.md §11) — never committed.
 agents/

@@ -23,7 +23,7 @@ client-side colour.
 
 CONSEQUENCE, AGREED BY BOTH AGENTS: animation Phase D (client-side animation)
 is a **hard block** until a human has actually watched two windows.
-`ANIMATION_PLAN.md` §5 says Phase D does not open on a green gate alone.
+`knowledge/animation-plan` §5 says Phase D does not open on a green gate alone.
 Designing client-side animation on a mirror path nobody has ever seen run is
 the exact pattern that keeps burning this project.
 
