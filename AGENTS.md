@@ -25,18 +25,39 @@ they live here, not in the chat.
 
 ## Worktree discipline
 
-- Integration work happens in the **multiplayer worktree**
-  `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves-multiplayer`
-  (branch `feature/multiplayer`), which now contains both engines.
+- **All worktrees live inside the main checkout, never beside it.** The layout is:
+
+  | Path | Branch | Owner |
+  |---|---|---|
+  | `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves` | `main` | — (integration + the owner's chats) |
+  | `<main>/worktrees/multiplayer` | `feature/net-protocol` | agent `net` |
+  | `<main>/worktrees/assets` | `feature/assets-maps` | agent `assets` |
+
+  `worktrees/` is in `.git/info/exclude` and is never committed. A sibling tree at
+  `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves-*` is a
+  **stale path** — those were moved with `git worktree move` on 2026-10-09 and no
+  longer exist. If you are told to work in one, use the `worktrees/<name>` path instead.
 - Prefer absolute paths plus `git -C "$R"`. Shell cwd and relative paths have
   drifted in this repo before.
-- The `main` worktree (`open-world-zombie-waves`) and the assets worktree
-  (`open-world-zombie-waves-assets`) hold uncommitted WIP. Do not edit or commit
-  in either until their WIP is committed or the user says otherwise.
-- **Never** use the legacy sibling `open-world-zombie-waves` tree as a scratch
-  build directory. A sibling tree appearing at `/home/divyam-redkar/...` or
-  `/root/divyam-redkar/...` is not this worktree unless it ends in
-  `-multiplayer`.
+- Work in your own worktree only: `git -C worktrees/<name> ...`, committing on that
+  worktree's branch. Never edit or `git add -A` in another agent's worktree.
+- The `main` worktree holds uncommitted WIP. Do not edit or commit there until that
+  WIP is committed or the user says otherwise.
+- Never `mv` a worktree — use `git worktree move`, and `git worktree repair` if one
+  was moved by hand.
+
+## Coordination (Intercom-AI)
+
+This project is an Intercom-AI company, **Zombie Waves Studio**. Hired chats:
+`net` (Netcode Developer, owns `worktrees/multiplayer`) and `assets`
+(Assets Developer, owns `worktrees/assets`). There is no manager; the owner
+coordinates directly.
+
+Talk to the other agents through the `intercom_*` MCP tools rather than guessing
+what they are doing — this replaces eyeballing the `agents/` files for
+agent-to-agent questions. `docs/AGENT_RULES.md` §11 still describes the older
+file-based channel; the intercom tools are now the primary path. Intercom's own
+state lives in `.agents/` and `.opencode/`, both excluded from Git.
 
 ## Workflow rules
 
@@ -59,31 +80,41 @@ they live here, not in the chat.
 
 ## Non-negotiable gate: single-player byte-identity
 
-`feature/multiplayer` exists to add multiplayer **without changing
-single-player**. Every change must pass all of these before it is considered done:
+This branch adds multiplayer **without changing single-player**. One gate proves
+it, and it is also the verification ritual — run all of it before declaring
+anything done:
 
-- Clean Release build with `-Werror`, and **zero warnings in project sources**
-  (SDL3's own bundled XML-validation warnings are noise — ignore those).
-- `ctest` 3/3: `net_spike`, `net_loopback`, `core_tests`.
-- Two same-seed single-player runs are `diff`-empty
-  (`--headless --ai=bot --run-seconds=25 --events=a.log --seed=42`).
-- Single-player wave 1 is exactly `8 zombies, interval: 1.90s, difficulty: 1.00`.
-- Multiplayer-only behaviour stays behind `player_count > 1`.
+```sh
+cmake --build build                  # zero warnings in project sources
+ctest --test-dir build               # 3/3: net_spike, net_loopback, core_tests
+./build/zombie_tests                 # green
+python3 tools/gen_assets.py --verify  # when assets were touched
+# two same-seed SP runs, diff-empty:
+./build/open_world_zombie_waves --headless --ai=bot --run-seconds=25 --events=a.log --seed=42
+```
 
-If a change cannot pass the SP gate, it is not ready to commit.
+Plus: multiplayer-only behaviour stays behind `player_count > 1`, and
+single-player wave 1 is unchanged.
+
+**The exact numbers a green gate produces** — test counts, texture count, the
+byte/line reference for the SP events log, the wave-1 string — are in
+`docs/knowledge/gate-baseline.md`, declared once. Do not copy them into another
+doc; cite the topic. Moving the byte/line reference is a deliberate re-baseline,
+not a silent drift.
+
+If a change cannot pass this gate, it is not ready to commit — including when
+the gate is inconvenient because the change is visual or audible and the gate is
+headless. That is the normal condition of this work, not an exemption: a passing
+gate proves nothing about what you see or hear, so write `unproven`, not
+`fixed`, until a human has looked or listened (`docs/SYSTEM_DESIGN_RULES.md` §4,
+`docs/knowledge/i5-unverified-on-screen.md`).
 
 **Why the gate survived the assets merge:** headless runs deliberately keep the
 fixed classic 50x50 world (`world_init`), never a map file, so map selection
 cannot perturb the sim. Do not "clean that up" — it would break determinism.
 
-## Verification ritual (always before declaring done)
-
-1. `cmake --build build` — zero warnings in project sources.
-2. `ctest --test-dir build` — all tests pass.
-3. `./build/zombie_tests` — assertion suite green.
-4. Art regen when touching assets: `python3 tools/gen_assets.py --verify`.
-5. When asked to run the game for playtesting:
-   `./build/open_world_zombie_waves` (launch in background, give controls).
+When asked to run the game for playtesting, launch
+`./build/open_world_zombie_waves` in the background and give the controls.
 
 ## Verifying multiplayer
 
@@ -113,7 +144,7 @@ character of the host name.
 GUI runs must be detached or the tool call hangs waiting on the window:
 
 ```bash
-R=/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves-multiplayer
+R=/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves/worktrees/multiplayer
 cd "$R/build"
 IP=$(hostname -I | awk '{print $1}')
 setsid ./open_world_zombie_waves --host --port=5123 --name=Host \
@@ -175,4 +206,11 @@ shipping it.
 1. `git -C "$R" status --short && git -C "$R" log --oneline -10`
 2. Read this file, `docs/CROSS_BRANCH_CONFLICTS.md`, `docs/PENDING_VERIFICATION.md`,
    and `docs/R13_BUGFIX_TRACKER.md`.
-3. Set up todos (todowrite) reflecting PM plan + assigned DEV work.
+3. **Check your inbox and the project knowledge.** `intercom_whoami` tells you
+   who you are and which worktree you own; `intercom_inbox` shows anything
+   waiting. `intercom_knowledge` lists the decision topics in `docs/knowledge/`
+   — open the ones touching your area before you plan, and record new decisions
+   with `intercom_save_knowledge` rather than only in chat.
+   The old `agents/` file channel and `tools/agent_channel.sh` are **retired**;
+   see `docs/knowledge/worktree-layout.md`.
+4. Set up todos (todowrite) reflecting PM plan + assigned DEV work.

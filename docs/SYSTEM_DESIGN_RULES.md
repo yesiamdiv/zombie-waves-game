@@ -74,8 +74,9 @@ anything networked:
 - Headless runs deliberately keep the fixed classic 50x50 world (`world_init`),
   never a map file, so map selection cannot perturb the sim. **This looks like
   dead code to fix. Do not "clean it up"** — it is what makes the gate work.
-- The gate is two same-seed runs that are `diff`-empty, plus wave 1 being exactly
-  `8 zombies, interval: 1.90s, difficulty: 1.00`. Both must pass before commit.
+- The gate is two same-seed runs that are `diff`-empty, plus wave 1 being
+  unchanged. Both must pass before commit. The exact numbers are declared once,
+  in `docs/knowledge/gate-baseline.md` — cite them, do not copy them here.
 
 ## 4. The visibility blind spot (why bugs survive here)
 
