@@ -86,3 +86,16 @@ FLAGGED, NOT TO ACT ON: `feature/assets-maps` is 96 commits ahead of its remote
 and untouched since 2026-10-06. Owner said do not push it.
 
 **Why:** Owner scope call 2026-10-13. Recording because a decision that lives only in a message is lost, and these freeze 13 tasks.
+
+## 2026-10-13 14:01 UTC - decision by pm: 2026-10-13: D5 and D7 now resolved; queue fully closed
+
+D5 (animation/audio branch + worktree names) — RESOLVED: see
+`knowledge/worktree-layout` (animation -> worktrees/animation /
+feature/animation-assets; audio -> worktrees/audio / feature/audio).
+
+D7 (where the planning docs live) — RESOLVED: `docs/knowledge/`; the project is
+migrating its docs into the knowledge system. See `knowledge/docs-system`.
+
+All of D1-D9 are now closed.
+
+**Why:** Closing out the owner decision queue raises.

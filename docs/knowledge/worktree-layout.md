@@ -112,3 +112,52 @@ HIRING FUTURE MEMBERS (owner hires; PM proposes):
   ignored — never assume a seated hire recorded a lane; verify it.
 
 **Why:** Every agent runs from the one OpenCode instance in the main checkout, so cwd is always main; the lane is a separate field. This is why net drifted to committing on main and why the earlier org fields contradicted whoami. Binding operating model for current and future members.
+
+## 2026-10-13 14:01 UTC - decision by pm: 2026-10-13 owner: a lane is a starting point and default, not a fence — disclosure, not prohibition
+
+LANE MODEL — owner's correction (2026-10-13). Supersedes any reading of D8 that
+treated the lane as a hard fence.
+
+- A lane is a STARTING POINT and a DEFAULT commit target; it is part of an
+  agent's identity, not the whole of it. An agent may READ any worktree and may
+  WORK in another one when the task genuinely calls for it (checking whether a
+  fix landed, running the gate against another branch, a repo-wide docs/build
+  fix that belongs on main).
+- The rule is DISCLOSURE, not PROHIBITION: say where the work is going before it
+  goes there, rather than switching silently.
+- Consequence: net's commits on main were NEVER a violation. They are docs and
+  build fixes that belong on main. Nothing is to be reverted or moved. net
+  finishes that work, declares it landed, then makes worktrees/multiplayer its
+  default.
+
+D5 NAMES SETTLED (owner, 2026-10-13):
+  agent `animation` -> worktrees/animation -> branch feature/animation-assets
+  agent `audio`     -> worktrees/audio     -> branch feature/audio
+  Order: animation is cut and lands first; audio is cut from main and rebased
+  onto feature/animation-assets before landing. Unchanged from the net/assets
+  agreement.
+
+CORRECTION TO THE EARLIER HIRING NOTE: IGNORE `--create-worktree` and any
+per-agent OpenCode. The owner's rule is absolute — EVERY chat belongs to the
+single OpenCode instance in the main checkout. animation and audio will be SESH
+seated chats in that instance, like pm/net/assets/qa. cwd is main; the lane is
+reached with `git -C worktrees/<name> ...`. The earlier entry in this file about
+`--create-worktree` making the worktree the agent's home is WRONG for this
+project; do not propose hiring an agent into its own folder.
+
+ONBOARDING SEQUENCE for animation/audio (owner runs it, when the owner says go):
+  1. main is committed/clean and the gate is green — HARD precondition, because
+     the lane branches are cut from main's HEAD. Cut from the commit, never the
+     dirty tree.
+  2. The owner creates the two worktrees by hand (NOT --create-worktree):
+       git worktree add -b feature/animation-assets worktrees/animation
+       git worktree add -b feature/audio            worktrees/audio
+  3. In main's OpenCode, the owner starts two new chats (send each a "hi" so the
+     session lands in the DB), then hires them seated and PATCHES their lanes in
+     organization.json — because `hire --session` silently drops
+     --worktree/--branch (issue #1). Never assume a seated hire recorded a lane;
+     verify with `git -C worktrees/<name> log --oneline -3`.
+  BUILD: lanes cut from main inherit the shared dep-cache default, so these two
+  do NOT need -DFETCHCONTENT_BASE_DIR (the older feature branches do). Still -G Ninja.
+
+**Why:** Owner correction 2026-10-13. A lane is a default/identity, not a fence; the earlier reading treated it as prohibition, which wrongly framed net's main commits as a violation. Disclosure replaces prohibition.
