@@ -28,12 +28,13 @@ gate green.
 
 | ID | Task | Owner | Depends on | Status |
 |---|---|---|---|---|
-| S5-1 | Align both lane worktrees onto one commit (land NT1→main, converge). Acceptance: identical `git rev-parse HEAD` in both worktrees == main; trees clean; gate green. | net (+coord assets) | — | **ASSIGNED** `task_01a13aca0cbc0e72d7596dcf` |
-| S5-2 | Bring `worktrees/assets` onto that same commit (lane is contained in main; likely ff). | assets | — | **ASSIGNED** `task_01a13aca1322633afcaec58c` |
-| S5-3 | Write the multiplayer QA test guide (B32-B35 screen check, I5, PENDING_VERIFICATION items) and hand to qa. | net | — | **ASSIGNED** `task_01a13aca1aa64b5139a504bb` |
-| S5-4 | Write the content/animation QA test guide (what to look at, how to reach it, Phase D/I5 expectations) and hand to qa. | assets | — | **ASSIGNED** `task_01a13aca207c01c9dfa7c78e` |
-| S5-5 | Execute the guided playtest on the aligned commit; record findings; report to PM. | qa | S5-3, S5-4 | **ASSIGNED** `task_01a13aca3e6707bc9fa65a55` |
-| S5-6 | After S5-1/S5-2 land and the guides are handed over: free net + assets for the day. | PM | S5-1..S5-4 | standing |
+| S5-1 | Align both lane worktrees onto one commit (land NT1→main, converge). Acceptance: identical `git rev-parse HEAD` in both worktrees == main; trees clean; gate green. | net (+coord assets) | — | **DONE** — all three at `10fd6005`, trees clean, gate green. |
+| S5-2 | Bring `worktrees/assets` onto that same commit (lane is contained in main; likely ff). | assets | — | **DONE** — clean ff to `10fd6005`. |
+| S5-3 | Write the multiplayer QA test guide (B32-B35 screen check, I5, PENDING_VERIFICATION items) and hand to qa. | net | — | **DONE** `069d4d0` — `docs/QA_MULTIPLAYER_S5.md` |
+| S5-4 | Write the content/animation QA test guide (what to look at, how to reach it, Phase D/I5 expectations) and hand to qa. | assets | — | **DONE** `8f4533a` — `playtesting_prompts/qa_recheck/04_content_animation_checks.md` |
+| S5-5 | Execute the guided playtest on the aligned commit; record findings; report to PM. | qa | S5-3, S5-4 | **IN PROGRESS** on `069d4d0` |
+| S5-6 | After S5-1/S5-2 land and the guides are handed over: free net + assets for the day. | PM | S5-1..S5-4 | **DONE** — both freed |
+| S5-7 | Open: net's S5-3 docs commit moved main to `069d4d0`, so both lanes are 1 docs-commit behind again; and net pushed main to origin (D8 = no push without owner's go). Owner to decide re-ff now vs later, and keep/revert the push. | owner | S5-3 | **AWAITING OWNER** |
 | SH2 | Any new decision lands in `docs/knowledge/` in the same commit as it matters. | both | — | standing |
 
 **Out of scope this sprint:** animation/audio coding, the A-vs-B spike, cutting
