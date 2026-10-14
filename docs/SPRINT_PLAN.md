@@ -12,6 +12,35 @@ was named by the developer who owns it.** The PM invented none of them.
 
 ---
 
+# Sprint 5 — Sync + Playtest — CURRENT (raised 2026-10-14)
+
+Owner directive 2026-10-14: (1) put the net and assets worktree lanes on the
+**same commit** first; (2) then a **QA-led playtest** of the features not tested
+recently, with net and assets **guiding qa** on what/how to test; (3) then free
+net and assets for the rest of the day. Meet once this sprint is done. Sprint 4
+below is closed; its board is history.
+
+State at sprint raise: `main@84c7263`; `feature/net-protocol@e94eb0e` (NT1/B39, 1
+ahead); `feature/assets-maps@c2201dc` (behind, 0 ahead). Priority 1 complete;
+gate green.
+
+## S5 board
+
+| ID | Task | Owner | Depends on | Status |
+|---|---|---|---|---|
+| S5-1 | Align both lane worktrees onto one commit (land NT1→main, converge). Acceptance: identical `git rev-parse HEAD` in both worktrees == main; trees clean; gate green. | net (+coord assets) | — | **ASSIGNED** `task_01a13aca0cbc0e72d7596dcf` |
+| S5-2 | Bring `worktrees/assets` onto that same commit (lane is contained in main; likely ff). | assets | — | **ASSIGNED** `task_01a13aca1322633afcaec58c` |
+| S5-3 | Write the multiplayer QA test guide (B32-B35 screen check, I5, PENDING_VERIFICATION items) and hand to qa. | net | — | **ASSIGNED** `task_01a13aca1aa64b5139a504bb` |
+| S5-4 | Write the content/animation QA test guide (what to look at, how to reach it, Phase D/I5 expectations) and hand to qa. | assets | — | **ASSIGNED** `task_01a13aca207c01c9dfa7c78e` |
+| S5-5 | Execute the guided playtest on the aligned commit; record findings; report to PM. | qa | S5-3, S5-4 | **ASSIGNED** `task_01a13aca3e6707bc9fa65a55` |
+| S5-6 | After S5-1/S5-2 land and the guides are handed over: free net + assets for the day. | PM | S5-1..S5-4 | standing |
+| SH2 | Any new decision lands in `docs/knowledge/` in the same commit as it matters. | both | — | standing |
+
+**Out of scope this sprint:** animation/audio coding, the A-vs-B spike, cutting
+`worktrees/animation`/`worktrees/audio` (owner's gate), any wire/version bump.
+
+---
+
 ## 0. Sprint ceremony / reporting structure
 
 - **Planning (PM)**: pick ticket scope, accept/estimate, record here.
