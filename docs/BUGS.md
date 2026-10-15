@@ -51,6 +51,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
 | B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | OPEN |
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
+| B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED |
 
 ## Detailed entries
 
@@ -846,3 +847,30 @@ Found 2026-10-06 in the same audit. Same family as B29.
   Low impact and unobserved, but it is why an id is not a stable identity, and
   it belongs in the animation/next-phase discussion (animation state keyed by
   raw id inherits the same caveat).
+
+## B41. Taking damage fills the whole screen with a flat red tint instead of an edge vignette
+
+Found 2026-10-15 by the owner, playing.
+
+- **Symptom**: when the player takes damage the entire screen flashes bold red —
+  a flat colour wash over the whole view. It should read as a vignette: red
+  concentrated at the screen edges and fading to transparent in the centre, so
+  the middle of the view stays clear.
+- **Root cause**: `hud_draw()` drew the hurt overlay (B4) as a single
+  full-screen fill — `SDL_SetRenderDrawColorFloat(r, 1, 0, 0, damage_flash*0.3)`
+  then `SDL_RenderFillRect(0, 0, screen_w, screen_h)` at `src/ui/hud.c:276-280`.
+  The trigger and decay were already correct (`hud_track_player_hp`,
+  `hud_update`); only the drawing was wrong.
+- **Fix**: replaced the full-screen fill with `draw_damage_vignette()` — 24
+  concentric edge bands from each screen border, alpha `flash*0.5*(1-i/N)^2`
+  falling to zero toward the centre, so the middle is never covered. The
+  top/bottom bands span the full width and the left/right bands sit between them,
+  so corners are darkened once, not twice. Cosmetic and local: it draws the host
+  HP the client already displays, so there is no authority concern
+  (`SYSTEM_DESIGN_RULES.md` §1; B19-B23).
+- **Status**: FIXED (commit `e637a5d`). Render-only, so the byte-identity gate is
+  unaffected — build clean under `-Werror`, `ctest` 3/3, `zombie_tests` 1186/0,
+  `gen_assets --verify` 33 textures, two `--seed=42` SP runs byte-identical at
+  125938 bytes / 1603 lines. **On-screen result is UNPROVEN until a human looks**
+  — no gate can see a visual change (`i5-unverified-on-screen`); the owner should
+  confirm the vignette visually.
