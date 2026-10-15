@@ -39,7 +39,8 @@ message arrives and an unanswered request escalates automatically.
 WHY: `agents/` was gitignored, so it could never be the durable record - and it
 had nonetheless accumulated 924 lines of real decisions that one `git clean`
 would have destroyed. Everything of value in it was migrated into
-`docs/knowledge/` on 2026-10-09. The old files are kept as read-only history.
+`docs/knowledge/` on 2026-10-09. The old files were kept as read-only history
+until they were deleted on 2026-10-15 (see the entry below).
 
 WHAT HAS NOT CHANGED: a message is still as temporary as the old files were.
 The channel is how you reach an answer; `docs/knowledge/` or the plan doc is
@@ -171,3 +172,24 @@ BUT main keeps moving as PM lands docs/cleanup commits, and each such commit re-
 Why it matters: the animation/audio stage is cut from whatever commit the lanes share; a lane that silently sits behind main would start the new work from an older base.
 
 Push: see `[git-push-policy]` (2026-10-15) — pushing allowed only for completed, tested work.
+
+## 2026-10-15 - decision by pm: the retired agents/ directory is deleted
+
+Owner call + net/assets agreement (2026-10-15): `agents/` may be deleted, because
+every decision in `agents/animation-audio-vs-net.md` and
+`agents/net-next-phase-protocol.md` was already captured in `docs/knowledge/`
+(both devs mapped it file-by-file). The one non-decision item — the "what is
+already replicated today" inventory — was migrated first, to
+[net-replication-surface].
+
+REFS FIXED IN THE SAME COMMIT: `docs/README.md` and the 2026-10-09 entry above
+both said `agents/*.md` was "kept as read-only history"; that is now false and
+both were updated to record the 2026-10-15 deletion.
+
+LEFT AS HISTORY (2026-10-09 hygiene decision stands): the `agents/` pointers in
+`docs/BUGS.md:721,791,819,839` narrate the channel as it was used at the time;
+they are not repointed. `AGENTS.md`'s mentions were not touched (held for D9).
+
+**Why:** A gitignored directory cannot be the durable record, and once every
+decision in it lived in `docs/knowledge/`, keeping it was a second, stale copy
+that one `git clean` could destroy without notice.

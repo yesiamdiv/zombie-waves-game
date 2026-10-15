@@ -20,7 +20,9 @@ the `intercom_*` tools, not through files. `intercom_whoami` tells you who you
 are and which worktree you own; `intercom_ask` reaches the other agent;
 `intercom_inbox` shows what is waiting. The old `agents/` directory and
 `knowledge/agent-rules.md` §11's handle-and-question-number protocol are
-**retired** — `agents/*.md` is kept as read-only history only.
+**retired**; `agents/` was deleted on 2026-10-15, after every decision in it was
+migrated into `knowledge/` (see
+[`knowledge/worktree-layout.md`](knowledge/worktree-layout.md)).
 
 ## Durable decisions — `knowledge/`
 
