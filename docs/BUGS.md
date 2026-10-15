@@ -50,7 +50,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | `704090c` | FIXED |
 | B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
 | B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | OPEN |
-| B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `c8a5dde` | FIXED |
+| B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
 
 ## Detailed entries
 
@@ -520,7 +520,6 @@ the mistake is visible instead of quietly reappearing.
   mistake themselves. Worth remembering whenever a `net_decode_*` return value
   is compared.
 
-<<<<<<< HEAD
 ## B32. A client shows a blank screen when its player dies, and never sees its own name tag
 
 Found 2026-10-05 auditing the UI layer on `main`. High severity.
@@ -814,10 +813,10 @@ the client has no way to reconstruct.
 - **The HUD is not affected**: the wave panel reads the snapshot
   (`wave_active`, `between_waves`, `wave_cooldown_centis`), which is why B26
   did not catch this. The gap is in the *event* stream, not the state mirror.
-- **Fix**: add `GE_WAVE_END` to the relay filter, exactly as B37 did for
-  `GE_PLAYER_SHOT` — no wire bump, the enum value already exists. Not taken
-  unilaterally because it is part of the next-phase audio/animation scope;
-  see the `agents/` topic.
+- **Fix**: `GE_WAVE_END` added to the `relay_net_events()` filter
+  (`src/main.c`), as B37 did for `GE_PLAYER_SHOT` — no wire bump, the enum value
+  already exists, single-player output unchanged (the relay early-returns unless
+  `net_host_mode`). **Fixed in `10fd6005`** (authored `e94eb0e`).
 
 ## B40. Sword blades are not replicated (a visible weapon effect is missing on clients)
 
@@ -847,15 +846,3 @@ Found 2026-10-06 in the same audit. Same family as B29.
   Low impact and unobserved, but it is why an id is not a stable identity, and
   it belongs in the animation/next-phase discussion (animation state keyed by
   raw id inherits the same caveat).
-=======
-## B39. `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending
-
-- **Symptom**: a client's own event log contains `WAVE_START` but never
-  `WAVE_END`. Anything a client-side consumer would want to trigger on wave
-  completion has no event to key off.
-- **Root cause**: `GE_WAVE_END` is emitted only at `src/world/waves.c:271`,
-  and it was absent from the `relay_net_events()` filter in `src/main.c`.
-- **Fix**: added `GE_WAVE_END` to the relay filter (`src/main.c`, commit `c8a5dde`).
-- **Status**: FIXED (commit `c8a5dde`). No wire bump, the enum value already
-  exists. The HUD is not affected because the wave panel reads the snapshot.
->>>>>>> e94eb0e (fix(net): relay GE_WAVE_END (B39))
