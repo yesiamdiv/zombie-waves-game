@@ -34,7 +34,8 @@ gate green.
 | S5-4 | Write the content/animation QA test guide (what to look at, how to reach it, Phase D/I5 expectations) and hand to qa. | assets | — | **DONE** `8f4533a` — `playtesting_prompts/qa_recheck/04_content_animation_checks.md` |
 | S5-5 | Execute the guided playtest on the aligned commit; record findings; report to PM. | qa | S5-3, S5-4 | **IN PROGRESS** on `069d4d0` |
 | S5-6 | After S5-1/S5-2 land and the guides are handed over: free net + assets for the day. | PM | S5-1..S5-4 | **DONE** — both freed |
-| S5-7 | Owner calls on the push + lane drift (2026-10-15): push is OK once a feature is completed/tested (see `knowledge/git-push-policy`); everyone must sit on one common commit. | owner | S5-3 | **RESOLVED** — re-align both lanes to main HEAD; push policy announced. |
+| S5-7 | Owner calls on the push + lane drift (2026-10-15): push is OK once a feature is completed/tested (see `knowledge/git-push-policy`); everyone must sit on one common commit. | owner | S5-3 | **DONE** — main + both lanes all at `59c71af` (common point); policy announced. |
+| S5-8 | Repo-root cleanup (owner: stray files): remove tracked one-off `fix_ecs_csordtag.py`, delete stray `session-ses_*.md` + ignore, move runtime logs to `build/logs/`, relocate `PM_MASTER_PROMPT.md`. | PM | — | **DONE** `d19a29b` (pending owner call on `agents/` + qa findings) |
 | SH2 | Any new decision lands in `docs/knowledge/` in the same commit as it matters. | both | — | standing |
 
 **Out of scope this sprint:** animation/audio coding, the A-vs-B spike, cutting
