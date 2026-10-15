@@ -12,7 +12,7 @@ was named by the developer who owns it.** The PM invented none of them.
 
 ---
 
-# Sprint 5 — Sync + Playtest — CURRENT (raised 2026-10-14)
+# Sprint 5 — Sync + Playtest — CLOSED 2026-10-15
 
 Owner directive 2026-10-14: (1) put the net and assets worktree lanes on the
 **same commit** first; (2) then a **QA-led playtest** of the features not tested
@@ -32,14 +32,24 @@ gate green.
 | S5-2 | Bring `worktrees/assets` onto that same commit (lane is contained in main; likely ff). | assets | — | **DONE** — clean ff to `10fd6005`. |
 | S5-3 | Write the multiplayer QA test guide (B32-B35 screen check, I5, PENDING_VERIFICATION items) and hand to qa. | net | — | **DONE** `069d4d0` — `docs/QA_MULTIPLAYER_S5.md` |
 | S5-4 | Write the content/animation QA test guide (what to look at, how to reach it, Phase D/I5 expectations) and hand to qa. | assets | — | **DONE** `8f4533a` — `playtesting_prompts/qa_recheck/04_content_animation_checks.md` |
-| S5-5 | Execute the guided playtest on the aligned commit; record findings; report to PM. | qa | S5-3, S5-4 | **IN PROGRESS** on `069d4d0` |
+| S5-5 | Execute the guided playtest on the aligned commit; record findings; report to PM. | qa | S5-3, S5-4 | **DONE** — gate PASS; findings `qa_recheck/findings/S5_SUMMARY.md` (untracked) |
 | S5-6 | After S5-1/S5-2 land and the guides are handed over: free net + assets for the day. | PM | S5-1..S5-4 | **DONE** — both freed |
 | S5-7 | Owner calls on the push + lane drift (2026-10-15): push is OK once a feature is completed/tested (see `knowledge/git-push-policy`); everyone must sit on one common commit. | owner | S5-3 | **DONE** — main + both lanes all at `59c71af` (common point); policy announced. |
 | S5-8 | Repo-root cleanup (owner: stray files): remove tracked one-off `fix_ecs_csordtag.py`, delete stray `session-ses_*.md` + ignore, move runtime logs to `build/logs/`, relocate `PM_MASTER_PROMPT.md`. | PM | — | **DONE** `d19a29b` (pending owner call on `agents/` + qa findings) |
+| S5-9 | Migrate the net replication-surface inventory into knowledge, then delete the retired `agents/` dir and fix its refs (owner call). | assets | — | **DONE** `8c2e9af` |
 | SH2 | Any new decision lands in `docs/knowledge/` in the same commit as it matters. | both | — | standing |
 
 **Out of scope this sprint:** animation/audio coding, the A-vs-B spike, cutting
 `worktrees/animation`/`worktrees/audio` (owner's gate), any wire/version bump.
+
+## S5 close — results (2026-10-15)
+
+- **Lanes on one common point:** main + `worktrees/multiplayer` + `worktrees/assets` were aligned; docs commits since then (S5-8/S5-9/policy) drift them by design — absorbed by a re-align at the next stage's start (`knowledge/worktree-layout`).
+- **Playtest (S5-5):** headless gate PASS at the test base `069d4d0` (build `-Werror`, ctest 3/3, `zombie_tests` 1186/0, 33 textures, SP seed-42 byte-identical). Headless co-op: host spawned the slot-1 remote entity, client connected, snapshots streamed, no crash. **No new bugs.**
+- **Still UNPROVEN on-screen (needs a human):** map select / `--map` loading, I5 client sprites-vs-dots, beacons/HUD, B32-B35. A green gate is silent on these — see `knowledge/i5-unverified-on-screen` and `docs/PENDING_VERIFICATION.md`. This is the meeting's human-eye checklist.
+- **Policy changes this sprint:** push allowed for completed+tested work (`knowledge/git-push-policy`); qa findings stay untracked, durable bugs go to tracked docs (`knowledge/qa-findings-policy`); re-align lanes at stage start.
+- **Cleanup:** repo root tidied (`d19a29b`); retired `agents/` dir deleted after its decisions were confirmed captured (`8c2e9af`).
+- **Standing by for the owner's next stage:** onboarding `animation`/`audio` (worktrees cut by hand) after the human screen check.
 
 ---
 
