@@ -161,3 +161,13 @@ ONBOARDING SEQUENCE for animation/audio (owner runs it, when the owner says go):
   do NOT need -DFETCHCONTENT_BASE_DIR (the older feature branches do). Still -G Ninja.
 
 **Why:** Owner correction 2026-10-13. A lane is a default/identity, not a fence; the earlier reading treated it as prohibition, which wrongly framed net's main commits as a violation. Disclosure replaces prohibition.
+
+## 2026-10-15 - decision by user: everyone on ONE COMMON POINT; re-align at stage start, not after every commit
+
+Owner: "everyone must be on a common point." The lane worktrees (`worktrees/assets`, `worktrees/multiplayer`) and `main` must sit on the SAME commit before a work stage begins.
+
+BUT main keeps moving as PM lands docs/cleanup commits, and each such commit re-drifts the lanes by one docs-only commit. Re-aligning after every commit is churn. CONVENTION: re-align each lane (`git -C worktrees/<name> merge --ff-only main`) once, at the START of each work stage — that is the commit the stage builds from. A docs-only drift mid-stage is harmless and is absorbed by the next re-align.
+
+Why it matters: the animation/audio stage is cut from whatever commit the lanes share; a lane that silently sits behind main would start the new work from an older base.
+
+Push: see `[git-push-policy]` (2026-10-15) — pushing allowed only for completed, tested work.
