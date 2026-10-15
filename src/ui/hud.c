@@ -103,6 +103,47 @@ static void draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
     SDL_DestroySurface(surface);
 }
 
+/* Damage vignette (B41): the hurt feedback used to be a flat full-screen red
+ * tint, which reads as a colour wash rather than damage taken. This draws a
+ * falloff that is strongest at the screen edges and fades to nothing toward the
+ * centre, so the middle of the view stays clear. It is purely a HUD overlay -
+ * cosmetic and local, and it draws the host's HP the client already displays,
+ * so there is no authority concern. */
+static void draw_damage_vignette(SDL_Renderer *renderer, float flash,
+                                 int screen_w, int screen_h) {
+    if (flash <= 0.0f || screen_w <= 0 || screen_h <= 0) return;
+
+    const int   bands   = 24;
+    const float min_dim = (float)(screen_w < screen_h ? screen_w : screen_h);
+    const float extent  = min_dim * 0.35f;   /* how far the falloff reaches in */
+    const float band    = extent / (float)bands;
+
+    for (int i = 0; i < bands; i++) {
+        /* 1.0 at the outer edge -> ~0 at the inner band; squared for a soft,
+         * non-linear falloff rather than a hard ramp. */
+        float t = 1.0f - ((float)i + 0.5f) / (float)bands;
+        SDL_SetRenderDrawColorFloat(renderer, 1.0f, 0.0f, 0.0f,
+                                    flash * 0.5f * t * t);
+        float off = band * (float)i;
+
+        /* Top and bottom span the full width, so the corners are covered once. */
+        SDL_FRect top    = {0.0f, off, (float)screen_w, band};
+        SDL_FRect bottom = {0.0f, (float)screen_h - off - band, (float)screen_w, band};
+        SDL_RenderFillRect(renderer, &top);
+        SDL_RenderFillRect(renderer, &bottom);
+
+        /* Left and right sit between the top and bottom bands, so they never
+         * stack alpha on the corners. */
+        float side_h = (float)screen_h - 2.0f * extent;
+        if (side_h > 0.0f) {
+            SDL_FRect left  = {off, extent, band, side_h};
+            SDL_FRect right = {(float)screen_w - off - band, extent, band, side_h};
+            SDL_RenderFillRect(renderer, &left);
+            SDL_RenderFillRect(renderer, &right);
+        }
+    }
+}
+
 void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
               const struct Player *local, const HudPlayerState *auth, bool multi,
               int screen_w, int screen_h, TTF_Font *font) {
@@ -273,11 +314,8 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     SDL_SetRenderDrawColorFloat(renderer, 1.0f, 0.3f, 0.3f, 0.8f);
     SDL_RenderFillRect(renderer, &(SDL_FRect){cx - 1.5f, cy - 1.5f, 3.0f, 3.0f});
 
-    /* Damage flash overlay */
-    if (hud->damage_flash > 0) {
-        SDL_SetRenderDrawColorFloat(renderer, 1.0f, 0.0f, 0.0f, hud->damage_flash * 0.3f);
-        SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
-    }
+    /* Damage flash overlay (B41): an edge vignette, not a full-screen tint. */
+    draw_damage_vignette(renderer, hud->damage_flash, screen_w, screen_h);
 
     /* Center message */
     if (hud->message_timer > 0) {
