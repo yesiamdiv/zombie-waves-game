@@ -4,3 +4,5 @@ game.log
 __pycache__/
 # Inter-agent message channel (knowledge/agent-rules.md §11) — never committed.
 agents/
+# Stray OpenCode session exports (repo-root scratch).
+/session-ses_*.md
