@@ -56,3 +56,18 @@ difficulty: 1.00`.
 
 The 1186 in the 2026-10-09 entry above is the historical number; **1253** is
 current. It is still a count of TESTS, not assertions.
+
+## 2026-10-22 18:58 UTC - note by animation: the test count moves 1347 -> 1382 (the rate-rule test)
+
+`test_animation_rate_rule` (AN4) simulates the client's view of the animation
+and checks the <= 15 fps rule, so the suite gained 35 checks:
+`./build/zombie_tests` now reports **1382 passed, 0 failed** instead of 1347.
+
+Everything else in this baseline is UNCHANGED and was re-verified in the same
+commit: ctest 3/3, `gen_assets.py --verify` 41 textures, the release build
+clean, and the two `--seed=42` single-player runs still byte-identical at
+**125938 bytes / 1603 lines** with wave 1 still `8 zombies, interval: 1.90s,
+difficulty: 1.00`.
+
+The 1347 in the 2026-10-22 18:47 UTC entry above is the historical number;
+**1382** is current.

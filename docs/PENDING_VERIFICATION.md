@@ -240,6 +240,10 @@ gate in this repo can clear any of it.
       backwards steps; at 24 fps a quarter of the steps are skipped. The rule
       is arithmetic, not perception — confirm the chosen rate (target 10 fps,
       8-frame cycle = 800 ms) looks right and does not read as a slideshow.
+      **Implemented 2026-10-22 (AN4):** the rule is code
+      (`ANIM_MAX_FPS 15`, `ANIM_FRAME_PERIOD 0.1 s`) and a test simulates the
+      client's view and fails if the rate is broken. The arithmetic is proven;
+      the perception is not.
 - [ ] **A client's zombie shows the same walk frame the host shows.** The
       client holds the last art id for one snapshot interval, so it lags the
       host by up to ~50 ms. Check that a client and a host side by side show

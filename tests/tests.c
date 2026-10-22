@@ -1903,6 +1903,119 @@ static void test_net_art_table(void) {
     CHECK(net_art_base_px(NET_ART_ZOMBIE) == net_art_base_px(NET_ART_ZOMBIE_WALK0));
 }
 
+/* The rate rule: the frame period must be at least 1/15 s.
+ *
+ * This test is here to FAIL if somebody speeds the cycle up. The snapshot
+ * stream is 20 Hz and the client HOLDS the last art id it was given until the
+ * next snapshot arrives, so a cycle that runs faster than the rule allows
+ * cannot deliver every frame: the client skips steps and the walk pops.
+ * Measured in the spike: at 15 fps and slower every cycle shows all 8 frames,
+ * at 24 fps a quarter of the steps are skipped
+ * (docs/knowledge/animation-transport.md).
+ *
+ * The simulation below is the spike's measurement turned into a regression
+ * test: the host ticks at 60 Hz and sends a snapshot every NET_SNAP_HZ, the
+ * client holds the last id, and we count what the client actually SEES per
+ * cycle. */
+typedef struct {
+    int min_distinct_per_cycle;  /* fewest frames the client saw in one cycle */
+    int max_skipped_per_cycle;    /* most frame steps the client never saw */
+    int backwards_steps;          /* the client running backwards (never) */
+} AnimClientView;
+
+static AnimClientView anim_simulate_client(float period, float phase) {
+    const float tick = 1.0f / 60.0f;
+    const float snap_period = 1.0f / (float)NET_SNAP_HZ;
+    const float cycle_len = period * (float)ANIM_WALK_FRAMES;
+    const float end = 8.0f;   /* 8 s: several cycles */
+
+    AnimClientView v = {ANIM_WALK_FRAMES, 0, 0};
+    int cycle_frames[64][ANIM_WALK_FRAMES];
+    int cycle_skips[64];
+    int cycles = 0;
+
+    int host_frame = 0;
+    int last_client_frame = -1;
+    float frame_due = period;   /* the host changes frame every `period` */
+    float snap_due = phase;     /* the first snapshot is due at `phase` */
+    float t = 0.0f;
+
+    while (t < end) {
+        if (t >= frame_due) {
+            host_frame = (host_frame + 1) % ANIM_WALK_FRAMES;
+            frame_due += period;
+        }
+        if (t >= snap_due) {
+            snap_due += snap_period;
+            int cyc = (int)(t / cycle_len);
+            if (cyc < 64) {
+                if (cyc >= cycles) {
+                    for (int i = 0; i < ANIM_WALK_FRAMES; i++) {
+                        cycle_frames[cyc][i] = 0;
+                    }
+                    cycle_skips[cyc] = 0;
+                    cycles = cyc + 1;
+                }
+                /* What the client SAW in this cycle. Counted per cycle: a
+                 * frame the client missed in one cycle can still turn up in
+                 * the next, and that is exactly what the rule is about. */
+                cycle_frames[cyc][host_frame] = 1;
+                if (last_client_frame >= 0 && host_frame != last_client_frame) {
+                    int step = (host_frame - last_client_frame + ANIM_WALK_FRAMES)
+                               % ANIM_WALK_FRAMES;
+                    if (step == 0 || step > ANIM_WALK_FRAMES / 2) {
+                        v.backwards_steps++;   /* the client went backwards */
+                    } else {
+                        cycle_skips[cyc] += step - 1;   /* frames it missed */
+                    }
+                }
+            }
+            last_client_frame = host_frame;
+        }
+        t += tick;
+    }
+
+    for (int c = 0; c < cycles; c++) {
+        int distinct = 0;
+        for (int i = 0; i < ANIM_WALK_FRAMES; i++) {
+            if (cycle_frames[c][i]) distinct++;
+        }
+        if (distinct < v.min_distinct_per_cycle) v.min_distinct_per_cycle = distinct;
+        if (cycle_skips[c] > v.max_skipped_per_cycle) v.max_skipped_per_cycle = cycle_skips[c];
+    }
+    return v;
+}
+
+static void test_animation_rate_rule(void) {
+    LOG_INFO("--- Test: the animation rate rule (<= 15 fps) ---");
+
+    /* The rule as a number. */
+    CHECK(ANIM_MAX_FPS == 15);
+    CHECK(ANIM_FRAME_PERIOD > 0.0f);
+    CHECK(ANIM_FRAME_PERIOD >= ANIM_FRAME_PERIOD_MIN);
+
+    /* The rule as behaviour: at the project's rate AND at the rule's own
+     * ceiling, every frame of the cycle reaches the client - for every phase
+     * between the frame clock and the snapshot clock. */
+    const float phases[5] = {0.0f, 0.0125f, 0.0250f, 0.0375f, 0.0500f};
+    const float legal[2] = {ANIM_FRAME_PERIOD, ANIM_FRAME_PERIOD_MIN};
+    for (int p = 0; p < 5; p++) {
+        for (int l = 0; l < 2; l++) {
+            AnimClientView v = anim_simulate_client(legal[l], phases[p]);
+            CHECK(v.min_distinct_per_cycle == ANIM_WALK_FRAMES);
+            CHECK(v.max_skipped_per_cycle == 0);
+            CHECK(v.backwards_steps == 0);
+        }
+    }
+
+    /* And the rule has teeth: a cycle that runs FASTER than the rule allows
+     * must make the client miss frames. If this ever stops being true, the
+     * simulation above is measuring nothing and the rule is unguarded. */
+    AnimClientView fast = anim_simulate_client(1.0f / 24.0f, 0.0f);
+    CHECK(fast.min_distinct_per_cycle < ANIM_WALK_FRAMES);
+    CHECK(fast.max_skipped_per_cycle > 0);
+}
+
 /* The frame-selection function: frame number -> art id -> file.
  *
  * The point of the whole design is that ONE function answers "which frame is
@@ -2451,6 +2564,7 @@ int tests_run_all(void) {
     test_net_art_table();
     test_animation_frames();
     test_animation_frame_advance();
+    test_animation_rate_rule();
     test_net_snapshot_build();
     test_net_player_state();
     test_net_mirror_interp();

@@ -23,12 +23,20 @@
 
 /* How long one frame lasts, in seconds. 0.1 s = 10 fps.
  *
- * THE CEILING IS 15 fps (0.0667 s), and it is not negotiable: the snapshot
- * stream is 20 Hz, so a frame period shorter than the snapshot interval makes
- * the client skip frames, and the skip pattern is what the spike measured
+ * THE CEILING IS 15 fps, and it is not negotiable: the snapshot stream is
+ * 20 Hz, so a frame period shorter than the snapshot interval makes the
+ * client skip frames, and the skip pattern is what the spike measured
  * (docs/knowledge/animation-transport.md). AN4 pins that rule with a test so
  * nobody can quietly speed the cycle up. */
 #define ANIM_FRAME_PERIOD 0.1f
+
+/* THE RULE, as a number: the frame period must be at least 1/ANIM_MAX_FPS
+ * seconds. 15 fps is the measured ceiling - at 15 fps and slower every cycle
+ * reaches the client with all 8 frames, at 24 fps a quarter of the steps are
+ * skipped and the walk pops. `test_animation_rate_rule` checks the rule
+ * behaves, not just that the constant is big enough. */
+#define ANIM_MAX_FPS 15
+#define ANIM_FRAME_PERIOD_MIN (1.0f / (float)ANIM_MAX_FPS)
 
 /* The art id of frame `frame` of the zombie walk cycle. Wraps around. */
 uint8_t anim_walk_art_id(int frame);

@@ -239,3 +239,39 @@ resolves an art id to a texture - it only needed the host to send the right id.
 **What this does NOT prove:** the picture. A headless gate cannot see a walk
 cycle, and the client path still needs a human watching two windows. The
 on-screen items stay open in `docs/PENDING_VERIFICATION.md`.
+
+## 2026-10-22 18:58 UTC - note by animation: the rate rule is code, and the test has teeth (AN4)
+
+The spike left one HARD RULE: the animation frame period must be >= 67 ms
+(<= 15 fps). A rule that only exists in a document is a rule that gets broken
+by the next person who does not read documents, so it is now a constant plus a
+test that fails when the rule is broken.
+
+- `src/graphics/anim.h`: `ANIM_MAX_FPS 15` and
+  `ANIM_FRAME_PERIOD_MIN (1.0f / ANIM_MAX_FPS)`, with `ANIM_FRAME_PERIOD`
+  (0.1 s = 10 fps) checked against it.
+- `tests/tests.c`: `test_animation_rate_rule`. It simulates the CLIENT the way
+  the network does it - the host ticks at 60 Hz, a snapshot goes out every
+  `NET_SNAP_HZ` (20), and the client HOLDS the last art id it was given - and
+  counts, per cycle, how many of the 8 frames the client actually saw and how
+  many steps it missed.
+
+**The test has teeth, and that was checked by breaking it on purpose:** with
+`ANIM_FRAME_PERIOD` set to 1/30 the suite fails on both counts - the constant
+check AND the behaviour (the client sees 5..6 of the 8 frames per cycle and
+misses steps). Restored, the suite is green. So the rule is not "the constant
+is big enough"; it is "the client still sees every frame".
+
+**What the simulation reproduces** (the spike's table, in float this time):
+10 fps 8/8, 0 missed; 15 fps 8/8, 0 missed; 12 fps 8/8; 24 fps 6/8, 2 missed
+per cycle. The 15 fps boundary is safe, but only just - it is 4 host ticks per
+frame, so a one-tick jitter can cost a frame. That is why the project runs at
+10 fps (6 ticks per frame) and why the target is 10 rather than 15.
+
+The simulation also confirms the spike's other finding: the client never runs
+BACKWARDS (0 backwards steps at every rate) - it can stutter, it cannot
+reverse, because it only ever holds the last id it was given.
+
+**Still unproven:** the rate is arithmetic, not perception. Whether 10 fps
+reads as a walk or as a slideshow is a question for human eyes
+(`docs/PENDING_VERIFICATION.md`).

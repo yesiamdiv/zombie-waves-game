@@ -431,3 +431,24 @@ B35's colour on the *client* is still unproven.
   period is too short), then AN5 (content: walk/attack/death, pickup bob,
   missing-texture fallback), then AN7 (the sword art ids and the angle contract
   for net).
+
+### AN4 — the rate rule as code (≤ 15 fps constant + a test with teeth)
+- `src/graphics/anim.h`: `ANIM_MAX_FPS 15`, `ANIM_FRAME_PERIOD_MIN
+  (1.0f / ANIM_MAX_FPS)`, and `ANIM_FRAME_PERIOD` (0.1 s = 10 fps) checked
+  against them.
+- `tests/tests.c`: `test_animation_rate_rule` simulates the CLIENT the way the
+  network does it — the host ticks at 60 Hz, a snapshot goes out every
+  `NET_SNAP_HZ` (20), the client holds the last art id it was given — and
+  counts, per cycle, how many of the 8 frames the client saw and how many
+  steps it missed.
+- **The teeth were checked by breaking it on purpose:** with the period set to
+  1/30 the suite fails on the constant AND on the behaviour (5..6 of 8 frames
+  per cycle, steps missed). Restored: green.
+- The simulation reproduces the spike's table in float: 10 fps 8/8, 15 fps 8/8,
+  12 fps 8/8, 24 fps 6/8 with 2 missed per cycle. The 15 fps boundary is safe
+  but tight (4 host ticks per frame, so one tick of jitter can cost a frame) —
+  which is why the project runs at 10 fps (6 ticks per frame).
+- Gate: build clean, ctest 3/3, `zombie_tests` 1347 → 1382 / 0 (declared in
+  `docs/knowledge/gate-baseline.md` in the same commit), `gen_assets.py
+  --verify` 41 textures, two `--seed=42` SP runs byte-identical (125938 bytes /
+  1603 lines).
