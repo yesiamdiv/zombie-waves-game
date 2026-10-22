@@ -140,26 +140,37 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | **DONE `7ee1e16`** — verdict: **DESIGN A** (individual PNG frames), period ≥ 67 ms (≤15 fps, target 10); sheet frames unnamable; gate blind to animation; ≤15 fps = 8/8 frames. No wire change (`NET_WIRE_VERSION` 8, entry 35). B31 reopened. |
 | AT4 | ~~Animation Phases A–C~~ — **superseded** by animation's proposed AN1–AN7. | AT3 | cancelled → AN1–AN7 |
 | AT5 | ~~Animation Phase D~~ — **superseded** by AN6 (client path, human-gated). | human | cancelled → AN6 |
-| AN1 | Art table append: 8 walk-frame ids (art table 10→18) + `NET_ASSET_VERSION` 1→2 in one commit. **Needs net's freeze handshake.** | AT3, net freeze | **animation · next** |
-| AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **animation · IN PROGRESS** |
+| AN1 | Art table append: 8 walk-frame ids (art table 10→18) + `NET_ASSET_VERSION` 1→2 in one commit. **Needs net's freeze handshake.** | AN2, net freeze | **animation · next** |
+| AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **DONE `18c95af`** — `zombie_walk0..7.png`, frame 0 == idle, 8 pairwise distinct; **textures 33→41** re-baselined in `gate-baseline` on the animation lane |
 | AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **animation · IN PROGRESS** |
 | AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | animation · next |
 | AN5 | Content: walk/attack/death, player walk, pickup bob, missing-texture fallback. | AN2, AN3 | animation · next |
 | AN6 | Phase D client path — same selection function; **blocked on human two-window I5 check**. | human | animation · blocked (human) |
 | AN7 | NT4 animation-side support: sword art ids + angle contract (procedural blade, int16 centidegrees) for net. | AN1 | animation · next |
 | AT6 | ~~Audio Phase-0 spike~~ — **superseded** by audio's own proposed breakdown A1–A6 (owner rule: build tasks from the agent's proposal). | AT2 | cancelled → A1–A6 |
-| A1 | Audio backend decision, measured: vendored miniaudio vs **SDL3's own audio API** (already linked); compile/binary/device cost, sound proven on the speakers (pw-record). Verdict may change the plan of record. | AT2 | **audio · IN PROGRESS** |
-| A2 | Soft-fail proof for the chosen backend (no device / missing file / `--headless`). | A1 | audio · next |
-| A3 | Trigger audit: one row per intended sound, read from code, host-authoritative vs client-derivable. | A1 | audio · next |
-| A4 | Double-fire audit: emission counts per event type, host vs client, 25 s co-op. | A1 | audio · next |
-| A5 | Gunfire latency (audible?) + reload-on-wire evidence. | A1 | audio · next |
-| A6 | Commit spike verdicts into `audio-plan` §10 + measurements topic; gate first. | A2–A5 | audio · next |
-| AT7 | Audio phases; NT2 (`GE_EXPLOSION`) lands in this commit window and is re-verified jointly with `net`. Note the measured correction: NT2 does not move the seed-42 SP reference (bot never detonates); only test count 1186→1194. | A6, D3 | audio · next (after verdict) |
+| A1 | Audio backend decision, measured: vendored miniaudio vs **SDL3's own audio API** (already linked); compile/binary/device cost, sound proven on the speakers (pw-record). Verdict may change the plan of record. | AT2 | **DONE `8f3e4c3`** — verdict **SDL3 audio API**: 0 B binary / 0 s build / no new dep vs miniaudio 4.1 MB header + 19 s compile + 646–884 KB + `-ldl -lpthread`; both reach the speakers (tone captured). Cost decision: we own ~150–250 lines of mixing. |
+| A2 | Soft-fail proof for the chosen backend (no device / missing file / `--headless`). | A1 | **DONE `8f3e4c3`** — proven at probe level (both backends, exit 0, no abort); game-level `--headless` still a Phase-B acceptance item |
+| A3 | Trigger audit: one row per intended sound, read from code, host-authoritative vs client-derivable. | A1 | **DONE `8f3e4c3`** — table in `audio-plan` §6; client can't tell who-hit (`ib` dropped) or hurt-vs-heal (`ia` dropped); rocket impact needs NT2; shop/spawn not relayed → host-only; no reload mechanic |
+| A4 | Double-fire audit: emission counts per event type, host vs client, 25 s co-op. | A1 | **DONE `8f3e4c3`** — ruled out by counting: every relayed type at ratio 1.00 in two co-op runs (25 s headless, 18 s windowed), ids one-for-one |
+| A5 | Gunfire latency (audible?) + reload-on-wire evidence. | A1 | **DONE `8f3e4c3`** — relay ~1 ms; delay is frame-bound (one host + one client frame): ~90 ms median at ~25 FPS, ~33 ms at 60 FPS; no reload exists |
+| A6 | Commit spike verdicts into `audio-plan` §10 + measurements topic; gate first. | A2–A5 | **DONE `8f3e4c3`** — `audio-plan` §10, `knowledge/audio-measurements` (on lane), listen-for list, PROGRESS; no product code |
+| A7 | **Phase B** — audio foundations on the SDL3 backend: `src/audio/`, init/update/shutdown in `main.c`, `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`. | A1 | **audio · next** — headless silent + allocation-free |
+| A8 | **Phase C** — `tools/gen_audio.py` + `assets/audio/**` + the sounds; deterministic regeneration. | A7 | audio · next |
+| A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | audio · next (after NT2 in main; rebase per merge order) |
+| A10 | **Phase E** — human listens, two windows; judge whether the client's own gunshot feels late. | A9 | audio · blocked (human) |
+| AT7 | NT2 (`GE_EXPLOSION`) landing window, re-verified jointly with `net`. Measured correction: NT2 does not move the seed-42 SP reference (bot never detonates); only test count 1186→1194. | A6, D3 | **released to land when net is ready** (audio Phase D needs it in main) |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
 | AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | assets · last (after B43–B45) |
-| AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Re-baseline texture count 33→34 in `knowledge/gate-baseline`. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | **assets · NEXT** (owner order: after B43, before B44) |
+| AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | **DONE `f7e2556`** (+docs `7eed6da`) — `ui/vignette.png`, 33→34 lane-local; on-screen unproven |
 | AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | **DONE `fba930e`** (+docs `8899446`) — art, not blend; 33 textures; on-screen unproven |
-| AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | assets · next (owner order: after B45) |
+| AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | **assets · IN PROGRESS** (owner order: after B45) |
+
+> **Texture-count collision (PM, 2026-10-22).** Both lanes re-baselined
+> `knowledge/gate-baseline` from 33 independently: animation AN2 → **41**
+> (8 walk PNGs), assets B45 → **34** (vignette). These are lane-local numbers.
+> The merged count is **42** (33 + 8 + 1). Animation lands first; assets must
+> rebase onto that landing and set the combined number **42** deliberately, not
+> resolve the merge to 34. Audio adds no textures.
 
 ### shared
 
