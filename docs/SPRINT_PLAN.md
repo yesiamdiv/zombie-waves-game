@@ -140,7 +140,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | **DONE `7ee1e16`** — verdict: **DESIGN A** (individual PNG frames), period ≥ 67 ms (≤15 fps, target 10); sheet frames unnamable; gate blind to animation; ≤15 fps = 8/8 frames. No wire change (`NET_WIRE_VERSION` 8, entry 35). B31 reopened. |
 | AT4 | ~~Animation Phases A–C~~ — **superseded** by animation's proposed AN1–AN7. | AT3 | cancelled → AN1–AN7 |
 | AT5 | ~~Animation Phase D~~ — **superseded** by AN6 (client path, human-gated). | human | cancelled → AN6 |
-| AN1 | Art table append: 8 walk-frame ids (art table 10→18) + `NET_ASSET_VERSION` 1→2 in one commit. **Needs net's freeze handshake.** | AN2, net freeze | **animation · next** |
+| AN1 | Art table append: 8 walk-frame ids (art table 10→18) + `NET_ASSET_VERSION` 1→2 in one commit. **Needs net's freeze handshake.** | AN2, net freeze | **DONE `35a8b46`** — ids 10–17, `NET_ASSET_VERSION` 2, wire still v8/35; tests 1186→1253; freeze released to net |
 | AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **DONE `18c95af`** — `zombie_walk0..7.png`, frame 0 == idle, 8 pairwise distinct; **textures 33→41** re-baselined in `gate-baseline` on the animation lane |
 | AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **animation · IN PROGRESS** |
 | AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | animation · next |
@@ -165,12 +165,18 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | **DONE `fba930e`** (+docs `8899446`) — art, not blend; 33 textures; on-screen unproven |
 | AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | **assets · IN PROGRESS** (owner order: after B45) |
 
-> **Texture-count collision (PM, 2026-10-22).** Both lanes re-baselined
-> `knowledge/gate-baseline` from 33 independently: animation AN2 → **41**
-> (8 walk PNGs), assets B45 → **34** (vignette). These are lane-local numbers.
-> The merged count is **42** (33 + 8 + 1). Animation lands first; assets must
-> rebase onto that landing and set the combined number **42** deliberately, not
-> resolve the merge to 34. Audio adds no textures.
+> **Lane-local gate baselines (PM, 2026-10-22).** Several lanes re-baseline the
+> same `knowledge/gate-baseline` numbers independently; those numbers are
+> **lane-local, not merged**:
+> - **Textures:** animation AN2 → **41** (8 walk PNGs), assets B45 → **34**
+>   (vignette). Merged = **42** (33 + 8 + 1).
+> - **Tests:** animation AN1 → **1253** (art-table checks), net NT2 → **1194**
+>   (GE_EXPLOSION), and NT3/NT4 plus audio's mixer tests will add more.
+>
+> Do **not** resolve a merge by picking one lane's number. On the merged tree,
+> run the suite and `gen_assets --verify` and set the measured numbers
+> **deliberately** in `gate-baseline` in that merge commit. Animation lands
+> first; assets/audio rebase onto it.
 
 ### shared
 
