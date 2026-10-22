@@ -120,8 +120,8 @@ next stage opens on the owner's go.**
 |---|---|---|---|
 | NT1 | Relay `GE_WAVE_END` (B39): filter add in `relay_net_events()` + `BUGS.md` close-out. Free — no wire bump, relay early-returns in SP. | D2 ✔ | P1 · **DONE `feature/net-protocol@e94eb0e`** |
 | NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters). **Measured correction (net, 2026-10-22):** the seed-42 25 s bot run does **not** move — the bot never detonates an explosive — so the SP events-log reference is unchanged (125938/1603); only the test count moves (1186→1194). "Re-baseline" therefore applies only to runs that actually use explosives. | D3 ✔, audio start | **net · IMPLEMENTED `8f408b7`** on lane (not main) — held for AT7 landing |
-| NT3 | B38 snapshot count: if design B, fold a `u16` into the `NET_WIRE_VERSION` 8→9 bump; if design A, lower `NET_SNAP_MAX_ENTITIES` to 255 **with a loud encoder guard**. Spike-gated; belongs to the bump window. | A-vs-B spike | P1 (unactionable) — parked until the spike |
-| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind (option 1), inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Rides NT3's bump if B. | D1 ✔, animation start | **net · next** (after NT2; coordinate with animation) |
+| NT3 | B38 snapshot count. **UNPARKED 2026-10-22:** the spike chose design A (no animation wire change), but NT4 needs a field — so open **one** wire-bump window and fold the entity count to `u16` **together with** NT4's fields in a single `NET_WIRE_VERSION` 8→9 bump (one bump, per D1). Codec test + version declaration in the same commit. | A-vs-B ✔ (A), NT4 | **net · IN PROGRESS** — bump window open (8→9) |
+| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind, inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Verdict: **procedural blade** — snapshot carries `int16` centidegrees angle (wraps at 180°) + extensible attribute block; client draws via `sprite_draw_blade()` with wrap-safe interpolation. **Rides the single 8→9 bump with NT3.** Waits on AN7 (blade art id) + freeze handshake. | D1 ✔, AN7, bump | **net · next** (after NT2; coordinate with animation) |
 | NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | **net · active** — animation will announce before touching `net_art.*` |
 | NT6 | Purge `/tmp/opencode` scratch paths from `tests/tests.c` (tmpfs quota hazard). | — | P1 · **DONE `f260c55`** |
 | NT7 | B32–B35 human two-window screen check on `feature/net-protocol`. | a human | P1 verification debt · blocked (human) |
@@ -137,9 +137,16 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 |---|---|---|---|
 | AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT` + `CROSS_BRANCH_CONFLICTS`) **into `docs/knowledge/` topics** (D7). | main clean | P1 · **DONE `a25d9ba`** — main tracked tree clean, gate green |
 | AT2 | Owner cuts `worktrees/animation`+`feature/animation-assets` and `worktrees/audio`+`feature/audio` by hand (`git worktree add -b`), animation first. Precondition: main committed/clean + gate green. | main clean, AT1 | **DONE 2026-10-22** — both cut at `68280a3` |
-| AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | **animation · IN PROGRESS** |
-| AT4 | Animation Phases A–C, strictly downstream of the snapshot (no RNG, no sim feedback). **Design-A only:** the ~60–80 `net_art` appends + `NET_ASSET_VERSION` 1→2 apply only if the spike picks A; goes through the freeze protocol with `net`. | AT3 | animation · next |
-| AT5 | Animation Phase D — **blocked on a human two-window I5 check**, not on a gate. | human | animation · blocked (human) |
+| AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | **DONE `7ee1e16`** — verdict: **DESIGN A** (individual PNG frames), period ≥ 67 ms (≤15 fps, target 10); sheet frames unnamable; gate blind to animation; ≤15 fps = 8/8 frames. No wire change (`NET_WIRE_VERSION` 8, entry 35). B31 reopened. |
+| AT4 | ~~Animation Phases A–C~~ — **superseded** by animation's proposed AN1–AN7. | AT3 | cancelled → AN1–AN7 |
+| AT5 | ~~Animation Phase D~~ — **superseded** by AN6 (client path, human-gated). | human | cancelled → AN6 |
+| AN1 | Art table append: 8 walk-frame ids (art table 10→18) + `NET_ASSET_VERSION` 1→2 in one commit. **Needs net's freeze handshake.** | AT3, net freeze | **animation · next** |
+| AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **animation · IN PROGRESS** |
+| AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **animation · IN PROGRESS** |
+| AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | animation · next |
+| AN5 | Content: walk/attack/death, player walk, pickup bob, missing-texture fallback. | AN2, AN3 | animation · next |
+| AN6 | Phase D client path — same selection function; **blocked on human two-window I5 check**. | human | animation · blocked (human) |
+| AN7 | NT4 animation-side support: sword art ids + angle contract (procedural blade, int16 centidegrees) for net. | AN1 | animation · next |
 | AT6 | ~~Audio Phase-0 spike~~ — **superseded** by audio's own proposed breakdown A1–A6 (owner rule: build tasks from the agent's proposal). | AT2 | cancelled → A1–A6 |
 | A1 | Audio backend decision, measured: vendored miniaudio vs **SDL3's own audio API** (already linked); compile/binary/device cost, sound proven on the speakers (pw-record). Verdict may change the plan of record. | AT2 | **audio · IN PROGRESS** |
 | A2 | Soft-fail proof for the chosen backend (no device / missing file / `--headless`). | A1 | audio · next |
