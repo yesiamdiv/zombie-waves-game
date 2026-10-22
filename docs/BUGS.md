@@ -51,11 +51,11 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
 | B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | OPEN |
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
-| B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (execution needs refinement — see B45) |
+| B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (refined in B45) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
 | B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | `fba930e` | FIXED (art, not blend) |
 | B44 | Menu UI text overlaps (regression of B1's class) | — | OPEN |
-| B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | — | OPEN |
+| B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | `f7e2556` | FIXED |
 
 ## Detailed entries
 
@@ -919,3 +919,30 @@ Found 2026-10-22 by the owner, playing.
   `zombie_tests` 1186/0, `gen_assets --verify` 33 textures, two `--seed=42` SP
   runs byte-identical at 125938 bytes / 1603 lines. **On-screen result is
   UNPROVEN until the owner looks** (`i5-unverified-on-screen`).
+
+## B45. Damage vignette looks banded/incomplete
+
+Found 2026-10-22 by the owner, playing (follow-up to B41).
+
+- **Symptom**: the B41 edge vignette read as coarse horizontal/vertical bands
+  rather than a smooth falloff — the live 24-band fill was visible as banding and
+  the corners looked unfinished.
+- **Root cause**: the B41 fix drew the falloff in real time as 24 discrete edge
+  bands (`draw_damage_vignette()` in `src/ui/hud.c`); a fixed number of hard-edged
+  rectangles can only approximate a radial gradient, and the bands are visible.
+- **Fix**: bake the gradient into one texture and draw it stretched. New
+  `ui_vignette()` in `tools/gen_assets.py` writes
+  `assets/textures/ui/vignette.png` (256x256, red, alpha 0 at the centre rising
+  from ~40% of the radius outward to a maximum at the edges/corners via a
+  smoothstep falloff); `draw_damage_vignette()` now blits that texture over the
+  whole screen with `SDL_SetTextureAlphaMod` scaled by the damage timer. Route
+  chosen in `knowledge/ui-damage-vignette`. Commit `f7e2556`.
+- **UI-only art**: the vignette is not an entry in the net art table
+  (`src/net/net_art.h`), so `NET_ASSET_VERSION` is untouched; it is a new texture,
+  so the deliberate `gate-baseline.md` re-baseline moves the count **33 -> 34** in
+  the same commit.
+- **Status**: FIXED (`f7e2556`). Build clean under `-Werror`, `ctest` 3/3,
+  `zombie_tests` 1186/0, `gen_assets --verify` 34 textures, two `--seed=42` SP
+  runs still byte-identical at 125938 bytes / 1603 lines (the overlay touches no
+  simulation or event). **On-screen result is UNPROVEN until the owner looks**
+  (`i5-unverified-on-screen`) — no gate can see banding.
