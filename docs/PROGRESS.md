@@ -714,3 +714,6 @@ Freeze lifted by animation when AN1 landed (35a8b46).
   needs for a rocket explosion sound).
 - Nothing in this session is `fixed`: no sound has been heard by a human, so
   the audio feature remains **unproven** by construction.
+
+**Commits:** `cce1990` (the spike verdicts + the trigger audit + the new
+`audio-measurements` topic) and `f23ecdc` (the listen-for list + this log).
