@@ -309,6 +309,18 @@ void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_
     float row_h = lh + 18.0f;
     float block_h = (float)menu->option_count * row_h;
     float first_y = screen_h * 0.5f - block_h * 0.5f;
+    /* B44: on short windows the centered block rode up into the notice line
+     * (and its own subtitle) or down into the hint lines. Keep a minimum gap on
+     * both sides; the header grows by one line when the notice is shown. */
+    float header_bottom = screen_h * 0.18f + 2.0f * lh + 16.0f;
+    if (menu->message[0] != '\0') {
+        header_bottom = screen_h * 0.18f + 2.0f * (lh + 16.0f) + lh;
+    }
+    float hint_top = screen_h - lh * 3.0f - 28.0f;
+    float min_y = header_bottom + 12.0f;
+    float max_y = hint_top - block_h - 12.0f;
+    if (first_y < min_y) first_y = min_y;
+    if (first_y > max_y) first_y = max_y;
     for (int i = 0; i < menu->option_count; i++) {
         SDL_FColor opt_color;
         if (i == menu->selected_option) {
@@ -383,10 +395,13 @@ void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, 
     draw_text_centered(renderer, font, "SELECT MAP",
                        screen_w * 0.5f, screen_h * 0.08f, title_color);
 
-    /* Map list (left): name row + detail row, spaced by font height. */
+    /* Map list (left): each entry is TWO measured lines - a name row and a
+     * detail row - plus a gap, so the selected entry's detail line can never
+     * touch the next entry's name (assets B44; the old `lh * 2.2` rhythm left
+     * the detail line ~2px into the next row at every window size). */
     float list_x = screen_w * 0.30f;
     float row_y = screen_h * 0.20f;
-    const float row_h = lh * 2.2f;
+    const float row_h = lh * 2.0f + 12.0f;
     for (int i = 0; i < menu->option_count; i++) {
         const MapDef *def = map_registry_get(i);
         if (!def) continue;
@@ -646,6 +661,10 @@ void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventor
 
     const float row_h = lh + 14.0f;
     float first_y = screen_h * 0.38f - ((float)SHOP_OPTION_COUNT * row_h) * 0.5f;
+    /* B44: on short windows the centered list could ride up into the points
+     * line; keep a minimum gap below it. */
+    float pts_bottom = screen_h * 0.10f + lh + 14.0f + lh;
+    if (first_y < pts_bottom + 12.0f) first_y = pts_bottom + 12.0f;
 
     const char *rows[SHOP_OPTION_COUNT] = {
         "Pistol",
