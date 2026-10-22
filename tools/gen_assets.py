@@ -19,6 +19,7 @@ TILE_BASE = 16
 DEFAULT_SCALE = 4
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "tiles")
 ENT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "entities")
+UI_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "ui")
 
 
 def render(grid, palette, scale):
@@ -297,6 +298,29 @@ def entity_blade():
                "S": (176, 194, 206), "H": (226, 236, 244)}
 
 
+def ui_vignette(size=256, max_alpha=170, color=(220, 30, 30)):
+    """Damage vignette (B45): a square red radial-alpha texture, alpha 0 in the
+    centre rising from ~40% of the radius outward to a maximum at the edges and
+    corners (smoothstep falloff). The HUD draws it stretched to the screen and
+    fades it on the damage timer; this replaces the banded real-time fill from
+    B41/e637a5d. It is UI-only art (not in the net art table), so
+    NET_ASSET_VERSION is untouched, but it is a new texture, so the gate-baseline
+    count moves 33 -> 34 in the same commit (`knowledge/ui-damage-vignette`)."""
+    img = Image.new("RGBA", (size, size))
+    px = img.load()
+    c = size / 2.0
+    r0 = 0.40 * c
+    r1 = c * (2.0 ** 0.5)   # distance from centre to a corner
+    for y in range(size):
+        for x in range(size):
+            r = ((x - c) ** 2 + (y - c) ** 2) ** 0.5
+            t = (r - r0) / (r1 - r0)
+            t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+            a = int(round(max_alpha * (t * t * (3.0 - 2.0 * t))))  # smoothstep
+            px[x, y] = (color[0], color[1], color[2], a)
+    return img
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scale", type=int, default=DEFAULT_SCALE)
@@ -306,6 +330,7 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(ENT_DIR, exist_ok=True)
+    os.makedirs(UI_DIR, exist_ok=True)
 
     specs = []
     # ---- grassland ----
@@ -368,6 +393,12 @@ def main():
     for name, fn in entity_specs:
         g, p = fn()
         paths.append(make_entity(name, g, p, 1))
+
+    # ---- ui (screen overlays) ----
+    vignette_path = os.path.join(UI_DIR, "vignette.png")
+    ui_vignette().save(vignette_path)
+    print("wrote", os.path.abspath(vignette_path), (256, 256))
+    paths.append(vignette_path)
 
     if args.verify:
         for p in paths:
