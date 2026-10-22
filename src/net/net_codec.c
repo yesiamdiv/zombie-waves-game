@@ -409,7 +409,7 @@ int net_decode_events(const uint8_t *buf, int len, NetHeader *h,
 int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
                         const NetSnapshot *snap) {
     if (!buf || !h || !snap) return -1;
-    if (snap->count < 0 || snap->count > NET_SNAP_MAX_ENTITIES) return -1;
+    if (snap->count > NET_SNAP_MAX_ENTITIES) return -1;
     int off = 0;
     if (net_hdr_encode(buf, h) != 0) return -1;
     off = NET_HDR_SIZE;
@@ -440,8 +440,11 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
     if (put_u16(buf, cap, &off, snap->zombies_alive) != 0) return -1;
     if (put_u8(buf, cap, &off, snap->between_waves) != 0) return -1;
     if (put_u16(buf, cap, &off, snap->wave_cooldown_centis) != 0) return -1;
-    if (put_u8(buf, cap, &off, (uint8_t)snap->count) != 0) return -1;
-    for (int i = 0; i < snap->count; i++) {
+    /* v9/B38: u16. The old u8 silently wrapped at 256 while the loop below
+     * still encoded every entity, so a dense wave desynced the reader's offsets
+     * instead of reporting an error. */
+    if (put_u16(buf, cap, &off, snap->count) != 0) return -1;
+    for (int i = 0; i < (int)snap->count; i++) {
         const NetEntitySnap *e = &snap->entities[i];
         if (put_u16(buf, cap, &off, e->id) != 0) return -1;
         if (put_u8(buf, cap, &off, e->kind) != 0) return -1;
@@ -460,6 +463,20 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
         if (put_u8(buf, cap, &off, e->size_q) != 0) return -1;
         for (int c = 0; c < 3; c++) {
             if (put_u8(buf, cap, &off, e->tint[c]) != 0) return -1;
+        }
+    }
+
+    /* v9/NT4: extension attributes, after the fixed-stride entity array. */
+    if (snap->attr_count > NET_SNAP_MAX_ATTRS) return -1;
+    if (put_u16(buf, cap, &off, snap->attr_count) != 0) return -1;
+    for (int i = 0; i < snap->attr_count; i++) {
+        const NetEntityAttr *a = &snap->attrs[i];
+        if (a->len > NET_SNAP_ATTR_MAX_BYTES) return -1;
+        if (put_u16(buf, cap, &off, a->id) != 0) return -1;
+        if (put_u8(buf, cap, &off, a->kind) != 0) return -1;
+        if (put_u8(buf, cap, &off, a->len) != 0) return -1;
+        for (int b = 0; b < a->len; b++) {
+            if (put_u8(buf, cap, &off, a->bytes[b]) != 0) return -1;
         }
     }
     return off;
@@ -494,11 +511,11 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
     if (get_u16(buf, len, &off, &snap->zombies_alive) != 0) return -1;
     if (get_u8(buf, len, &off, &snap->between_waves) != 0) return -1;
     if (get_u16(buf, len, &off, &snap->wave_cooldown_centis) != 0) return -1;
-    uint8_t n;
-    if (get_u8(buf, len, &off, &n) != 0) return -1;
-    if ((int)n > max_entities) return -1;
+    uint16_t n;
+    if (get_u16(buf, len, &off, &n) != 0) return -1;
+    if ((int)n > max_entities || (int)n > NET_SNAP_MAX_ENTITIES) return -1;
     snap->count = n;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < (int)n; i++) {
         NetEntitySnap *e = &snap->entities[i];
         if (get_u16(buf, len, &off, &e->id) != 0) return -1;
         if (get_u8(buf, len, &off, &e->kind) != 0) return -1;
@@ -514,6 +531,25 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
         if (get_u8(buf, len, &off, &e->size_q) != 0) return -1;
         for (int c = 0; c < 3; c++) {
             if (get_u8(buf, len, &off, &e->tint[c]) != 0) return -1;
+        }
+    }
+
+    /* v9/NT4: extension attributes. Unknown kinds are kept verbatim, not
+     * rejected, so an older build can still consume a newer peer's snapshot
+     * within the same wire version. */
+    uint16_t an;
+    if (get_u16(buf, len, &off, &an) != 0) return -1;
+    if (an > NET_SNAP_MAX_ATTRS) return -1;
+    snap->attr_count = an;
+    for (int i = 0; i < an; i++) {
+        NetEntityAttr *a = &snap->attrs[i];
+        if (get_u16(buf, len, &off, &a->id) != 0) return -1;
+        if (get_u8(buf, len, &off, &a->kind) != 0) return -1;
+        if (get_u8(buf, len, &off, &a->len) != 0) return -1;
+        if (a->len > NET_SNAP_ATTR_MAX_BYTES) return -1;
+        for (int b = 0; b < NET_SNAP_ATTR_MAX_BYTES; b++) a->bytes[b] = 0;
+        for (int b = 0; b < a->len; b++) {
+            if (get_u8(buf, len, &off, &a->bytes[b]) != 0) return -1;
         }
     }
     return 0;

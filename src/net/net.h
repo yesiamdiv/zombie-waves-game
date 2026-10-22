@@ -34,8 +34,13 @@
  * concern. 5 -> 6, snapshots carry a `NetPlayerState` per slot. 6 -> 7,
  * entities carry `hp_max`, player states carry `beacon_pos`, snapshots carry
  * the wave countdown state. 7 -> 8, added NET_PKT_SHOP_REQUEST and
- * NET_PKT_SHOP_RESULT so co-op clients can actually spend points (B30). */
-#define NET_WIRE_VERSION 8
+ * NET_PKT_SHOP_RESULT so co-op clients can actually spend points (B30).
+ * 8 -> 9, the snapshot entity count widened u8 -> u16 (B38: a dense wave
+ * truncated at 255 entities while the encoder still believed it had sent the
+ * rest), and snapshots gained the NT4 extension-attribute table that carries
+ * the local sword's angle (and, from here, any future per-entity attributes)
+ * without changing the 35-byte entry stride. */
+#define NET_WIRE_VERSION 9
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
@@ -119,7 +124,11 @@ enum {
     NET_ENT_BULLET = 3,
     NET_ENT_GRENADE = 4,
     NET_ENT_ROCKET = 5,
-    NET_ENT_ITEM   = 6
+    NET_ENT_ITEM   = 6,
+    /* NT4: the local player's sweeping sword. Appended (never renumbered) so a
+     * v8 peer that somehow decodes this sees an unknown kind rather than a
+     * different entity. Its angle/width ride in NetSnapshot::attrs. */
+    NET_ENT_SWORD  = 7
 };
 
 /* Appearance of a snapshot entity (docs/NET_PROTOCOL_DESIGN.md ADR-1/2/3/4).
@@ -144,6 +153,44 @@ enum {
  * rather than a theme index means the client needs no theme lookup at all,
  * which is the whole point: derivation is what caused this bug. */
 #define NET_SNAP_MAX_ENTITIES 1024
+
+/* NT4: per-entity extension attributes. They ride AFTER the fixed entity array
+ * (and after B38's u16 count) rather than widening NetEntitySnap, so the
+ * 35-byte entry stride and every existing field offset stay put. Each record is
+ * self-describing: id, kind, len, then `len` bytes. A reader that does not know
+ * a kind still skips it correctly, which is the "add attributes later without
+ * another wire bump" provision.
+ *
+ * Today there is one producer, NET_ENT_SWORD, whose payload is 3 bytes:
+ *   bytes[0..1] int16 little-endian angle in SIGNED CENTIDEGREES, wrapped to
+ *               (-18000, +18000] (i.e. -180deg..+180deg). Sign is required:
+ *               the blade is drawn from a pivot and a 0..180 range would draw
+ *               it backwards for half a spin.
+ *   bytes[2]    u8  blade width in half units (width = width_q / 2.0f)
+ * The angle is an integer for the same reason size_q is: bit-identical on both
+ * peers, and wrap-safe interpolation is a compare-then-add on the client. */
+#define NET_SNAP_ATTR_MAX_BYTES 8
+/* One sword per player is the only attribute producer today. A fixed bound lets
+ * the snapshot struct (and its max-bytes constant) stay static. */
+#define NET_SNAP_MAX_ATTRS NET_MAX_PLAYERS
+#define NET_SNAP_ATTR_HDR_BYTES 4   /* per record: id(2) + kind(1) + len(1) */
+#define NET_SNAP_ATTR_TABLE_MAX_BYTES \
+    (2 + NET_SNAP_MAX_ATTRS * (NET_SNAP_ATTR_HDR_BYTES + NET_SNAP_ATTR_MAX_BYTES))
+
+typedef struct {
+    uint16_t id;            /* entity id this attribute extends */
+    uint8_t kind;           /* NetEntityKind it applies to */
+    uint8_t len;            /* payload bytes used (<= NET_SNAP_ATTR_MAX_BYTES) */
+    uint8_t bytes[NET_SNAP_ATTR_MAX_BYTES];
+} NetEntityAttr;
+
+#define NET_SWORD_ATTR_LEN 3
+static inline int16_t net_attr_angle_cdeg(const NetEntityAttr *a) {
+    return (int16_t)((uint16_t)a->bytes[0] | ((uint16_t)a->bytes[1] << 8));
+}
+static inline uint8_t net_attr_width_q(const NetEntityAttr *a) {
+    return a->bytes[2];
+}
 
 /* One live entity in a snapshot. Entity ids are stable ECS array indices, so
  * the client keeps a mirror keyed by id (interpolation buffer, P2c). */
@@ -220,8 +267,11 @@ typedef struct {
     uint16_t zombies_alive;
     uint8_t between_waves;
     uint16_t wave_cooldown_centis;   /* seconds until next wave * 100 */
-    int count;
+    uint16_t count;                  /* v9/B38: u16, was u8 (truncated at 255) */
     NetEntitySnap entities[NET_SNAP_MAX_ENTITIES];
+    /* v9/NT4: after the entity array; see NetEntityAttr. */
+    uint16_t attr_count;
+    NetEntityAttr attrs[NET_SNAP_MAX_ATTRS];
 } NetSnapshot;
 
 #define NET_SNAP_HZ 20           /* host snapshot cadence (matches the plan) */
@@ -233,13 +283,14 @@ typedef struct {
  * somebody keeps it honest.
  *   sim_time(4) slot_entities(2*N) player_states(BYTES*N)
  *   wave_number(2) wave_active(1) total_kills(2)
- *   zombies_alive(2) between_waves(1) wave_cooldown_centis(2) count(1)  */
+ *   zombies_alive(2) between_waves(1) wave_cooldown_centis(2) count(2)  */
 #define NET_SNAP_HEADER_BYTES                                        \
     (4 + 2 * NET_MAX_PLAYERS + NET_PLAYER_STATE_BYTES * NET_MAX_PLAYERS \
-     + 2 + 1 + 2 + 2 + 1 + 2 + 1)
+     + 2 + 1 + 2 + 2 + 1 + 2 + 2)
 #define NET_SNAP_MAX_BYTES \
     (NET_HDR_SIZE + NET_SNAP_HEADER_BYTES + \
-     NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES)
+     NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES + \
+     NET_SNAP_ATTR_TABLE_MAX_BYTES)
 
 /* One relayed gameplay event (subset of GE_*, §6.3). Payload semantics follow
  * the local emitters: DEATH -> id/kind/pos; PLAYER_HEALTH -> id, a=hp after,

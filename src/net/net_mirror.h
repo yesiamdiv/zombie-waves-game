@@ -25,6 +25,12 @@ bool net_mirror_ready(const NetMirror *m);
 bool net_mirror_sample(const NetMirror *m, uint16_t id, float t,
                        NetEntitySnap *out);
 
+/* NT4: interpolated extension attribute for `id` (same `t` as
+ * net_mirror_sample). The sword's angle is blended wrap-safe; other kinds are
+ * held at the newest value. Returns false when the id carries no attribute. */
+bool net_mirror_sample_attr(const NetMirror *m, uint16_t id, float t,
+                            NetEntityAttr *out);
+
 /* Roster slot owning `id`, or -1 when `id` is not a networked player. */
 int net_mirror_slot_for(const NetMirror *m, uint16_t id);
 

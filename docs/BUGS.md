@@ -49,7 +49,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
 | B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | `704090c` | FIXED |
 | B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
-| B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | OPEN |
+| B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | FIXED (v9) |
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
 | B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (execution needs refinement — see B45) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
@@ -801,6 +801,11 @@ Latent — no run has hit it, because a normal snapshot carries tens of entities
      the world at 255 replicated entities while `ECS_MAX_ENTITIES` is 2048.
 - **Never** leave the cast in place with neither guard: it is the silent
   version of the failure.
+- **Resolution (2026-10-22, option 1)**: `NetSnapshot.count` is now `uint16_t`
+  and `net_encode_snapshot`/`net_decode_snapshot` use `u16`, inside
+  `NET_WIRE_VERSION` 8 -> 9. `NET_SNAP_MAX_ENTITIES` stays 1024 and the encoder
+  still rejects `count > 1024` loudly. `test_net_snapshot_u16_count` round-trips
+  **300** entities (past the old 255 seam) and asserts the exact encoded length.
 
 ## B39. `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending
 

@@ -137,6 +137,28 @@ void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
         color.g = (float)e.tint[1] / 255.0f;
         color.b = (float)e.tint[2] / 255.0f;
 
+        /* NT4: the sweeping sword is drawn from its handle pivot, exactly like
+         * the host's branch in system_render(). Length and width are the host's
+         * reported blade size; the angle is interpolated wrap-safe. */
+        if (e.kind == NET_ENT_SWORD) {
+            NetEntityAttr attr;
+            float angle = 0.0f;
+            float width = 8.0f;
+            if (net_mirror_sample_attr(mirror, e.id, t, &attr) &&
+                attr.kind == NET_ENT_SWORD && attr.len >= NET_SWORD_ATTR_LEN) {
+                angle = (float)net_attr_angle_cdeg(&attr) * (3.14159265f / 18000.0f);
+                width = (float)net_attr_width_q(&attr) * 0.5f;
+            }
+            float length = diameter;   /* swords report blade length in size_q */
+            if (length <= 0.0f) length = 1.0f;
+            const char *blade_path =
+                (e.art != NET_ART_NONE) ? net_art_path(e.art) : NULL;
+            SDL_Texture *blade = blade_path ? sprite_tex(blade_path) : NULL;
+            sprite_draw_blade(renderer, blade, screen.x, screen.y, angle,
+                              length, width, z, color, 0.95f);
+            continue;
+        }
+
         const char *art_path = (e.art != NET_ART_NONE) ? net_art_path(e.art) : NULL;
         SDL_Texture *tex = art_path ? sprite_tex(art_path) : NULL;
         if (tex) {

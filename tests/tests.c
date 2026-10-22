@@ -2026,7 +2026,7 @@ static void test_net_snapshot_build(void) {
     CHECK(player_e.tint[0] == 255);   /* COLOR_RED */
 
     /* The built snapshot round-trips through the wire codec. */
-    uint8_t buf[NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES];
+    uint8_t buf[NET_SNAP_MAX_BYTES];
     NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 3, 0, 0};
     int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
     CHECK(len > NET_HDR_SIZE);
@@ -2055,8 +2055,10 @@ static void test_net_snapshot_build(void) {
     /* Header via the constant, not a hand-counted 18: the header grew by
      * NET_PLAYER_STATE_BYTES * NET_MAX_PLAYERS in wire v6 and a literal here
      * would have gone stale silently. */
+    /* v9: the trailing attribute table starts with its u16 count (this
+     * snapshot has no swords, so the table is just that count). */
     int expect_len = NET_HDR_SIZE + NET_SNAP_HEADER_BYTES +
-                     n * NET_SNAP_ENTRY_BYTES;
+                     n * NET_SNAP_ENTRY_BYTES + 2;
     CHECK(len == expect_len);
     /* NetEntitySnap is NOT packed: the compiler pads it (36 bytes here against
      * 31 on the wire). That is fine and intended — the codec writes each field
@@ -2064,6 +2066,121 @@ static void test_net_snapshot_build(void) {
      * so nobody "fixes" NET_SNAP_ENTRY_BYTES to sizeof() and silently changes
      * the protocol. The load-bearing check is the encoded length above. */
     CHECK(sizeof(NetEntitySnap) >= NET_SNAP_ENTRY_BYTES);
+}
+
+/* B38: the entity count is a u16 as of wire v9. A u8 silently wrapped above
+ * 255 while the encoder still wrote every entity, desyncing every following
+ * byte. This crosses the old boundary (300 entities) and round-trips. */
+static void test_net_snapshot_u16_count(void) {
+    NetSnapshot snap, got;
+    memset(&snap, 0, sizeof(snap));
+    memset(&got, 0, sizeof(got));
+    snap.count = 300;
+    for (int i = 0; i < snap.count; i++) {
+        snap.entities[i].id = (uint16_t)(1000 + i);
+        snap.entities[i].kind = NET_ENT_ZOMBIE;
+        snap.entities[i].pos.x = (float)i;
+        snap.entities[i].pos.y = (float)(i * 2);
+    }
+
+    uint8_t buf[NET_SNAP_MAX_BYTES];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 9, 0, 0};
+    int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
+    CHECK(len > 0);
+    CHECK(len == NET_HDR_SIZE + NET_SNAP_HEADER_BYTES +
+                   300 * NET_SNAP_ENTRY_BYTES + 2);
+
+    NetHeader oh;
+    CHECK(net_decode_snapshot(buf, len, &oh, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    CHECK(got.count == 300);
+    CHECK(got.entities[0].id == 1000);
+    CHECK(got.entities[299].id == 1299);
+    CHECK(got.entities[299].pos.y == 598.0f);
+}
+
+/* NT4: the sword's angle/width travel as a self-describing extension attribute
+ * after the fixed entity array, so NET_SNAP_ENTRY_BYTES is still 35. */
+static void test_net_snapshot_sword_attr(void) {
+    NetSnapshot snap, got;
+    memset(&snap, 0, sizeof(snap));
+    memset(&got, 0, sizeof(got));
+    snap.count = 1;
+    snap.entities[0].id = 77;
+    snap.entities[0].kind = NET_ENT_SWORD;
+    snap.entities[0].owner = 3;
+    snap.entities[0].art = NET_ART_SWORD;
+    snap.entities[0].size_q = 64;    /* 32-unit blade */
+
+    int16_t cdeg = -17250;           /* -172.5 degrees, past the +-180 seam */
+    snap.attr_count = 1;
+    snap.attrs[0].id = 77;
+    snap.attrs[0].kind = NET_ENT_SWORD;
+    snap.attrs[0].len = NET_SWORD_ATTR_LEN;
+    snap.attrs[0].bytes[0] = (uint8_t)((uint16_t)cdeg & 0xFFu);
+    snap.attrs[0].bytes[1] = (uint8_t)(((uint16_t)cdeg >> 8) & 0xFFu);
+    snap.attrs[0].bytes[2] = 16;     /* 8-unit blade */
+
+    uint8_t buf[NET_SNAP_MAX_BYTES];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 9, 0, 0};
+    int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
+    CHECK(len == NET_HDR_SIZE + NET_SNAP_HEADER_BYTES + NET_SNAP_ENTRY_BYTES +
+                   2 + NET_SNAP_ATTR_HDR_BYTES + NET_SWORD_ATTR_LEN);
+
+    NetHeader oh;
+    CHECK(net_decode_snapshot(buf, len, &oh, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    CHECK(got.count == 1);
+    CHECK(got.entities[0].kind == NET_ENT_SWORD);
+    CHECK(got.entities[0].size_q == 64);
+    CHECK(got.attr_count == 1);
+    CHECK(got.attrs[0].id == 77);
+    CHECK(got.attrs[0].kind == NET_ENT_SWORD);
+    CHECK(got.attrs[0].len == NET_SWORD_ATTR_LEN);
+    CHECK(net_attr_angle_cdeg(&got.attrs[0]) == cdeg);
+    CHECK(net_attr_width_q(&got.attrs[0]) == 16);
+}
+
+/* NT4: the client mirrors the sword angle and blends it the short way around
+ * the circle, so +170deg -> -170deg is a 20deg step, not a 340deg unwind. */
+static void test_net_mirror_sword_angle(void) {
+    NetMirror m;
+    net_mirror_reset(&m);
+
+    NetSnapshot a, b;
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    a.count = 1;
+    a.entities[0].id = 5;
+    a.entities[0].kind = NET_ENT_SWORD;
+    b.count = 1;
+    b.entities[0].id = 5;
+    b.entities[0].kind = NET_ENT_SWORD;
+
+    a.sim_time = 0.0f;
+    a.attr_count = 1;
+    a.attrs[0].id = 5;
+    a.attrs[0].kind = NET_ENT_SWORD;
+    a.attrs[0].len = NET_SWORD_ATTR_LEN;
+    a.attrs[0].bytes[0] = (uint8_t)((uint16_t)17000 & 0xFFu);
+    a.attrs[0].bytes[1] = (uint8_t)(((uint16_t)17000 >> 8) & 0xFFu);
+    a.attrs[0].bytes[2] = 16;
+
+    b.sim_time = 0.05f;
+    b.attr_count = 1;
+    b.attrs[0].id = 5;
+    b.attrs[0].kind = NET_ENT_SWORD;
+    b.attrs[0].len = NET_SWORD_ATTR_LEN;
+    b.attrs[0].bytes[0] = (uint8_t)((uint16_t)(int16_t)-17000 & 0xFFu);
+    b.attrs[0].bytes[1] = (uint8_t)(((uint16_t)(int16_t)-17000 >> 8) & 0xFFu);
+    b.attrs[0].bytes[2] = 16;
+
+    net_mirror_push(&m, &a);
+    net_mirror_push(&m, &b);
+
+    NetEntityAttr attr;
+    CHECK(net_mirror_sample_attr(&m, 5, 0.5f, &attr));
+    /* Halfway along +20deg: |angle| is 180deg exactly (the seam). */
+    int16_t mid = net_attr_angle_cdeg(&attr);
+    CHECK(mid == 18000 || mid == -18000);
 }
 
 /* Sprint N3 (B22/B23): the per-slot state block the client HUD now reads.
@@ -2400,6 +2517,9 @@ int tests_run_all(void) {
     test_net_codec_shop();
     test_net_codec();
     test_net_codec_game();
+    test_net_snapshot_u16_count();
+    test_net_snapshot_sword_attr();
+    test_net_mirror_sword_angle();
     test_net_art_table();
     test_net_snapshot_build();
     test_net_player_state();

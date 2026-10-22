@@ -45,3 +45,22 @@ Measured on `feature/net-protocol` after adding `GE_EXPLOSION` (emit sites in
 So: the SP byte/line reference for the fixed gate scenario stays 125938/1603;
 the test count is now 1194. Do not claim the events log moved unless you run a
 scenario that uses explosives.
+
+## 2026-10-22 - net: wire v9 (B38 u16 count + NT4 sword attribute table)
+
+Measured on `feature/net-protocol` after the single 8 -> 9 bump:
+
+- `./build/zombie_tests` -> `Tests passed: 1214  Failed: 0` (was 1194; +20
+  checks across the u16-count, sword-attribute and wrap-safe-angle tests).
+- `ctest --test-dir build` -> 3/3: `net_spike`, `net_loopback`, `core_tests`.
+- Two `--seed=42` single-player runs (25s, `--ai=bot`) -> byte-identical,
+  **125938 bytes / 1603 lines — UNCHANGED**. The wire path is not exercised on a
+  single-player run (`relay_net_events()` returns early, and snapshots are only
+  built when hosting), so this change cannot perturb the sim.
+- `python3 tools/gen_assets.py --verify` untouched (no asset change here).
+- `NET_SNAP_ENTRY_BYTES` stays 35. The header grows by one byte (count u16) and
+  the trailing attribute table adds `2 + records*(4+len)` bytes.
+
+This lane does not contain AN1 yet (animation's branch is 35a8b46, its own
+`zombie_tests` count is 1253); the integrated count after the animation merge
+will be the combined figure, not 1214. Do not treat 1214 as the merged number.

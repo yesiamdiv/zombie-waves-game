@@ -104,3 +104,23 @@ Payload contents are finalised only after [animation]'s AT4 art append.
 **Why:** One bump is cheaper and safer than two, and a side table keeps the
 hot-path entity entry fixed while leaving room for attributes D1 already knows
 are coming. Recording this now means the codec work is a plan, not a guess.
+
+## 2026-10-22 - net: v9 implemented (single 8 -> 9 commit)
+
+B38 and NT4 landed as one bump, as decided:
+
+- `NetSnapshot.count` is `uint16_t`; encode/decode use `put_u16`/`get_u16`;
+  `NET_SNAP_HEADER_BYTES` count term 1 -> 2. `NET_SNAP_MAX_ENTITIES` stays 1024
+  and the encoder rejects anything larger. Test: 300 entities round-trip.
+- `NetSnapshot` gained `attr_count` + `attrs[NET_SNAP_MAX_ATTRS]`
+  (`NetEntityAttr`: `id`, `kind`, `len`, `bytes[8]`), encoded AFTER the entity
+  array. Unknown kinds are preserved and ignored by readers.
+- `NET_ENT_SWORD = 7`. `net_snapshot.c` emits swords with `owner`, art/blade
+  length (`size_q` = blade length in half units) and one attr record
+  `{int16 angle_cdeg, u8 width_q}` (len 3). **The angle is SIGNED centidegrees**
+  in (-18000, 18000], not 0..18000: the blade is drawn from a pivot, and an
+  unsigned half-turn would draw one half of the spin backwards.
+- Client: `net_mirror_sample_attr()` blends the sword angle the short way
+  around the circle; `system_render_mirror()` draws it with
+  `sprite_draw_blade()` at the host's length/width.
+- `NET_SNAP_ENTRY_BYTES` stays 35; no existing field offset moved.

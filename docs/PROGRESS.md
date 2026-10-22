@@ -334,3 +334,38 @@ re-measure the single-player gate reference.
 - Coordinate landing with [audio] (AT7) and report the corrected re-baseline
   finding to [pm]: the SP log reference is unchanged, contrary to the earlier
   prediction.
+
+## Session 2026-10-22 — Sprint 6 DEV (net): wire v9 — B38 u16 count + NT4 sword
+
+### Planned
+Land the single `NET_WIRE_VERSION` 8 -> 9 commit pm specified: B38's entity
+count widened to `u16`, plus NT4's sword replication via a trailing
+extension-attribute table (angle + width), with client mirror interpolation.
+Freeze lifted by animation when AN1 landed (35a8b46).
+
+### Done
+- `net.h` v9: `count` -> `uint16_t`; `NET_ENT_SWORD = 7`; new
+  `NetEntityAttr` + `attr_count`/`attrs[]` on `NetSnapshot`; header count term
+  1 -> 2; `NET_SNAP_MAX_BYTES` includes the attr table. `NET_SNAP_ENTRY_BYTES`
+  stays 35.
+- Codec: encode/decode the u16 count and the attr table; unknown attr kinds are
+  preserved rather than rejected; bounds-checked on both sides.
+- Snapshot builder: swords are no longer skipped. They carry `owner`, the art
+  id, `size_q` = **blade length**, and one attr `{signed int16 centidegrees,
+  u8 width_q}`. Signed because the blade is drawn from a pivot.
+- Client: `net_mirror_sample_attr()` blends the angle the short way around the
+  circle; `system_render_mirror()` draws the sword with `sprite_draw_blade()`.
+- Tests: `test_net_snapshot_u16_count` (300 entities), sword attr round-trip,
+  wrap-safe mirror interpolation. Suite **1214/0**.
+- Docs: VERSIONING registry/worked note, BUGS B38 resolution, gate baseline.
+
+### Measured gate
+- build `-Werror` clean; `zombie_tests` **1214 passed / 0 failed**; `ctest` 3/3.
+- Two seed-42 25s SP runs byte-identical at **125938 bytes / 1603 lines —
+  unchanged** (snapshots are host-only and no relay runs in SP).
+- `gen_assets.py --verify` not run (no asset change on this lane).
+
+### Next
+- Merge/rebase with animation's AN1 (this lane predates it) and audio's Phase D;
+  re-run the integrated gate before landing. Do not push (pm's one-time push go
+  covered only cd7e8ea).
