@@ -142,7 +142,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AT5 | ~~Animation Phase D~~ — **superseded** by AN6 (client path, human-gated). | human | cancelled → AN6 |
 | AN1 | Art table append: 8 walk-frame ids (art table 10→18) + `NET_ASSET_VERSION` 1→2 in one commit. **Needs net's freeze handshake.** | AN2, net freeze | **DONE `35a8b46`** — ids 10–17, `NET_ASSET_VERSION` 2, wire still v8/35; tests 1186→1253; freeze released to net |
 | AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **DONE `18c95af`** — `zombie_walk0..7.png`, frame 0 == idle, 8 pairwise distinct; **textures 33→41** re-baselined in `gate-baseline` on the animation lane |
-| AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **animation · IN PROGRESS** |
+| AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **DONE `e45304c`** — `src/graphics/anim.*` + `src/systems/animation.c`; frame texture on the sprite so host/client share one answer; wire untouched; tests 1253→1347; walk cycle on-screen unproven |
 | AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | animation · next |
 | AN5 | Content: walk/attack/death, player walk, pickup bob, missing-texture fallback. | AN2, AN3 | animation · next |
 | AN6 | Phase D client path — same selection function; **blocked on human two-window I5 check**. | human | animation · blocked (human) |
@@ -170,7 +170,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 > **lane-local, not merged**:
 > - **Textures:** animation AN2 → **41** (8 walk PNGs), assets B45 → **34**
 >   (vignette). Merged = **42** (33 + 8 + 1).
-> - **Tests:** animation AN1 → **1253** (art-table checks), net NT2 → **1194**
+> - **Tests:** animation AN1 → **1253**, AN3 → **1347**; net NT2 → **1194**
 >   (GE_EXPLOSION), and NT3/NT4 plus audio's mixer tests will add more.
 >
 > Do **not** resolve a merge by picking one lane's number. On the merged tree,
