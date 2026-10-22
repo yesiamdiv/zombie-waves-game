@@ -140,8 +140,14 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | **animation · IN PROGRESS** |
 | AT4 | Animation Phases A–C, strictly downstream of the snapshot (no RNG, no sim feedback). **Design-A only:** the ~60–80 `net_art` appends + `NET_ASSET_VERSION` 1→2 apply only if the spike picks A; goes through the freeze protocol with `net`. | AT3 | animation · next |
 | AT5 | Animation Phase D — **blocked on a human two-window I5 check**, not on a gate. | human | animation · blocked (human) |
-| AT6 | Audio Phase-0 spike: vendor miniaudio; soft-fail headless; trigger audit; no-double-fire counting log; reload; gunfire latency → verdict into `knowledge/`. | AT2 | **audio · IN PROGRESS** |
-| AT7 | Audio phases; `GE_EXPLOSION` SP re-baseline rides this commit and is re-verified jointly with `net`. | AT6, D3 | audio · next |
+| AT6 | ~~Audio Phase-0 spike~~ — **superseded** by audio's own proposed breakdown A1–A6 (owner rule: build tasks from the agent's proposal). | AT2 | cancelled → A1–A6 |
+| A1 | Audio backend decision, measured: vendored miniaudio vs **SDL3's own audio API** (already linked); compile/binary/device cost, sound proven on the speakers (pw-record). Verdict may change the plan of record. | AT2 | **audio · IN PROGRESS** |
+| A2 | Soft-fail proof for the chosen backend (no device / missing file / `--headless`). | A1 | audio · next |
+| A3 | Trigger audit: one row per intended sound, read from code, host-authoritative vs client-derivable. | A1 | audio · next |
+| A4 | Double-fire audit: emission counts per event type, host vs client, 25 s co-op. | A1 | audio · next |
+| A5 | Gunfire latency (audible?) + reload-on-wire evidence. | A1 | audio · next |
+| A6 | Commit spike verdicts into `audio-plan` §10 + measurements topic; gate first. | A2–A5 | audio · next |
+| AT7 | Audio phases; `GE_EXPLOSION` SP re-baseline rides this commit and is re-verified jointly with `net`. | A6, D3 | audio · next (after verdict) |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
 | AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | assets · last (after B43–B45) |
 | AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Re-baseline texture count 33→34 in `knowledge/gate-baseline`. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | assets · next (after B43/B44) |
