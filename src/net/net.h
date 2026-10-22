@@ -56,8 +56,14 @@
  * Bump this whenever anything in assets/ is added, removed, resized or
  * replaced, including the net art table in net_art.c (ids resolve to a pixel
  * size that the wire maths depends on). The REJECT reason is distinct from the
- * wire reason so the message can say which kind of mismatch it is. */
-#define NET_ASSET_VERSION 1
+ * wire reason so the message can say which kind of mismatch it is.
+ *
+ * 2 (2026-10-22): the zombie walk cycle - eight new frame files and eight new
+ * rows in the art table (NET_ART_ZOMBIE_WALK0..7). A peer without them cannot
+ * resolve a walk frame, so the art set, not just the table, is what this
+ * version guards. The PNGs landed in the previous commit; they are inert until
+ * the ids that name them exist, which is why the bump rides with the rows. */
+#define NET_ASSET_VERSION 2
 
 #define NET_CH_CTRL 0                   /* reliable / ordered handshake+events */
 #define NET_CH_SNAP 1                   /* unreliable / sequenced game traffic */

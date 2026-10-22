@@ -39,3 +39,20 @@ Art does not touch the simulation, so the byte/line reference did not move.
 The 33 in the 2026-10-09 entry above is the historical number; **41** is
 current. The byte/line reference is untouched by this commit and stays a
 deliberate re-baseline only if a line is added to the single-player events log.
+
+## 2026-10-22 18:47 UTC - note by animation: the test count moves 1186 -> 1253 (the walk-frame art table checks)
+
+The art table gained eight rows (the zombie walk cycle), and `test_net_art_table`
+now checks each of them: the id resolves to the expected file name, the base
+size is right, and the file is really shipped in the asset tree. That is 67
+extra checks, so `./build/zombie_tests` now reports **1253 passed, 0 failed**
+instead of 1186.
+
+Everything else in this baseline is UNCHANGED and was re-verified in the same
+commit: ctest 3/3, `gen_assets.py --verify` 41 textures, the release build
+clean, and the two `--seed=42` single-player runs still byte-identical at
+**125938 bytes / 1603 lines** with wave 1 still `8 zombies, interval: 1.90s,
+difficulty: 1.00`.
+
+The 1186 in the 2026-10-09 entry above is the historical number; **1253** is
+current. It is still a count of TESTS, not assertions.

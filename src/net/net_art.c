@@ -31,6 +31,17 @@ static const NetArtSpec k_art[NET_ART_COUNT] = {
     [NET_ART_AMMO]    = { "textures/entities/ammo.png",     32 },
     [NET_ART_SPEED]   = { "textures/entities/speed.png",    32 },
     [NET_ART_SWORD]   = { "textures/entities/sword_blade.png", 40 },
+    /* The zombie walk cycle, one file per frame. Separate files are the whole
+     * point: an art id is resolved from a PATH, so frames of one sprite sheet
+     * would be indistinguishable on the wire (docs/knowledge/animation-transport.md). */
+    [NET_ART_ZOMBIE_WALK0] = { "textures/entities/zombie_walk0.png", 32 },
+    [NET_ART_ZOMBIE_WALK1] = { "textures/entities/zombie_walk1.png", 32 },
+    [NET_ART_ZOMBIE_WALK2] = { "textures/entities/zombie_walk2.png", 32 },
+    [NET_ART_ZOMBIE_WALK3] = { "textures/entities/zombie_walk3.png", 32 },
+    [NET_ART_ZOMBIE_WALK4] = { "textures/entities/zombie_walk4.png", 32 },
+    [NET_ART_ZOMBIE_WALK5] = { "textures/entities/zombie_walk5.png", 32 },
+    [NET_ART_ZOMBIE_WALK6] = { "textures/entities/zombie_walk6.png", 32 },
+    [NET_ART_ZOMBIE_WALK7] = { "textures/entities/zombie_walk7.png", 32 },
 };
 
 const char *net_art_path(uint8_t art) {

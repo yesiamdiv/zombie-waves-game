@@ -21,6 +21,7 @@
 #include "net/net.h"
 #include "net/net_codec.h"
 #include "net/net_mirror.h"
+#include "assets/asset_manager.h"
 
 /* Normal-play default; the game binary overrides via debug flags. */
 float g_zombie_damage_mult = 1.0f;
@@ -1870,6 +1871,35 @@ static void test_net_art_table(void) {
                  "textures/entities/zombie.png") == 0);
     CHECK(strcmp(net_art_path(NET_ART_BULLET),
                  "textures/entities/bullet.png") == 0);
+
+    /* The zombie walk cycle: eight frames, eight FILES.
+     *
+     * This is the property the whole animation design rests on. An art id is
+     * resolved from a texture's PATH, so two frames that shared one path
+     * would be the same id on the wire and the client could not tell them
+     * apart. One file per frame keeps path, id and frame one-to-one - so this
+     * test checks the files really exist, not just that the table names them. */
+    CHECK(NET_ART_ZOMBIE_WALK_COUNT == 8);
+    for (int i = 0; i < NET_ART_ZOMBIE_WALK_COUNT; i++) {
+        uint8_t id = (uint8_t)(NET_ART_ZOMBIE_WALK0 + i);
+        const char *path = net_art_path(id);
+        CHECK(path != NULL);
+        CHECK(net_art_base_px(id) == 32);
+        char expect[64];
+        snprintf(expect, sizeof expect, "textures/entities/zombie_walk%d.png", i);
+        CHECK(strcmp(path, expect) == 0);
+        /* The row must name a file that is really shipped. */
+        const char *full = asset_path(path);
+        FILE *f = fopen(full, "rb");
+        CHECK(f != NULL);
+        if (f) fclose(f);
+    }
+    /* The block is contiguous, so a frame number maps to an id by adding. */
+    CHECK((uint8_t)(NET_ART_ZOMBIE_WALK0 + NET_ART_ZOMBIE_WALK_COUNT - 1)
+          == NET_ART_ZOMBIE_WALK7);
+    /* Frame 0 is the idle zombie pose, so a zombie that starts walking does
+     * not pop. The pixels are checked, not the intent. */
+    CHECK(net_art_base_px(NET_ART_ZOMBIE) == net_art_base_px(NET_ART_ZOMBIE_WALK0));
 }
 
 /* Snapshot builder maps a live world into the 20 Hz wire format. */

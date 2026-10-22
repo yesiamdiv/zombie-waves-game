@@ -24,8 +24,23 @@ enum {
     NET_ART_AMMO    = 7,
     NET_ART_SPEED   = 8,
     NET_ART_SWORD   = 9,
-    NET_ART_COUNT   = 10
+    /* The zombie walk cycle: ONE FILE PER FRAME, so a frame can be named and
+     * therefore travel as an art id (docs/knowledge/animation-transport.md).
+     * The block is contiguous on purpose - a frame number maps to an id with
+     * NET_ART_ZOMBIE_WALK0 + frame. */
+    NET_ART_ZOMBIE_WALK0 = 10,
+    NET_ART_ZOMBIE_WALK1 = 11,
+    NET_ART_ZOMBIE_WALK2 = 12,
+    NET_ART_ZOMBIE_WALK3 = 13,
+    NET_ART_ZOMBIE_WALK4 = 14,
+    NET_ART_ZOMBIE_WALK5 = 15,
+    NET_ART_ZOMBIE_WALK6 = 16,
+    NET_ART_ZOMBIE_WALK7 = 17,
+    NET_ART_COUNT   = 18
 };
+
+/* How many frames the zombie walk cycle has. */
+#define NET_ART_ZOMBIE_WALK_COUNT 8
 
 /* One row of the shared art table. `base_px` is the PNG's natural width; it
  * converts the snapshot's world diameter into a draw scale. */
