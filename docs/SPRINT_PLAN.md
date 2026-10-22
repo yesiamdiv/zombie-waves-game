@@ -119,10 +119,10 @@ next stage opens on the owner's go.**
 | ID | Task | Depends on | Priority / Status |
 |---|---|---|---|
 | NT1 | Relay `GE_WAVE_END` (B39): filter add in `relay_net_events()` + `BUGS.md` close-out. Free — no wire bump, relay early-returns in SP. | D2 ✔ | P1 · **DONE `feature/net-protocol@e94eb0e`** |
-| NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters) **with** the SP events-log re-baseline, jointly re-verified with `assets`. | D3 ✔, audio start | NEXT STAGE |
+| NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters) **with** the SP events-log re-baseline, jointly re-verified with `assets`. | D3 ✔, audio start | **net · IN PROGRESS** — land in AT7's commit window |
 | NT3 | B38 snapshot count: if design B, fold a `u16` into the `NET_WIRE_VERSION` 8→9 bump; if design A, lower `NET_SNAP_MAX_ENTITIES` to 255 **with a loud encoder guard**. Spike-gated; belongs to the bump window. | A-vs-B spike | P1 (unactionable) — parked until the spike |
-| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind (option 1), inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Rides NT3's bump if B. | D1 ✔, animation start | NEXT STAGE |
-| NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | NEXT STAGE |
+| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind (option 1), inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Rides NT3's bump if B. | D1 ✔, animation start | **net · next** (after NT2; coordinate with animation) |
+| NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | **net · active** — animation will announce before touching `net_art.*` |
 | NT6 | Purge `/tmp/opencode` scratch paths from `tests/tests.c` (tmpfs quota hazard). | — | P1 · **DONE `f260c55`** |
 | NT7 | B32–B35 human two-window screen check on `feature/net-protocol`. | a human | P1 verification debt · blocked (human) |
 
@@ -143,10 +143,10 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AT6 | Audio Phase-0 spike: vendor miniaudio; soft-fail headless; trigger audit; no-double-fire counting log; reload; gunfire latency → verdict into `knowledge/`. | AT2 | **audio · IN PROGRESS** |
 | AT7 | Audio phases; `GE_EXPLOSION` SP re-baseline rides this commit and is re-verified jointly with `net`. | AT6, D3 | audio · next |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
-| AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22; **queued behind** the animation/audio stage — start only after the owner says that stage has begun. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | NEXT STAGE · **queued after animation/audio start** |
-| AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Re-baseline texture count 33→34 in `knowledge/gate-baseline`. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | NEXT STAGE · **queued after animation/audio start** |
-| AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | NEXT STAGE · **queued after animation/audio start** |
-| AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | NEXT STAGE · **queued after animation/audio start** |
+| AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | assets · last (after B43–B45) |
+| AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Re-baseline texture count 33→34 in `knowledge/gate-baseline`. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | assets · next (after B43/B44) |
+| AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | **assets · IN PROGRESS** (highest) |
+| AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | assets · next (after B43) |
 
 ### shared
 
