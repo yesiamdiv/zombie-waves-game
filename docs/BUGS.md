@@ -52,6 +52,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | OPEN |
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
 | B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED |
+| B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
 
 ## Detailed entries
 
@@ -874,3 +875,15 @@ Found 2026-10-15 by the owner, playing.
   125938 bytes / 1603 lines. **On-screen result is UNPROVEN until a human looks**
   — no gate can see a visual change (`i5-unverified-on-screen`); the owner should
   confirm the vignette visually.
+
+## B42. Merge-conflict markers were committed into docs/BUGS.md
+
+- **Symptom**: `docs/BUGS.md` on main contained literal `<<<<<<< HEAD` /
+  `=======` / `>>>>>>> e94eb0e` marker lines, plus a duplicated B39.
+- **Root cause**: the cherry-pick of `e94eb0e` into main (`10fd6005`) resolved
+  only the summary-table row; the detailed-entry conflict was left unresolved and
+  the file was committed with the markers still in it.
+- **Fix**: markers removed and B39 corrected to its real SHA (`10fd6005`) —
+  commit `8452630`.
+- **Status**: FIXED (`8452630`). Docs defect only: no code or build impact. The
+  same markers exist in the lane worktrees until they re-align to main.
