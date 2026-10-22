@@ -213,6 +213,44 @@ or HUD defects, so none of them is proven by any test in this repo.** Two window
 - [ ] **The host still shows its own name tag** (B32 changed the flag the host
       already passed correctly, so this is a regression check, not a new check).
 
+## Audio — nothing is implemented yet, so nothing is proven
+
+**Status: PLANNED. There is no audio code in the tree** (no `src/audio/`, no
+`assets/audio/`, no `SDL_Audio` call anywhere). The spike that chose the
+backend and audited the triggers is done and recorded in
+`docs/knowledge/audio-plan.md` §10 and `docs/knowledge/audio-measurements.md`;
+the phases that implement it are not. **No automated gate in this repo can
+hear anything** — the sound work ships `unproven` until a human has listened
+([audio-plan] §1).
+
+The list below is the acceptance script for the day the sound lands. It is
+written now, while the trigger audit is fresh, so the human knows what to
+listen for and on which peer.
+
+- [ ] **Single player, host window — the whole set.** Gunshot, zombie hit,
+      zombie death, player hit, player death, pickup, wave start, wave end,
+      score. One sound per event, none doubled, none silent.
+- [ ] **Client window — the relayed set.** The same run, two windows: the
+      **client** must hear the host's kills, damage, pickups and wave start
+      (they arrive over the relay), and the host must hear the client's
+      gunshots.
+- [ ] **A sound fires exactly once on a client.** The classic audio defect
+      nothing catches: local copy plus relayed copy. Spike C measured the
+      event counts (ratio 1.00) but a human still has to *hear* one gunshot,
+      not two.
+- [ ] **The client's own gunshot is not late.** Measured relayed delay is
+      ~90 ms at 25 FPS and ~33 ms at 60 FPS (one host frame + one client
+      frame + ~1 ms network). If the client hears its own shot noticeably
+      late, that is the open question in [audio-plan] §10, and it is a PM
+      decision, not a bug to be silently patched.
+- [ ] **Silence, not a crash, when there is no device.** Run with
+      `SDL_AUDIODRIVER=nosuchdriver`: the game must run to completion with no
+      sound, no assert, no error spam.
+- [ ] **Silence, not a crash, when a sound file is missing.** Rename one
+      asset: the game must keep running and log the missing file once.
+- [ ] **`--headless` opens no audio device.** The gate runs headless
+      thousands of times; it must stay silent and allocation-free.
+
 ## Still open by decision
 
 - Particles/effects are not replicated (B29, accepted). Note this one is real:

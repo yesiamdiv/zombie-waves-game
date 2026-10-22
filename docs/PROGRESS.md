@@ -634,3 +634,83 @@ Freeze lifted by animation when AN1 landed (35a8b46).
 - Human checks remain: B40 sword on screen and AN8/M11 mirrored walk
   (`docs/PENDING_VERIFICATION.md`). Headless cannot see either.
 - No push; `main` stays local until the owner's next go.
+
+## Session 2026-10-22 — AT6 audio Phase-0 spike: backend chosen, triggers audited, double-fire ruled out, latency measured
+
+### PM standup — planned
+- AT6 spikes A (backend), B (trigger audit), C (double-fire), D (relayed
+  latency), plus the soft-fail proof, all measured before any implementation.
+- Deliverable: `docs/knowledge/audio-plan.md` §10 filled in, raw numbers in a
+  measurements topic, verdict committed **before** Phase B writes a line of
+  audio code.
+
+### DEV — done
+- **Baseline gate re-verified** in `worktrees/audio/build` before touching
+  anything: build clean, `ctest` 3/3, `zombie_tests` 1186/0, two `--seed=42`
+  single-player runs diff-empty at the [gate-baseline] byte/line reference.
+- **Spike A — backend: SDL3's audio API, not vendored miniaudio.** Measured
+  both: SDL3 = 0 bytes of binary, 0 s of build, no new link flag, no vendored
+  file, no licence to track (SDL3 is already linked and exports
+  `SDL_OpenAudioDeviceStream`/`SDL_LoadWAV`/`SDL_ResumeAudioStreamDevice`);
+  miniaudio
+  0.11.25 = a 4,108,168 B header, **19.27 s** of compile for one TU at `-O3`
+  (6.64 s at `-O1`), 646-884 KB of binary, `-ldl -lpthread`. **Both were proven
+  to put sound on the speakers** — a 12 kHz tone captured off the PipeWire sink
+  monitor and detected with a Goertzel filter (SDL3 −34.0 dBFS, miniaudio
+  −29.3 dBFS, silence control −46.6 dBFS), because ambient desktop audio makes
+  RMS useless. So this is a cost decision, not a capability one. Losing SDL3's
+  mixer costs ~150-250 lines we own and can unit-test.
+- **Spike A — soft-fail proven at probe level:** no device
+  (`SDL_AUDIODRIVER=nosuchdriver`), missing file (both backends), and an
+  explicit no-device mode all degrade to silence with **exit 0**, no assert.
+  Game level (`--headless` opens no device) is still a Phase B item.
+- **Spike B — trigger audit complete**, one row per intended sound, read from
+  the emit sites, not from `EVENT_FORMAT.md` (the table is audio-plan §6).
+  Findings that change a design: the client cannot tell *who* hit it (`ib` is
+  dropped by the relay); it cannot tell hurt from heal (`ia` is dropped)
+  without keeping the previous `GE_PLAYER_HEALTH` event's hp; **a rocket
+  impact has no event at all** (only its despawn does) so a rocket-explosion
+  sound needs `GE_EXPLOSION` — net's NT2; and **there is no reload** to sound
+  (pistol ammo is unlimited; `NetPlayerState` has no reload field).
+- **Spike C — double-fire ruled out, by counting.** Two co-op runs (25 s
+  headless, 18 s windowed, both peers `--ai=bot`). Every relayed type arrives
+  at ratio **1.00** on the client — `PLAYER_SHOT` 102/102 and 63/63, `DAMAGE`
+  42/42 and 25/25, `KILL` 10/10 and 5/5, `POINTS` 10/10 and 5/5, `WAVE_START`
+  1/1, `WAVE_END` 1/1 — with matching entity ids and no duplicates.
+  `ENTITY_SPAWN` is 0 on the client because it is not relayed: expected shape.
+- **Spike D — relayed latency measured.** Temporary `CLOCK_MONOTONIC`
+  instrumentation at the host relay and the client receive (reverted after;
+  tree verified clean). Unthrottled: the relay itself costs **~1 ms**
+  (102 matched shots, 0 entity-id mismatches, residual median 0.0 ms).
+  Windowed: the client hears a relayed shot after **median 89.6 ms** (min
+  52.6, max 106.1) — because the delay is **one host frame + one client frame
+  + ~1 ms**, and this machine ran the windowed game at ~25 FPS (40 ms frames).
+  At 60 FPS the same path costs ~33 ms. **The delay is frame-bound, not
+  network-bound.**
+- **Docs written:** `docs/knowledge/audio-measurements.md` (new topic — raw
+  numbers, method, reproduction), `docs/knowledge/audio-plan.md` §6 trigger
+  table and §10 verdicts, `docs/PENDING_VERIFICATION.md` (the listen-for list
+  a human has to work through, and on which peer).
+- **No product code touched.** The only source edits during the spike were the
+  two temporary instrumentation hunks, both reverted; `git status` is clean
+  apart from the docs in this commit.
+
+### PM — next
+- Decide the §4 option (c) question the latency measurement opened: play the
+  local player's own gunfire locally and dedupe the relayed copy by bullet
+  entity id (removes two frames of latency, costs a mirror-side derivation),
+  or accept ~33 ms at 60 FPS. **Audio is not re-opening §4** — §4 stays
+  closed; this is the PM's call on a measured input.
+- Phase B (`src/audio/`, SDL3 backend, init/update/shutdown in `main.c`,
+  `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`), then
+  Phase C (`tools/gen_audio.py`, `assets/audio/**`), then Phase D (consume the
+  relayed events), then Phase E (a human listens, two windows).
+- `GE_EXPLOSION` stays net's NT2; audio consumes it, audio does not add the
+  event type.
+
+### Blocked
+- Nothing is blocked. Two open questions are owned by the PM (the option (c)
+  latency decision) and one by net (the `GE_EXPLOSION` payload, which audio
+  needs for a rocket explosion sound).
+- Nothing in this session is `fixed`: no sound has been heard by a human, so
+  the audio feature remains **unproven** by construction.
