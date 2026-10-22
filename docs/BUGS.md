@@ -54,7 +54,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (refined in B45) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
 | B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | `fba930e` | FIXED (art, not blend) |
-| B44 | Menu UI text overlaps (regression of B1's class) | — | OPEN |
+| B44 | Menu UI text overlaps (regression of B1's class) | `267665f` | FIXED |
 | B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | `f7e2556` | FIXED |
 
 ## Detailed entries
@@ -919,6 +919,35 @@ Found 2026-10-22 by the owner, playing.
   `zombie_tests` 1186/0, `gen_assets --verify` 33 textures, two `--seed=42` SP
   runs byte-identical at 125938 bytes / 1603 lines. **On-screen result is
   UNPROVEN until the owner looks** (`i5-unverified-on-screen`).
+
+## B44. Menu UI text overlaps (regression of B1's class)
+
+Found 2026-10-22 by the owner, playing.
+
+- **Symptom**: menu text overlaps again — most visibly on the map-select screen,
+  where the highlighted map's detail line crowds into the next map's name.
+- **Root cause**: B1 fixed the menus by spacing rows from the measured font
+  height, but the map-select list later went back to a `row_h = lh * 2.2f`
+  rhythm while drawing the detail line at `row_y + lh + 6`. Two lines need
+  `2 * lh` plus a gap, so `2.2 * lh` is short by `6 - 0.2 * lh` ≈ 1.8px at the
+  default font (`lh = 21`) — the detail line clipped the next row at every window
+  size, including the default 1280x720. On short windows the main-menu option
+  block and the shop list could also ride up into the notice / points line.
+- **Fix** (`src/ui/menu.c`, commit `267665f`):
+  - map-select rows are now `lh * 2.0f + 12.0f` (two measured lines plus a gap),
+    so the selected entry's detail line can never touch the next entry.
+  - the main-menu option block is clamped to sit at least 12px below the header
+    (which grows by one line when the notice is shown) and above the hint lines.
+  - the shop list is clamped at least 12px below the points line.
+  Verified by re-deriving every screen's line rectangles from the same formulas
+  across window heights: no two text rectangles overlap for any window of 480px
+  height or taller (the default 1280x720 included). Below ~450px the window is
+  too short to hold the content and is out of scope.
+- **Status**: FIXED (`267665f`). Render-only, so the byte-identity gate is
+  unaffected — build clean under `-Werror`, `ctest` 3/3, `zombie_tests` 1186/0,
+  `gen_assets --verify` 34 textures, two `--seed=42` SP runs byte-identical at
+  125938 bytes / 1603 lines. **On-screen result is UNPROVEN until the owner
+  looks** (`i5-unverified-on-screen`).
 
 ## B45. Damage vignette looks banded/incomplete
 
