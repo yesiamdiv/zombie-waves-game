@@ -310,6 +310,6 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
 
     /* Pause / shop hints */
     SDL_FColor pause_hint = {0.3f, 0.3f, 0.35f, 0.5f};
-    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-4: Weapon",
+    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-4: Weapon | F11: Fullscreen",
               20.0f, (float)screen_h - 30.0f, pause_hint);
 }
