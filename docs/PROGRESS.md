@@ -314,7 +314,12 @@ re-measure the single-player gate reference.
   copied gate literals in `docs/QA_MULTIPLAYER_S5.md` with a citation.
 
 ### Measured gate
-- build `-Werror` clean; `ctest` 3/3; `zombie_tests` **1194 passed / 0 failed**.
+- build `-Werror` clean; `ctest` 3/3 (three targets: net_spike, net_loopback,
+  core_tests); `zombie_tests` **1194 passed / 0 failed**.
+- Observed once: a single `net_spike` failure on the first `ctest` run, then
+  four consecutive full runs each 3/3. Not reproduced, no code correlation with
+  this change (net_spike does not touch the event bus); recorded here so a
+  recurrence is treated as a real bug rather than another flake.
 - Two seed-42 25s SP runs byte-identical at **125938 bytes / 1603 lines —
   unchanged**, because the bot only fires the pistol and never detonates an
   explosive. So the events reference did *not* move; only the test count did.
