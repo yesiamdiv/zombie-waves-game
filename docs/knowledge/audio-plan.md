@@ -159,10 +159,42 @@ it is licensed**, **whether the amalgamated build time is acceptable**.
 One row per intended sound; read the emit sites, not `EVENT_FORMAT.md` (the doc
 records intent, the code records what is passed):
 
-| Trigger | Emitted where | Relayed? | Carries `x,y`? | Carries `ia/ib`? | Works on a client? |
-|---|---|---|---|---|---|
+| Sound | Trigger | Emitted where | Relayed? | Carries `x,y`? | Carries `ia/ib`? | Works on a client? |
+|---|---|---|---|---|---|---|
+| gunshot | `GE_PLAYER_SHOT` `kind=GEK_BULLET` | `src/systems/player_input.c:107` | **yes** (B37) | yes — spawn origin | – | yes |
+| grenade throw | `GE_PLAYER_SHOT` `kind=GEK_GRENADE` | `src/systems/grenades.c:126` | **yes** (B37) | yes | – | yes |
+| rocket launch | `GE_PLAYER_SHOT` `kind=GEK_ROCKET` | `src/systems/rockets.c:52` | **yes** (B37) | yes | – | yes |
+| zombie hit | `GE_DAMAGE` `kind=GEK_ZOMBIE` | `src/systems/collision.c:60`, `sword.c:26`, `grenades.c:38`, `rockets.c:76` | **yes** | yes — target pos | `ia`=hp before (**dropped**) | yes |
+| player hit | `GE_DAMAGE` `kind=GEK_PLAYER` | `src/systems/collision.c:60`, `src/systems/zombie_ai.c:74` | **yes** | yes | `ib`=attacker id (**dropped**) | yes — but *by what* is lost |
+| explosion (grenade) | `GE_ENTITY_DEATH` `kind=GEK_GRENADE` | `src/systems/grenades.c:19` | **yes** | yes | `a`=radius, `b`=damage | yes |
+| rocket **despawn** — *not* an impact | `GE_ENTITY_DEATH` `kind=GEK_ROCKET` | `src/systems/rockets.c:120` | **yes** | yes | `a=0, b=0` | yes, but it fires at expiry/out-of-bounds, and a rocket **impact has no event** — that is `GE_EXPLOSION`, net's NT2 |
+| generic death | `GE_ENTITY_DEATH` `kind=GEK_NONE` | `src/systems/render.c:305` | **yes** | yes | – | yes — ambiguous (any non-zombie/player entity) |
+| zombie death | `GE_KILL` `kind=GEK_ZOMBIE` | `src/systems/render.c:246` | **yes** | yes | – | yes |
+| player death | `GE_KILL` `kind=GEK_PLAYER` | `src/systems/render.c:302` | **yes** | yes | – | yes |
+| wave start | `GE_WAVE_START` | `src/world/waves.c:83` | **yes** | **no** (`0,0`) | `a`=wave, `b`=zombie count | yes — 2D only |
+| wave end | `GE_WAVE_END` | `src/world/waves.c:271` | **yes** (B39) | **no** | `a`=wave, `b`=kills | yes — 2D only |
+| player hurt / heal | `GE_PLAYER_HEALTH` | `src/items/items.c:113` (heal), `src/systems/zombie_ai.c:72` (hurt) | **yes** | yes — player pos | `a`=hp after, `b`=max, `ia`=hp before (**dropped**) | yes — hurt-vs-heal needs the **previous** event's hp |
+| pickup | `GE_ITEM_PICKUP` | `src/items/items.c:141` | **yes** | yes — item pos | `a`=item type, `b`=value | yes |
+| score | `GE_POINTS` | `src/weapons/weapons.c:26` | **yes** | **no** | `a`=total, `b`=awarded, `ia`=kills (**dropped**) | yes — 2D only |
+| shop purchase | `GE_SHOP_PURCHASE` | `src/weapons/weapons.c:37,49,63,76` | **no** | no | `a`=weapon, `b`=cost | **no — host only** |
+| zombie spawn | `GE_ENTITY_SPAWN` `kind=GEK_ZOMBIE` | `src/world/waves.c:259` | **no** | yes | – | **no** — needs a new event type ⇒ gate re-baseline (§5.3) |
+| item spawn | `GE_ENTITY_SPAWN` `kind=GEK_ITEM` | `src/items/items.c:69` | **no** | yes | `a`=item type | **no** |
+| player spawn / respawn | `GE_ENTITY_SPAWN` `kind=GEK_PLAYER` | `src/players.c:107` | **no** | yes | – | **no** |
+| particle spawn | `GE_ENTITY_SPAWN` `kind=GEK_PARTICLE` | `src/systems/render.c:297`, `grenades.c:77`, `sword.c:86` | **no** | yes | – | **no** |
+| UI click | `GE_INPUT` | `src/core/input.c:17,28,102,106,118,123` | **no** | no | `a`=scancode | **no** — and it is *input*, not a UI action |
+| host pause | `GE_HOST_PAUSE` | `src/main.c:1392` | **yes** | **no** | `a`=paused | yes — 2D only |
 
-Row one is `GE_PLAYER_SHOT` — it comes out `No`, which is §4.
+Row one is `GE_PLAYER_SHOT` — it came out `No`, which is §4. B37 landed
+2026-10-06 and it now comes out `Yes`, so the three gunshot rows above are
+usable on a client as they stand.
+
+**There is no reload sound, because there is no reload.** `grep -ri reload
+src/` finds nothing, the pistol's ammo is unlimited (`src/items/items.c`:
+"Pistol ammo is unlimited"), and `NetPlayerState` (`src/net/net.h`,
+`NET_PLAYER_STATE_BYTES 23`, `NET_WIRE_VERSION 8`) carries no reload field.
+Nothing to sound and nothing to put on the wire.
+
+Raw numbers, method and reproduction: [audio-measurements].
 
 ### Spike C — the double-fire audit
 
@@ -225,15 +257,63 @@ plays nothing, and only one of those is a defect ([versioning-decisions]).
 
 ## 10. Spike verdicts
 
-*Empty until the spikes run. Do not start implementation with this blank.*
+*Filled in 2026-10-22 by the audio agent. Raw data: [audio-measurements].*
 
 - **§4 — gunfire reaches a client:** DECIDED 2026-10-06, option (a), by `[net]`.
   Not a spike verdict; do not re-open.
-- **Trigger audit:** (will be filled in)
-- **Double-fire audit (host / client counts):** (will be filled in)
-- **Vendoring: file path, licence, build cost:** (will be filled in)
 - **Versioning — does audio move `NET_ASSET_VERSION`:** DECIDED 2026-10-06 — no
   bump, no `NET_AUDIO_VERSION`. Not a spike verdict; do not re-open.
+- **Backend — SDL3's audio API, not vendored miniaudio: DECIDED 2026-10-22.**
+  Measured: SDL3 costs **0 bytes** of binary, **0 s** of build time, **no new
+  link flag**, **no vendored file**, **no licence to track** — SDL3 is already
+  linked and already exports `SDL_OpenAudioDeviceStream`, `SDL_ResumeAudioStreamDevice`
+  and `SDL_LoadWAV`. Vendored miniaudio 0.11.25 costs a **4,108,168 B** header,
+  **19.27 s** of compile for one TU at `-O3` (6.64 s at `-O1`), **646-884 KB**
+  of binary, and `-ldl -lpthread`. Both backends were proven to put sound on
+  the speakers on this machine (12 kHz tone detected on the sink monitor:
+  SDL3 −34.0 dBFS, miniaudio −29.3 dBFS, silence control −46.6 dBFS), so this
+  is a cost decision, not a capability one. **What we give up:** SDL3 has no
+  streaming mixer and no volume/ducking API — a mixer for ~8 sound classes is
+  ~150-250 lines we own in `src/audio/`, and can be unit-tested in
+  `zombie_tests`, where miniaudio's mixer is a black box.
+  *Consequence for the plan:* §6 Spike A named miniaudio; this verdict replaces
+  it. `vendor/` is not created, nothing is vendored, and `tools/` gains no
+  audio dependency.
+- **Soft-fail (no device / missing file): PASS, at probe level.** SDL3 with
+  `SDL_AUDIODRIVER=nosuchdriver` → `sdl_init_failed`, exit 0; SDL3 and
+  miniaudio with a missing file → `soft_fail_missing_file=1`, exit 0; no
+  assert, no abort. **Not yet proven at the game level** — `--headless` must
+  never open a device (Phase B acceptance).
+- **Trigger audit: COMPLETE** — the table is §6. Findings that change a design:
+  the client cannot tell *who* hit it (`ib` is dropped); it cannot tell hurt
+  from heal (`ia` is dropped) without keeping the previous `GE_PLAYER_HEALTH`
+  event's hp; **a rocket impact has no event** at all (only its despawn does),
+  so a rocket-explosion sound needs `GE_EXPLOSION` (net's NT2); and there is
+  **no reload** to sound.
+- **Double-fire audit: RULED OUT.** Two co-op runs (25 s headless, 18 s
+  windowed). Every relayed type arrives on the client at ratio **1.00** —
+  `PLAYER_SHOT` 102/102 and 63/63, `DAMAGE` 42/42 and 25/25, `KILL` 10/10 and
+  5/5, `POINTS` 10/10 and 5/5, `WAVE_START` 1/1, `WAVE_END` 1/1 — with
+  matching entity ids and no duplicates. `ENTITY_SPAWN` is 0 on the client (not
+  relayed), which is the expected shape, not a loss.
+- **Relayed latency: MEASURED, and it is frame-bound, not network-bound.**
+  The relay itself costs **~1 ms** (unthrottled run: 102 matched shots, 0
+  entity-id mismatches, residual median **0.0 ms**). In a windowed run the
+  client hears a relayed shot after **median 89.6 ms** (min 52.6, max 106.1),
+  because the delay is **one host frame + one client frame + ~1 ms** — this
+  machine ran the windowed game at ~25 FPS (40 ms frames); at 60 FPS the same
+  path costs ~33 ms. **Consequence:** a client hears *its own* gunfire late by
+  up to two frames. Every other sound is unaffected. §4 option (c) — play
+  locally and dedupe by bullet entity id — is the mitigation, and **whether to
+  build it is a PM decision**, because it trades the §4-rejected mirror-side
+  derivation for the local player's own latency. §4 is not re-opened here.
+- **Vendoring: file path, licence, build cost — N/A.** Nothing is vendored
+  under the SDL3 decision. Should it ever be reversed: `vendor/miniaudio.h`,
+  public-domain/MIT-0 dual licensed, 19.27 s of build time at `-O3`.
+- **Relayed-latency note for the sound list:** sounds that are *about the world*
+  (kills, damage, pickups, wave starts, explosions) tolerate one relay frame
+  unnoticed; a sound that is *the player's own action* (gunfire) does not. That
+  is the whole of the latency question, and it is why only gunfire is at risk.
 
 ## 11. Acceptance for the feature as a whole
 
