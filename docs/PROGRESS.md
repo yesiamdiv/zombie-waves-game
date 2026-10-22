@@ -310,6 +310,11 @@ re-measure the single-player gate reference.
 - Tests: extended `test_grenade_detonation` and
   `test_rocket_damage_and_destruction` to init a bus and assert the logged
   `EVT=EXPLOSION` with the right `kind` and `a`. Suite now 1194/0.
+- Follow-up from audio's AT6 finding: a rocket's blast now emits at its FIRST
+  CONTACT (`CRocketTag.impact_emitted`), not at expiry/out-of-bounds. That
+  branch is a despawn (it also covers "flew off the map") and now emits only
+  `GE_ENTITY_DEATH`; the rocket pierces, so the first hit is the impact. Gate
+  unchanged (build clean, ctest 3/3, 1194/0, SP 125938/1603 identical).
 - Updated `docs/knowledge/gate-baseline.md` and `relayed-events.md`; replaced the
   copied gate literals in `docs/QA_MULTIPLAYER_S5.md` with a citation.
 

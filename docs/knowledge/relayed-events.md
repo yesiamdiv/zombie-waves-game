@@ -87,8 +87,11 @@ detonation sites:
 
 - `src/systems/grenades.c` `explode_grenade()` — `kind=GEK_GRENADE`, `a =
   tag->explosion_radius` (GRENADE_EXPLOSION_RANGE 90.0f).
-- `src/systems/rockets.c` terminal destruction (lifetime exhausted or
-  out-of-bounds) — `kind=GEK_ROCKET`, `a = ROCKET_RADIUS` (5.0f).
+- `src/systems/rockets.c` FIRST CONTACT (`damage_overlapping`) — `kind=GEK_ROCKET`,
+  `a = ROCKET_RADIUS` (5.0f), once per rocket (`CRocketTag.impact_emitted`). The
+  rocket pierces, so the blast is the first hit; the lifetime/out-of-bounds
+  branch is a DESPAWN and deliberately emits no `GE_EXPLOSION` (it is also how a
+  rocket that flew off the map ends). Corrected after [audio]'s AT6 finding.
 
 Payload is FINAL and confirmed with [audio]: `x,y` = impact origin, `a` =
 radius, `b` spare (0), `kind` = grenade/rocket. No `ia`/`ib`. Relayed through

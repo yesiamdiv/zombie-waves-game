@@ -69,6 +69,15 @@ static void damage_overlapping(World *ecs, Entity rocket, CRocketTag *tag) {
                             ? ecs->colliders[i].radius : 12.0f;
         if (vec2_distance(rpos, zpos) > ROCKET_RADIUS + zradius) continue;
 
+        /* NT2: the blast is the first contact, at the rocket's position. The
+         * expiry/out-of-bounds branch below is a despawn (it can also mean the
+         * rocket flew off the map), so it must not be reported as an impact. */
+        if (!tag->impact_emitted) {
+            event_emit(g_events, GE_EXPLOSION, rocket, GEK_ROCKET,
+                       rpos.x, rpos.y, ROCKET_RADIUS, 0, 0, 0);
+            tag->impact_emitted = true;
+        }
+
         CHealth *hp = &ecs->healths[i];
         float prev = hp->current;
         hp->current = prev - tag->damage;
@@ -119,9 +128,6 @@ void system_rockets(World *ecs, Player *p, GameWorld *world, float dt) {
         if (tag->lifetime <= 0 || !world_in_bounds(world, pos.x, pos.y)) {
             event_emit(g_events, GE_ENTITY_DEATH, i, GEK_ROCKET,
                        pos.x, pos.y, 0, 0, 0, 0);
-            /* NT2: terminal blast point for client audio; a = radius. */
-            event_emit(g_events, GE_EXPLOSION, i, GEK_ROCKET,
-                       pos.x, pos.y, ROCKET_RADIUS, 0, 0, 0);
             ecs_destroy_entity(ecs, i);
             continue;
         }
