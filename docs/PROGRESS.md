@@ -292,3 +292,32 @@ B35's colour on the *client* is still unproven.
   images, so every check stays numeric. `docs/PENDING_VERIFICATION.md`'s
   two-window checklist (B32 client death screen, SP overlay absent) is still the
   outstanding item.
+
+### DEV — assets lane: owner-reported batch B43/B45/B44 + AT9 (2026-10-22)
+
+Owner queue, in the order the owner set (B43 → B45 → B44 → AT9), all in
+`worktrees/assets` (`feature/assets-maps`), lane re-aligned to `76b0458` first.
+
+- **B43** (`fba930e`) — loot pickups drew a white box. Root cause was the art,
+  not the blend path: `entity_pickup()` was the only entity art with opaque
+  corners. Now outlined icons on a transparent background; pickup scale
+  `0.5 → 0.75` (size follows the entity scale, so the client matches). Texture
+  count unchanged.
+- **B45** (`f7e2556`) — the B41 vignette was banded because it drew 24 live
+  bands. Baked the falloff into `assets/textures/ui/vignette.png` and blit it
+  stretched, faded by the damage timer; `gate-baseline` re-baselined 33 → 34 in
+  the same commit (UI-only art; `NET_ASSET_VERSION` untouched).
+- **B44** (`267665f`) — map-select rows were spaced `lh*2.2` with the detail
+  line at `+lh+6`, so the highlighted map's detail clipped the next map's name
+  by ~1.8px at every window size (B1-class regression). Rows now `lh*2+12`; the
+  menu and shop blocks are clamped clear of the line above/below on short
+  windows. Verified by re-deriving every screen's line rectangles from the same
+  formulas: no overlap for any window ≥480px tall.
+- **AT9** (`c01c0fc`) — F11 / Alt+Enter toggles desktop-fullscreen; the windowed
+  size is captured and restored. No window dragging (Wayland: programmatic
+  placement is only a request).
+
+Each fix: build clean `-Werror`, `ctest` 3/3, `zombie_tests` 1186/0, two
+`--seed=42` SP runs byte-identical at 125938 bytes / 1603 lines. All four are
+visual, so all remain **UNPROVEN on screen** until the owner looks
+(`i5-unverified-on-screen`).
