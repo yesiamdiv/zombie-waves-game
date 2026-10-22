@@ -223,5 +223,8 @@ static inline CItemTag *ecs_get_item_tag(World *w, Entity e) {
 static inline CParticle *ecs_get_particle(World *w, Entity e) {
     return &w->particles[ecs_get_entity_index(w, e)];
 }
+static inline CAnimation *ecs_get_animation(World *w, Entity e) {
+    return &w->animations[ecs_get_entity_index(w, e)];
+}
 
 #endif

@@ -370,3 +370,64 @@ B35's colour on the *client* is still unproven.
   in `docs/PENDING_VERIFICATION.md`.
 - Net's freeze is not active yet: post "starting" immediately before the art
   append commit and wait for net to confirm.
+
+## 2026-10-22 — animation (DEV)
+
+### AN2 — generator support for one walk cycle (done, `18c95af`)
+- The generator emits the zombie walk cycle as EIGHT individual 32x32 PNGs
+  (`tools/gen_assets.py`: `_zombie_walk_grid` + `entity_zombie_walk`), because
+  an art id is resolved from a texture's PATH — frames of one sheet cannot be
+  named, so they cannot travel.
+- Placeholder poses: the idle blob, the trailing arm swinging, the reaching arm
+  the other way, the body bobbing twice a cycle, the head lopping down over
+  the second half of it (a limp, and the term that makes all eight frames
+  differ). Frame 0 is the idle pose EXACTLY, so a zombie that starts walking
+  does not pop. All eight frames are pairwise distinct; the art is hand-tuned
+  in AN5.
+- `--verify` now covers them: 33 → 41 textures, declared in
+  `docs/knowledge/gate-baseline.md` in the same commit.
+
+### AN1 — the art table names the eight walk frames (done, `35a8b46`)
+- `net_art.h`/`net_art.c`: `NET_ART_ZOMBIE_WALK0 = 10` .. `WALK7 = 17`,
+  `NET_ART_COUNT` 10 → 18, `NET_ART_ZOMBIE_WALK_COUNT 8`. Append only.
+- `src/net/net.h`: `NET_ASSET_VERSION` 1 → 2 (one line; the version bump rides
+  with the rows because the PNGs of the previous commit are inert until the ids
+  that name them exist). `NET_WIRE_VERSION` stays 8, `NET_SNAP_ENTRY_BYTES`
+  stays 35 — no wire field was added.
+- Net's freeze was taken and released around this commit (net confirmed, I
+  posted the SHA).
+- The art table test now checks each new row resolves to the expected file name
+  and that the file is really shipped: 1186 → 1253 checks (declared in the same
+  baseline commit).
+
+### AN3 — the frame-selection function and the host wiring (this commit)
+- `src/graphics/anim.{h,c}` (new): `anim_walk_art_id(frame)`,
+  `anim_walk_path(frame)`, `anim_walk_texture(frame)`. The frame number maps to
+  an art id by adding; the art table's contiguity is asserted at compile time.
+- `src/systems/animation.c` (new): `system_animation()` moved out of
+  `render.c` and given the wiring — the frame's texture goes ON THE SPRITE.
+- `src/world/waves.c`: a spawned zombie gets `COMP_ANIMATION` and starts on
+  frame 0 (the idle pose).
+- **Why the sprite:** the renderer draws it, the snapshot builder reads the
+  texture's name out of it, and the client resolves the art id it carries. One
+  answer to "which frame is this", so the host and the client cannot drift.
+  `net_snapshot.c`, `net_codec.c` and the client's render path are UNTOUCHED.
+- The rate is now code: `ANIM_FRAME_PERIOD` = 0.1 s (10 fps), with the ≤ 15 fps
+  ceiling written beside it. AN4 pins that rule with a test.
+- Tests: `test_animation_frames` (the frame → id → file mapping, the wrap, the
+  distinctness) and `test_animation_frame_advance` (a zombie is on the cycle,
+  it advances on time, it wraps). The texture itself cannot be checked — the
+  test binary is headless, so there is no texture to swap.
+
+### Gate (this commit)
+- build clean (zero warnings in project sources), `ctest` 3/3, `zombie_tests`
+  1253 → 1347 / 0, `gen_assets.py --verify` 41 textures with a clean tree
+  afterwards, two `--seed=42` single-player runs byte-identical (125938 bytes /
+  1603 lines), wave 1 still `8 zombies, interval: 1.90s, difficulty: 1.00`.
+- The on-screen walk cycle is still **UNPROVEN** — a gate cannot see a picture.
+
+### Next
+- AN4 (rate rule as code: the ≤ 15 fps constant with a test that fails if the
+  period is too short), then AN5 (content: walk/attack/death, pickup bob,
+  missing-texture fallback), then AN7 (the sword art ids and the angle contract
+  for net).

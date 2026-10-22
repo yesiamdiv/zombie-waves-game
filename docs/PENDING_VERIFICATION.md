@@ -245,9 +245,15 @@ gate in this repo can clear any of it.
       host by up to ~50 ms. Check that a client and a host side by side show
       the same frame of the same walk cycle, and that the client does not
       stutter between frames.
+      **Implemented 2026-10-22 (AN3):** the client needed no code change - it
+      already resolves an art id to a texture - but it has still never been
+      seen showing a walk frame. Two windows, human eyes.
 - [ ] **The host's own walk cycle is unaffected.** Host-side animation is
       driven by `system_animation()` at the render tick; confirm the host's
       zombies walk smoothly and that nothing else in the picture moved.
+      **Implemented 2026-10-22 (AN3):** the frame is put on the entity's
+      sprite, so the host draws the walk frame and the snapshot carries its
+      art id. Still unproven - a gate cannot see a picture.
 - [ ] **The sword (NT4) still needs its own check** when it lands: the blade
       angle is interpolated client-side between two host frames with
       wrap-safe maths, and a wrap across 180 deg is exactly the case that

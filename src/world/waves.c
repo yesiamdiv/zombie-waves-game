@@ -2,6 +2,7 @@
 #include "events/event_bus.h"
 #include "config.h"
 #include "core/log.h"
+#include "graphics/anim.h"
 #include "players.h"
 #include <stdlib.h>
 
@@ -161,6 +162,7 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
     ecs_add_component(ecs, e, COMP_SPRITE);
     ecs_add_component(ecs, e, COMP_COLLIDER);
     ecs_add_component(ecs, e, COMP_ZOMBIE_TAG);
+    ecs_add_component(ecs, e, COMP_ANIMATION);
 
     *ecs_get_position(ecs, e) = (CPosition){{pos.x, pos.y}};
     *ecs_get_velocity(ecs, e) = (CVelocity){{0, 0}, 80.0f};
@@ -184,7 +186,12 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
     /* R13 merge fix (B15): the merge dropped the zombie texture, leaving a flat
      * circle. Restore it; the theme tint keeps the per-variant palette. */
     Sprite zs = sprite_circle(size, color);
-    SDL_Texture *zombie_tex = sprite_tex("textures/entities/zombie.png");
+    /* The walk cycle's frame 0 IS the idle zombie pose, so a zombie starts on
+     * the picture it always had and does not pop when it starts walking.
+     * anim_walk_texture() is the one place that knows which file a frame is;
+     * the plain zombie.png is the fallback for a build without the cycle. */
+    SDL_Texture *zombie_tex = anim_walk_texture(0);
+    if (!zombie_tex) zombie_tex = sprite_tex("textures/entities/zombie.png");
     if (zombie_tex) {
         /* 32px art at 2*size world units matches the old circle diameter. */
         zs = sprite_texture(zombie_tex);
@@ -194,6 +201,12 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
         .sprite = zs,
         .scale = size / 16.0f,
         .base_alpha = 1.0f
+    };
+    *ecs_get_animation(ecs, e) = (CAnimation){
+        .current_frame = 0,
+        .frame_timer = 0.0f,
+        .frame_duration = ANIM_FRAME_PERIOD,
+        .total_frames = ANIM_WALK_FRAMES
     };
     ecs_get_collider(ecs, e)->radius = size;
 

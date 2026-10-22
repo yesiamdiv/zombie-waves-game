@@ -22,6 +22,7 @@
 #include "net/net_codec.h"
 #include "net/net_mirror.h"
 #include "assets/asset_manager.h"
+#include "graphics/anim.h"
 
 /* Normal-play default; the game binary overrides via debug flags. */
 float g_zombie_damage_mult = 1.0f;
@@ -1902,6 +1903,78 @@ static void test_net_art_table(void) {
     CHECK(net_art_base_px(NET_ART_ZOMBIE) == net_art_base_px(NET_ART_ZOMBIE_WALK0));
 }
 
+/* The frame-selection function: frame number -> art id -> file.
+ *
+ * The point of the whole design is that ONE function answers "which frame is
+ * this", so this test checks that the answer is the same no matter who asks:
+ * the id is in the walk block, the id resolves back to the same id through the
+ * art table, and the frame number wraps instead of running off the end. */
+static void test_animation_frames(void) {
+    LOG_INFO("--- Test: animation frame selection ---");
+
+    CHECK(ANIM_WALK_FRAMES == 8);
+    for (int i = 0; i < ANIM_WALK_FRAMES; i++) {
+        uint8_t id = anim_walk_art_id(i);
+        CHECK(id == (uint8_t)(NET_ART_ZOMBIE_WALK0 + i));
+        const char *path = anim_walk_path(i);
+        CHECK(path != NULL);
+        /* The art table resolves the path back to the same id: the round trip
+         * is what lets the client draw the frame the host picked. */
+        CHECK(net_art_from_path(path) == id);
+    }
+    /* Distinct frames, distinct ids, distinct files. */
+    for (int i = 0; i < ANIM_WALK_FRAMES; i++) {
+        for (int j = i + 1; j < ANIM_WALK_FRAMES; j++) {
+            CHECK(anim_walk_art_id(i) != anim_walk_art_id(j));
+            CHECK(strcmp(anim_walk_path(i), anim_walk_path(j)) != 0);
+        }
+    }
+    /* The frame number wraps both ways. */
+    CHECK(anim_walk_art_id(ANIM_WALK_FRAMES) == anim_walk_art_id(0));
+    CHECK(anim_walk_art_id(-1) == anim_walk_art_id(ANIM_WALK_FRAMES - 1));
+    CHECK(anim_walk_art_id(ANIM_WALK_FRAMES * 3 + 2) == anim_walk_art_id(2));
+}
+
+/* The host wiring: a zombie is on the walk cycle, the cycle advances on time
+ * and wraps. The texture itself cannot be checked here - the test binary is
+ * headless, so there is no texture to swap - but the frame index is the part
+ * the snapshot is built from, so that part is checked. */
+static void test_animation_frame_advance(void) {
+    LOG_INFO("--- Test: the animation system advances the walk cycle ---");
+
+    World ecs;
+    ecs_init(&ecs);
+    Entity z = waves_spawn_zombie(&ecs, vec2(100, 200), THEME_GRASSLAND);
+    CHECK(z != ECS_NULL_ENTITY);
+    CHECK(ecs_has_component(&ecs, z, COMP_ANIMATION));
+
+    CAnimation *anim = ecs_get_animation(&ecs, z);
+    CHECK(anim->total_frames == ANIM_WALK_FRAMES);
+    CHECK(anim->frame_duration == ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == 0);
+    CHECK(anim->frame_timer == 0.0f);
+
+    /* One period later, one frame on. */
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(ecs_get_animation(&ecs, z)->current_frame == 1);
+
+    /* Half a period is not a frame. */
+    system_animation(&ecs, ANIM_FRAME_PERIOD * 0.5f);
+    CHECK(ecs_get_animation(&ecs, z)->current_frame == 1);
+
+    /* The cycle wraps instead of running past the last frame. */
+    for (int i = 0; i < ANIM_WALK_FRAMES - 1; i++) {
+        system_animation(&ecs, ANIM_FRAME_PERIOD);
+    }
+    CHECK(ecs_get_animation(&ecs, z)->current_frame == 0);
+
+    /* An entity without an animation component is left alone. */
+    Entity plain = ecs_create_entity(&ecs);
+    ecs_add_component(&ecs, plain, COMP_POSITION);
+    system_animation(&ecs, ANIM_FRAME_PERIOD * 5.0f);
+    CHECK(ecs_is_alive(&ecs, plain));
+}
+
 /* Snapshot builder maps a live world into the 20 Hz wire format. */
 static void test_net_snapshot_build(void) {
     LOG_INFO("--- Test: net_snapshot_build maps the live world ---");
@@ -2376,6 +2449,8 @@ int tests_run_all(void) {
     test_net_codec();
     test_net_codec_game();
     test_net_art_table();
+    test_animation_frames();
+    test_animation_frame_advance();
     test_net_snapshot_build();
     test_net_player_state();
     test_net_mirror_interp();

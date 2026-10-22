@@ -190,3 +190,52 @@ cannot be named, but because naming one costs a change in a file animation does
 not own. The aliasing constraint is real too, and it does not force B; it
 forces a RATE LIMIT (<= 15 fps), which is a content rule rather than a wire
 redesign. Design A therefore stands, with one hard rule attached to it.
+
+## 2026-10-22 18:55 UTC - note by animation: how the frame actually gets on screen (AN3)
+
+The transport question is settled (design A: the frame travels as the art id
+the snapshot already carries). This entry records the *wiring*, because it is
+the part that decides whether the host and the client can ever disagree.
+
+**The frame lives on the sprite.** `system_animation()` advances
+`CAnimation.current_frame` and then puts that frame's texture into the
+entity's `CSprite`. Everything downstream reads the sprite and needs to know
+nothing about animation:
+
+- the host's renderer draws `CSprite` (`system_render`), so the host shows the
+  walk frame;
+- the snapshot builder reads the sprite's texture NAME and turns it into an art
+  id (`asset_manager_name_of` -> `net_art_from_path`,
+  `src/net/net_snapshot.c`), so the wire carries the frame's id;
+- the client resolves that id back to a path and a texture
+  (`system_render_mirror`), so the client shows the frame the host chose.
+
+**Why the sprite and not a separate "animation" field on the wire:** a second
+place that answers "which frame is this" is a second place that can answer it
+differently. The spike's whole lesson was that a peer inventing a value the
+host owns is the bug class this project keeps hitting (B19-B23). Putting the
+frame on the sprite means the host has ONE answer and the client copies it.
+
+**What this changed: three files, none of them net's.**
+
+- `src/graphics/anim.{h,c}` (new) - the frame-selection function:
+  `anim_walk_art_id(frame)`, `anim_walk_path(frame)`, `anim_walk_texture(frame)`.
+  The frame number maps to an art id by adding (`NET_ART_ZOMBIE_WALK0 + frame`),
+  and the art table's contiguity is asserted at compile time.
+- `src/systems/animation.c` (new) - `system_animation()` moved out of
+  `render.c` (it is not rendering) and given the sprite swap.
+- `src/world/waves.c` - a spawned zombie gets `COMP_ANIMATION` and starts on
+  frame 0, which IS the idle pose (pixel-identical to `zombie.png`), so it does
+  not pop when it starts walking.
+
+`src/net/net_snapshot.c`, `src/net/net_codec.c` and the client's render path
+are UNTOUCHED, and the wire layout did not move: `NET_WIRE_VERSION` 8,
+`NET_SNAP_ENTRY_BYTES` 35. The client needed no change at all - it already
+resolves an art id to a texture - it only needed the host to send the right id.
+
+**The rate is now code:** `ANIM_FRAME_PERIOD` = 0.1 s (10 fps), with the
+<= 15 fps ceiling written down next to it. AN4 pins the rule with a test.
+
+**What this does NOT prove:** the picture. A headless gate cannot see a walk
+cycle, and the client path still needs a human watching two windows. The
+on-screen items stay open in `docs/PENDING_VERIFICATION.md`.

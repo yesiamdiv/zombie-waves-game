@@ -212,23 +212,6 @@ void system_render_beacons(SDL_Renderer *renderer, Camera *cam,
     }
 }
 
-void system_animation(World *ecs, float dt) {
-    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
-        if (!ecs->alive[i]) continue;
-        if (!(ecs->component_masks[i] & (1u << COMP_ANIMATION))) continue;
-
-        CAnimation *anim = &ecs->animations[i];
-        anim->frame_timer += dt;
-        if (anim->frame_timer >= anim->frame_duration) {
-            anim->frame_timer -= anim->frame_duration;
-            anim->current_frame++;
-            if (anim->current_frame >= anim->total_frames) {
-                anim->current_frame = 0;
-            }
-        }
-    }
-}
-
 void system_cleanup(World *ecs, WaveSystem *waves, Player *players, int player_count) {
     /* Check for dead entities (health <= 0) and destroy them */
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
