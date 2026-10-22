@@ -119,10 +119,10 @@ next stage opens on the owner's go.**
 | ID | Task | Depends on | Priority / Status |
 |---|---|---|---|
 | NT1 | Relay `GE_WAVE_END` (B39): filter add in `relay_net_events()` + `BUGS.md` close-out. Free — no wire bump, relay early-returns in SP. | D2 ✔ | P1 · **DONE `feature/net-protocol@e94eb0e`** |
-| NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters) **with** the SP events-log re-baseline, jointly re-verified with `assets`. | D3 ✔, audio start | NEXT STAGE |
-| NT3 | B38 snapshot count: if design B, fold a `u16` into the `NET_WIRE_VERSION` 8→9 bump; if design A, lower `NET_SNAP_MAX_ENTITIES` to 255 **with a loud encoder guard**. Spike-gated; belongs to the bump window. | A-vs-B spike | P1 (unactionable) — parked until the spike |
-| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind (option 1), inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Rides NT3's bump if B. | D1 ✔, animation start | NEXT STAGE |
-| NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | NEXT STAGE |
+| NT2 | Add `GE_EXPLOSION` (new `GameEventType` + `event_type_names[GE_COUNT]` + emitters). **Measured correction (net, 2026-10-22):** the seed-42 25 s bot run does **not** move — the bot never detonates an explosive — so the SP events-log reference is unchanged (125938/1603); only the test count moves (1186→1194). "Re-baseline" therefore applies only to runs that actually use explosives. | D3 ✔, audio start | **net · IMPLEMENTED `8f408b7`** on lane (not main) — held for AT7 landing |
+| NT3 | B38 snapshot count. **UNPARKED 2026-10-22:** the spike chose design A (no animation wire change), but NT4 needs a field — so open **one** wire-bump window and fold the entity count to `u16` **together with** NT4's fields in a single `NET_WIRE_VERSION` 8→9 bump (one bump, per D1). Codec test + version declaration in the same commit. | A-vs-B ✔ (A), NT4 | **net · IN PROGRESS** — bump window open (8→9) |
+| NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind, inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Verdict: **procedural blade** — snapshot carries `int16` centidegrees angle (wraps at 180°) + extensible attribute block; client draws via `sprite_draw_blade()` with wrap-safe interpolation. **Rides the single 8→9 bump with NT3.** Waits on AN7 (blade art id) + freeze handshake. | D1 ✔, AN7, bump | **net · next** (after NT2; coordinate with animation) |
+| NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | **net · active** — animation will announce before touching `net_art.*` |
 | NT6 | Purge `/tmp/opencode` scratch paths from `tests/tests.c` (tmpfs quota hazard). | — | P1 · **DONE `f260c55`** |
 | NT7 | B32–B35 human two-window screen check on `feature/net-protocol`. | a human | P1 verification debt · blocked (human) |
 
@@ -137,16 +137,46 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 |---|---|---|---|
 | AT1 | Migrate the planning set (`AGENT_RULES`, `ANIMATION_PLAN`, `AUDIO_PLAN`, `ANIMATIONS_AGENT`, `AUDIO_AGENT` + `CROSS_BRANCH_CONFLICTS`) **into `docs/knowledge/` topics** (D7). | main clean | P1 · **DONE `a25d9ba`** — main tracked tree clean, gate green |
 | AT2 | Owner cuts `worktrees/animation`+`feature/animation-assets` and `worktrees/audio`+`feature/audio` by hand (`git worktree add -b`), animation first. Precondition: main committed/clean + gate green. | main clean, AT1 | **DONE 2026-10-22** — both cut at `68280a3` |
-| AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | **animation · IN PROGRESS** |
-| AT4 | Animation Phases A–C, strictly downstream of the snapshot (no RNG, no sim feedback). **Design-A only:** the ~60–80 `net_art` appends + `NET_ASSET_VERSION` 1→2 apply only if the spike picks A; goes through the freeze protocol with `net`. | AT3 | animation · next |
-| AT5 | Animation Phase D — **blocked on a human two-window I5 check**, not on a gate. | human | animation · blocked (human) |
-| AT6 | Audio Phase-0 spike: vendor miniaudio; soft-fail headless; trigger audit; no-double-fire counting log; reload; gunfire latency → verdict into `knowledge/`. | AT2 | **audio · IN PROGRESS** |
-| AT7 | Audio phases; `GE_EXPLOSION` SP re-baseline rides this commit and is re-verified jointly with `net`. | AT6, D3 | audio · next |
+| AT3 | Animation Phase-0 spike: can a sheet frame be *named*? is 20 Hz aliasing acceptable? → verdict into `knowledge/animation-transport`, then A-vs-B. | AT2 | **DONE `7ee1e16`** — verdict: **DESIGN A** (individual PNG frames), period ≥ 67 ms (≤15 fps, target 10); sheet frames unnamable; gate blind to animation; ≤15 fps = 8/8 frames. No wire change (`NET_WIRE_VERSION` 8, entry 35). B31 reopened. |
+| AT4 | ~~Animation Phases A–C~~ — **superseded** by animation's proposed AN1–AN7. | AT3 | cancelled → AN1–AN7 |
+| AT5 | ~~Animation Phase D~~ — **superseded** by AN6 (client path, human-gated). | human | cancelled → AN6 |
+| AN1 | Art table append: 8 walk-frame ids (art table 10→18) + `NET_ASSET_VERSION` 1→2 in one commit. **Needs net's freeze handshake.** | AN2, net freeze | **DONE `35a8b46`** — ids 10–17, `NET_ASSET_VERSION` 2, wire still v8/35; tests 1186→1253; freeze released to net |
+| AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **DONE `18c95af`** — `zombie_walk0..7.png`, frame 0 == idle, 8 pairwise distinct; **textures 33→41** re-baselined in `gate-baseline` on the animation lane |
+| AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **DONE `e45304c`** — `src/graphics/anim.*` + `src/systems/animation.c`; frame texture on the sprite so host/client share one answer; wire untouched; tests 1253→1347; walk cycle on-screen unproven |
+| AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | **DONE `bbf4805`** — `ANIM_MAX_FPS`/`ANIM_FRAME_PERIOD_MIN`, `test_animation_rate_rule` simulates the 20 Hz snapshot client; teeth proven by breaking it; tests 1347→1382 |
+| AN5 | Content: walk/attack/death, player walk, pickup bob, missing-texture fallback. | AN2, AN3 | animation · next (after AN7) |
+| AN6 | Phase D client path — same selection function; **blocked on human two-window I5 check**. | human | animation · blocked (human) |
+| AN7 | NT4 animation-side support: sword art ids + angle contract (procedural blade, int16 centidegrees) for net. | AN1 | **animation · NEXT** — unblocks net's 8→9 bump/NT4; do this before AN5 |
+| AT6 | ~~Audio Phase-0 spike~~ — **superseded** by audio's own proposed breakdown A1–A6 (owner rule: build tasks from the agent's proposal). | AT2 | cancelled → A1–A6 |
+| A1 | Audio backend decision, measured: vendored miniaudio vs **SDL3's own audio API** (already linked); compile/binary/device cost, sound proven on the speakers (pw-record). Verdict may change the plan of record. | AT2 | **DONE `8f3e4c3`** — verdict **SDL3 audio API**: 0 B binary / 0 s build / no new dep vs miniaudio 4.1 MB header + 19 s compile + 646–884 KB + `-ldl -lpthread`; both reach the speakers (tone captured). Cost decision: we own ~150–250 lines of mixing. |
+| A2 | Soft-fail proof for the chosen backend (no device / missing file / `--headless`). | A1 | **DONE `8f3e4c3`** — proven at probe level (both backends, exit 0, no abort); game-level `--headless` still a Phase-B acceptance item |
+| A3 | Trigger audit: one row per intended sound, read from code, host-authoritative vs client-derivable. | A1 | **DONE `8f3e4c3`** — table in `audio-plan` §6; client can't tell who-hit (`ib` dropped) or hurt-vs-heal (`ia` dropped); rocket impact needs NT2; shop/spawn not relayed → host-only; no reload mechanic |
+| A4 | Double-fire audit: emission counts per event type, host vs client, 25 s co-op. | A1 | **DONE `8f3e4c3`** — ruled out by counting: every relayed type at ratio 1.00 in two co-op runs (25 s headless, 18 s windowed), ids one-for-one |
+| A5 | Gunfire latency (audible?) + reload-on-wire evidence. | A1 | **DONE `8f3e4c3`** — relay ~1 ms; delay is frame-bound (one host + one client frame): ~90 ms median at ~25 FPS, ~33 ms at 60 FPS; no reload exists |
+| A6 | Commit spike verdicts into `audio-plan` §10 + measurements topic; gate first. | A2–A5 | **DONE `8f3e4c3`** — `audio-plan` §10, `knowledge/audio-measurements` (on lane), listen-for list, PROGRESS; no product code |
+| A7 | **Phase B** — audio foundations on the SDL3 backend: `src/audio/`, init/update/shutdown in `main.c`, `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`. | A1 | **audio · next** — headless silent + allocation-free |
+| A8 | **Phase C** — `tools/gen_audio.py` + `assets/audio/**` + the sounds; deterministic regeneration. | A7 | audio · next |
+| A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | audio · next (after NT2 in main; rebase per merge order) |
+| A10 | **Phase E** — human listens, two windows; judge whether the client's own gunshot feels late. | A9 | audio · blocked (human) |
+| AT7 | NT2 (`GE_EXPLOSION`) landing window, re-verified jointly with `net`. Measured correction: NT2 does not move the seed-42 SP reference (bot never detonates); only test count 1186→1194. | A6, D3 | **released to land when net is ready** (audio Phase D needs it in main) |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
-| AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22; **queued behind** the animation/audio stage — start only after the owner says that stage has begun. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | NEXT STAGE · **queued after animation/audio start** |
-| AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Re-baseline texture count 33→34 in `knowledge/gate-baseline`. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | NEXT STAGE · **queued after animation/audio start** |
-| AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | NEXT STAGE · **queued after animation/audio start** |
-| AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | NEXT STAGE · **queued after animation/audio start** |
+| AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | **DONE `c01c0fc`** (+log `7dfb49a`) — toggle in `main.c`, hint in `hud.c`, size captured/restored, Alt+Enter repeat-guarded; **on-screen unproven** |
+| AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | **DONE `f7e2556`** (+docs `7eed6da`) — `ui/vignette.png`, 33→34 lane-local; on-screen unproven |
+| AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | **DONE `fba930e`** (+docs `8899446`) — art, not blend; 33 textures; on-screen unproven |
+| AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | **DONE `267665f`** (+docs `a5eeb74`) — map-select row spacing `lh*2+12`, menu/shop clamped ≥12px; zero overlaps ≥480px tall; on-screen unproven |
+
+> **Lane-local gate baselines (PM, 2026-10-22).** Several lanes re-baseline the
+> same `knowledge/gate-baseline` numbers independently; those numbers are
+> **lane-local, not merged**:
+> - **Textures:** animation AN2 → **41** (8 walk PNGs), assets B45 → **34**
+>   (vignette). Merged = **42** (33 + 8 + 1).
+> - **Tests:** animation AN1 → **1253**, AN3 → **1347**, AN4 → **1382**; net NT2 →
+>   **1194** (GE_EXPLOSION), and NT3/NT4 plus audio's mixer tests will add more.
+>
+> Do **not** resolve a merge by picking one lane's number. On the merged tree,
+> run the suite and `gen_assets --verify` and set the measured numbers
+> **deliberately** in `gate-baseline` in that merge commit. Animation lands
+> first; assets/audio rebase onto it.
 
 ### shared
 

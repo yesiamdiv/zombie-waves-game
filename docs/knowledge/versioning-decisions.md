@@ -124,3 +124,16 @@ B38 and NT4 landed as one bump, as decided:
   around the circle; `system_render_mirror()` draws it with
   `sprite_draw_blade()` at the host's length/width.
 - `NET_SNAP_ENTRY_BYTES` stays 35; no existing field offset moved.
+## 2026-10-22 13:07 UTC - decision by pm: One NET_WIRE_VERSION 8→9 bump carries both B38 (u16 entity count) and NT4 (sword angle + extensible attrs)
+
+PM decision 2026-10-22 (net's option (a)), following owner D1 and the animation AT3 verdict.
+
+- The AT3 spike chose **design A** — animation frames ride the existing `art` id; animation needs **no** wire change (`NET_WIRE_VERSION` stays 8 for animation).
+- **NT4 (B40 swords)** uses a **procedural blade** and does need a field: `int16` centidegrees angle (wraps at 180°) + an extensible attribute block (D1: provision for attack speed and later attributes).
+- **NT3 (B38)** is unparked and handled in the **same** bump: fold the snapshot entity count to `u16`.
+- Therefore open **one** wire-bump window: `NET_WIRE_VERSION` **8 → 9**, in a single deliberate commit that names the version, updates the codec test (`test_net_codec`), and updates the registry in `VERSIONING.md`. `NET_SNAP_ENTRY_BYTES` stays 35 (the count is in the snapshot header, not per entry).
+- Two bumps (option c) is rejected as wasteful. Holding NT4 until B38 is separately unparked (option b) is moot now that the spike is resolved.
+
+Landing conditions: coordinate with animation's AN7 (blade art id) and the freeze handshake (`knowledge/netfile-ownership-and-freeze`). NT2 (`GE_EXPLOSION`) still lands in the audio/AT7 window, unchanged. Nothing is pushed without the owner.
+
+**Why:** The animation spike chose design A (no animation wire change), so B38/NT3 had no bump of its own. NT4's procedural-blade angle is a new wire field and cannot land without a bump, and owner D1 requires it to ride a single bump alongside B38 rather than incurring a second bump. One deliberate 8->9 bump is cheaper and keeps one concern per version number.
