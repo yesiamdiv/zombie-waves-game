@@ -51,8 +51,11 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
 | B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | — | OPEN |
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
-| B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED |
+| B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (execution needs refinement — see B45) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
+| B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | — | OPEN |
+| B44 | Menu UI text overlaps (regression of B1's class) | — | OPEN |
+| B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | — | OPEN |
 
 ## Detailed entries
 

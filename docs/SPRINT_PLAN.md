@@ -139,6 +139,9 @@ next stage opens on the owner's go.**
 | AT7 | Audio phases; `GE_EXPLOSION` SP re-baseline rides this commit and is re-verified jointly with `net`. | AT6, D3 | NEXT STAGE |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
 | AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22; **queued behind** the animation/audio stage — start only after the owner says that stage has begun. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | NEXT STAGE · **queued after animation/audio start** |
+| AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Re-baseline texture count 33→34 in `knowledge/gate-baseline`. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | NEXT STAGE · **queued after animation/audio start** |
+| AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | NEXT STAGE · **queued after animation/audio start** |
+| AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | NEXT STAGE · **queued after animation/audio start** |
 
 ### shared
 
