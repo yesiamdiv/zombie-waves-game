@@ -172,7 +172,7 @@ parent. **Cut from the clean tip, never from a dirty tree.**
 
 | Phase | Deliverable | Acceptance |
 |---|---|---|
-| **A. Spike** | the verdicts below filled in | frame-storage and wire design decided *before* code; **B31 reopened in `docs/BUGS.md` with the design answer** |
+| **A. Spike** | the verdicts below filled in | frame-storage and wire design decided *before* code; **B31 reopened in `docs/BUGS.md` with the design answer** — **DONE 2026-10-22, see §8** |
 | **B. Foundations** | attach `COMP_ANIMATION` to real entities; renderer reads `current_frame`; frame-selection function; generator support; art ids; `NET_ASSET_VERSION` bump | gate green; SP runs byte-identical; ids counted against budget |
 | **C. Content** | zombie, player, pickup animations; missing-texture fallback of identical size and tint | `gen_assets.py --verify` clean; `sprite_tex()` NULL path renders a flat shape, not a hole |
 | **D. Multiplayer** | the client path uses the *same* frame-selection function | no new client-side appearance opinion; `I5_FIX.md` §7 honoured; **works on a `render_only_client()` with an empty ECS** |
@@ -205,26 +205,65 @@ parent. **Cut from the clean tip, never from a dirty tree.**
 | Wire bump sneaking in outside a spike | five files, one codec test, a stale peer striding the wrong distance | spike decides first; a wire change is its own commit naming `NET_WIRE_VERSION` |
 | Art id exhaustion | 255 ids, ~60-80 for frames under design A | count in the spike; state remaining headroom |
 | Art ids appended without the `NET_ASSET_VERSION` bump | old peer resolves an unknown id to NULL and skips frames *silently* | [versioning-decisions]; [agent-rules] §6 |
-| Entity-id reuse under design B | snapshot ids are raw ECS indices with no generation counter; a recycled id briefly wears a dead entity's phase | prefer A; if B, reset phase on changed `kind`/`art` |
+| Entity-id reuse under design B | snapshot ids are raw ECS indices with no generation counter; a recycled id briefly wears a dead entity's phase | **moot - A won the spike**; the art id is host-authored per snapshot like every other appearance field |
 | `base_px` mismatch | right sprite, wrong size, on a peer nobody sees | assert against the real PNG in `--verify` |
 | Animation feeding back into sim | desync that only shows as a byte-diff | Spike B; `system_animation` takes no RNG, emits no events — keep it so; never reorder around `system_cleanup` |
 | Working only on the host | the client's ECS is empty; the second window freezes, exactly like I5 | Phase D acceptance; design for `net_mirror_sample()` from the start |
 | Waking dormant state nobody consumes | attaching `COMP_ANIMATION` with no renderer reading `current_frame` proves nothing | Phase B requires the renderer to consume the frame in the same series |
-| 20 Hz aliasing (design A) | a walk cycle that stutters or runs backwards on the second window only | measure in the spike, do not argue |
+| 20 Hz aliasing (design A) | a walk cycle that stutters or runs backwards on the second window only | **measured 2026-10-22**: it stutters below ~15 fps (frames skipped) but never runs backwards; hard rule: frame period >= 67 ms (<= 15 fps), target 10 fps |
 | Breaking `system_cleanup` while editing `render.c` | kills stop firing → audio and wave progression break, invisibly | [agent-rules] §2: `system_cleanup` is read-only |
 | **Sword shipping with minimum fields only** | attack speed and later attributes force a second wire redesign (owner D1 required provision) | add `NET_ENT_SWORD` with an extensible/versioned attribute block |
 | **Sword derived client-side** | the B19-B23 / I5 class | `NET_ENT_SWORD` is host-authored, inherits `art`/`owner`, no derivation |
 
 ## 8. Spike verdicts
 
-*Empty until Spike A/B/C run. This section is committed before any implementation
-work starts — do not leave it blank and start coding anyway.*
+*Filled in 2026-10-22 on `feature/animation-assets` from the measured spike.
+The measurements live in [animation-transport] §"2026-10-22 18:30 UTC"; this
+section is the summary. No implementation code landed with it.*
 
-- **Frame storage:** (will be filled in)
-- **Wire design A / B / C:** (will be filled in)
-- **Art id budget:** (will be filled in)
-- **Frame index location:** (will be filled in)
-- **Build cost:** (will be filled in)
+- **Frame storage: individual PNGs, one file per frame.** A sheet cannot be
+  named by path - all 8 frames of a sheet share one path, so `asset_manager_name_of()`
+  and `net_art_from_path()` return the same art id for all of them. Making a
+  sheet work was measured by writing it: `net_art.h` +8/-1, `net_art.c` +39/-10,
+  **one line in `src/net/net_snapshot.c` (net's file)**, `render.c` +5/-1, and
+  `tests/tests.c` +5/-2 with the current art-table test failing 7 times until
+  it is changed. Individual files need **no code change outside the art table**
+  and **no client render change at all** - `system_render_mirror()` already
+  resolves art id -> path -> texture.
+- **Wire design: A.** The frame travels as the art id already in the snapshot.
+  No new field, no `NET_WIRE_VERSION` bump (stays 8), no `NET_SNAP_ENTRY_BYTES`
+  change (stays 35). **B is not built.** The measured aliasing does not force
+  B; it forces a rate limit.
+- **Art id budget:** 10 ids today, `uint8_t`, so 255 total. Design A consumes
+  frames directly: 8 frames per cycle. A realistic content set - 3 cycles
+  (walk / attack / death) for 4 animated types - is 96 ids, i.e. 106 of 255
+  with **149 ids of headroom**. `NET_ART_COUNT` must stay <= 255.
+- **Frame index location: the ECS** - `COMP_ANIMATION.current_frame`, owned by
+  `system_animation()` (already exists, already called, no RNG, no events).
+  Frame -> art id -> texture is a render-side table (the shared art table), not
+  ECS state. Spike B: attaching `COMP_ANIMATION` to zombies left the SP events
+  log byte-identical (125938 bytes / 1603 lines) and the suite at 1186/0, so
+  the animation component is invisible to the gate.
+- **Build cost:** the generator grows by one function over a shared frame
+  builder (+24 lines for individual files, +30 for a sheet);
+  `gen_assets.py --verify` stays at 0.11 s with a clean tree. The art table
+  grows by one line per frame (8 lines for a walk cycle). The client grows by
+  **nothing**: the art id it already receives is the frame.
+- **HARD RULE, binding on Phase C content: the animation frame period must be
+  >= 67 ms (<= 15 fps).** Measured over 8 s at 20 Hz snapshots: at 24 fps only
+  6..7 of 8 frames reach the client per cycle (30 skipped steps), at 30 fps
+  5..6 of 8 (68 skipped steps); at 15 fps and slower every cycle shows all 8
+  frames with 0 skipped and 0 backwards steps. Target 10 fps - an 8-frame
+  cycle is then 800 ms. The client can never see the cycle run *backwards*
+  (0 backwards steps at every rate): it holds the last id it was given.
+- **NT4 (sword): (b) procedural blade**, not frame-based sword art. The blade
+  angle is continuous and unbounded (5.0 rad/s = 286 deg/s), so frames would
+  need >= 12.7 fps - on the aliasing limit - and would change the
+  single-player picture. The snapshot carries the angle (int16 centidegrees,
+  wrapping at 180 deg) and the client draws the blade with the same
+  `sprite_draw_blade()` path, interpolating wrap-safe between two host frames.
+  Field list: kind + owner + art + size_q + tint + angle, plus the extensible
+  attribute block (attack speed) owner D1 asked for. One wire bump with B38.
 
 ## 9. Why animations merge first
 

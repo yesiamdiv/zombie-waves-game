@@ -292,3 +292,81 @@ B35's colour on the *client* is still unproven.
   images, so every check stays numeric. `docs/PENDING_VERIFICATION.md`'s
   two-window checklist (B32 client death screen, SP overlay absent) is still the
   outstanding item.
+
+---
+
+## Session 2026-10-22 — Animation transport spike (AT3): DESIGN A wins, measured
+
+### PM standup — planned
+- AT3: run the Phase-0 spike and decide frame storage and wire design **from
+  measurement, not argument**; commit the verdict before any implementation
+  code; answer net's NT4 sword question in the same verdict.
+- Plan of record: `docs/knowledge/animation-plan.md` §4 (Spikes A/B/C), §8
+  (verdict slots), `docs/knowledge/animation-transport.md` (the parked A-vs-B
+  decision).
+
+### DEV — done (spike; no implementation code)
+- **Spike A — frame storage.** One 8-frame zombie walk cycle, both ways, then
+  thrown away. Individual PNGs: 8 files, 2234 bytes, generator +24 lines,
+  `--verify` 0.11 s, clean tree; a one-frame change touches **1 file**
+  (`zombie_walk3.png`). Sheet: 1 file (256×32, 629 bytes), generator +30 lines,
+  `--verify` 0.11 s; a one-frame change touches **1 file** but re-encodes the
+  whole sheet (629 → 709 bytes; 77 pixels differ, all inside one frame cell).
+  **The decider was not the file count.** `asset_manager_name_of()` resolves a
+  texture to a *path*, and all 8 frames of a sheet share one path, so
+  `net_art_from_path()` hands back the **same art id for every frame** — the
+  frame identity is gone before it reaches the wire. Making a sheet work was
+  measured by writing it: `net_art.h` +8/-1, `net_art.c` +39/-10, **one line
+  in `src/net/net_snapshot.c` (net's file)**, `render.c` +5/-1, `tests/tests.c`
+  +5/-2 — and the current art-table test **fails 7 times** until its invariant
+  becomes `(path,src) → id`. With individual files: 8 distinct paths → 8
+  distinct art ids → **no change outside the art table, and no client render
+  change at all** (`system_render_mirror()` already resolves art id → path →
+  texture).
+- **Spike B — the gate cannot see animation.** `COMP_ANIMATION` attached to
+  zombies: `total_frames=1` → ctest 3/3, `zombie_tests` 1186/0, two
+  same-seed SP runs diff-empty (125938 bytes / 1603 lines) and identical to the
+  pre-spike baseline; `total_frames=8` at 8 fps → the same green gate, the same
+  byte-identical SP runs. Only `render.c` and `net_snapshot.c` ever read
+  `CSprite`; every other reference in the tree is a write at spawn.
+- **Spike C — 20 Hz aliasing, on the real `system_animation`.** Host ticks at
+  60 Hz, snapshot at `NET_SNAP_HZ` 20, the client holds the last art id for one
+  transport interval (50 ms). Per 8-frame cycle, over 8 s: **30 fps → 5..6 of 8
+  frames (68 skipped steps); 24 fps → 6..7 of 8 (30 skipped); 20 fps → 7..8 of
+  8 (0 skipped); 15 fps and slower → 8 of 8, every cycle, 0 skipped, 0
+  backwards.** The cycle skips below ~15 fps; it **never runs backwards** at
+  any rate, because the client only holds ids it was given.
+- **Verdict (committed): DESIGN A, individual PNGs, frame period >= 67 ms
+  (<= 15 fps, target 10 fps).** No new snapshot field, no `NET_WIRE_VERSION`
+  bump (stays 8), no `NET_SNAP_ENTRY_BYTES` change (stays 35). The frame index
+  lives in the ECS (`COMP_ANIMATION.current_frame`); frame → art id → texture
+  is a render-side table. Art id budget: 10 today, 96 for a realistic content
+  set → 106 of 255, 149 spare. **B is not built.**
+- **NT4 (sword) answered in the same verdict, as net asked: (b) procedural
+  blade.** The blade angle is continuous and unbounded (5.0 rad/s = 286°/s), so
+  frame-based sword art would need ≥ 12.7 frames/s — exactly on the measured
+  aliasing limit — and would change the single-player picture. The snapshot
+  carries the angle (int16 centidegrees, wrapping at 180°); the client draws
+  the blade with the same `sprite_draw_blade()` path and interpolates
+  wrap-safe between two host frames. Fields: kind + owner + art + size_q +
+  tint + angle, plus owner D1's extensible attribute block. Rides B38's single
+  wire bump.
+- **Housekeeping:** every spike change was thrown away — the tree is clean at
+  `68280a3`, `git status --short -- src/net` is empty (net's condition for the
+  measurement patch), and the gate is green again (3/3, 1186/0, 33 textures,
+  two SP runs byte-identical).
+
+### PM — next
+- Rebuild the task board from the dev's own breakdown (AT3 closed by this
+  commit; AT4 implementation, AT5 two-window check).
+- AT4 starts from this verdict: art table append + `NET_ASSET_VERSION` 1 → 2,
+  generator support for one walk cycle, the frame-selection function, and the
+  <= 15 fps rule written into the content code.
+
+### Blocked
+- **AT5 / Phase D stays blocked on a human** watching two windows and
+  confirming I5 renders ([i5-unverified-on-screen]). The spike's verdict is
+  arithmetic; the walk cycle's on-screen look is **unproven** and is recorded
+  in `docs/PENDING_VERIFICATION.md`.
+- Net's freeze is not active yet: post "starting" immediately before the art
+  append commit and wait for net to confirm.

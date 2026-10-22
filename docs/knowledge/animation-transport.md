@@ -40,3 +40,153 @@ PARTICLES (B29): stay accepted as their own item. Animation does not fold them
 in; effects would be a separate proposal with the bandwidth math first.
 
 **Why:** Design A gives maximum host authority - the client draws literally what the host drew, which is the property the I5 fix exists to protect - and needs no wire change. But two measurable constraints can force B, and the spike decides, not the argument.
+
+## 2026-10-22 18:30 UTC - verdict by animation: DESIGN A, individual frame files, animation rate <= 15 fps
+
+The spike ran on `feature/animation-assets` (worktrees/animation). Every spike
+change was thrown away afterwards: the tree is clean at `68280a3`, `git status
+--short -- src/net` is empty, and the gate is green. This entry is the only
+thing that lands from the spike.
+
+### Spike A - frame storage: individual PNGs vs one sheet
+
+One 8-frame zombie walk cycle, both ways, thrown away afterwards.
+
+| | individual PNGs | one 256x32 sheet |
+|---|---|---|
+| files under `assets/` | 8 | 1 |
+| bytes on disk | 2234 | 629 |
+| generator LOC (as spiked) | +24 | +30 |
+| `gen_assets.py --verify` | 0.11 s, clean tree | 0.11 s, clean tree |
+| one-frame change | **1 file**: `zombie_walk3.png` (281 bytes before and after - only pixels move) | **1 file**: `zombie_walk.png` 629 -> 709 bytes; 77 pixels differ, all inside frame cell 3, the rest of the sheet is re-encoded |
+
+Generator LOC and file count are NOT the differentiator (2 KB is not a
+constraint here, and both routes are one function over a shared frame builder).
+The difference that decides it is this:
+
+**A sheet cannot be named.** `asset_manager_name_of()` resolves a texture to a
+PATH, and all 8 frames of a sheet share one path, so the path-only reverse
+lookup hands back the SAME art id for every frame:
+
+```
+frame 0 src=(0,0,32,32)    -> name_of = textures/entities/zombie_walk.png -> net_art_from_path = 10
+frame 7 src=(224,0,32,32)  -> name_of = textures/entities/zombie_walk.png -> net_art_from_path = 10
+```
+
+The frame identity is gone before it reaches the wire. Making it work was
+measured by writing it (then thrown away):
+
+- `src/net/net_art.h` +8/-1 - two struct fields, three declarations
+- `src/net/net_art.c` +39/-10 - the 10 existing rows each grow two fields,
+  three new functions
+- `src/net/net_snapshot.c` **1 line, and it is NET'S FILE**:
+  `net_art_from_path(name)` -> `net_art_from_sprite(name, cs->sprite.src.x, cs->sprite.src.y)`
+- `src/systems/render.c` +5/-1 - the mirror has to apply the frame's src rect
+- `tests/tests.c` +5/-2 - the art-table invariant becomes `(path,src) -> id`,
+  and the CURRENT test **fails 7 times** until it is changed
+
+With individual files all 8 frames resolve to 8 distinct paths -> 8 distinct
+art ids -> **no code change outside the art table**, and the client needs **no
+render change at all**: `system_render_mirror()` already resolves
+art id -> path -> texture through `sprite_tex(art_path)` (render.c:140-141).
+
+### Spike B - animation is invisible to the gate
+
+`COMP_ANIMATION` attached to zombies in `waves_spawn_zombie()`:
+
+- `total_frames = 1` (a no-op): ctest 3/3, `zombie_tests` 1186/0, two
+  same-seed SP runs diff-empty (125938 bytes / 1603 lines) and identical to the
+  pre-spike baseline.
+- `total_frames = 8`, `frame_duration = 0.125` (a real 8 fps cycle): the same
+  green gate, the same byte-identical SP runs.
+
+`system_animation()` takes no RNG, emits no events, and is called after the sim.
+Only `render.c` and `net_snapshot.c` ever READ `CSprite` - every other
+reference in the tree is a write at spawn time. So the frame index can live in
+the ECS without the gate noticing, and the animation cannot feed back into the
+sim.
+
+### Spike C - 20 Hz aliasing, measured on the real `system_animation`
+
+The host ticks at 60 Hz, the snapshot is built at `NET_SNAP_HZ` = 20, and the
+client holds the last received art id for one transport interval (50 ms).
+Measured over 8 s, counted per 8-frame cycle:
+
+| frame period | rate | distinct frames per cycle | skipped steps | backwards steps | phase lag |
+|---|---|---|---|---|---|
+| 33.3 ms | 30 fps | 5..6 of 8 | 68 | 0 | 0..3 frames |
+| 41.7 ms | 24 fps | 6..7 of 8 | 30 | 0 | 0..2 frames |
+| 50.0 ms | 20 fps | 7..8 of 8 | 0 | 0 | 0..2 frames |
+| 66.7 ms | 15 fps | 8 of 8 | 0 | 0 | 0..2 frames |
+| 83.3 ms | 12 fps | 8 of 8 | 0 | 0 | 0..1 frame |
+| 100 ms | 10 fps | 8 of 8 | 0 | 0 | 0..1 frame |
+| 125 ms | 8 fps | 8 of 8 | 0 | 0 | 0..1 frame |
+
+Two findings, one of them a surprise:
+
+1. **The cycle must not run faster than ~15 fps.** Below that the 20 Hz
+   snapshot cannot carry every frame and the cycle SKIPS: at 24 fps a quarter of
+   the steps are skipped and the walk pops. At 15 fps and slower every single
+   cycle shows all 8 frames, with zero skipped steps.
+2. **The client never sees the animation run BACKWARDS** - 0 backwards steps at
+   every rate from 3 fps to 30 fps. The risk written down in
+   `knowledge/animation-plan` §7 is half wrong: the client can stutter (it
+   skips) but it cannot run backwards, because it only ever holds the last id
+   it was given. Phase lag is 0..1 frame, i.e. within one snapshot interval.
+
+### THE VERDICT
+
+**DESIGN A, individual PNG files, animation rate <= 15 fps (target 10 fps).**
+
+- **Wire design: A.** No new snapshot field, no `NET_WIRE_VERSION` bump, no
+  `NET_SNAP_ENTRY_BYTES` change - the frame travels as the art id that is
+  already in the snapshot. Design B is NOT built: it would need
+  `NET_WIRE_VERSION` 8 -> 9, a `test_net_codec` update and a per-entity phase
+  byte, to buy a smoother cycle that the measurement shows is unnecessary at
+  <= 15 fps.
+- **Frame storage: individual PNGs.** The sheet route needs a change inside
+  `src/net/net_snapshot.c` (net's file), a src-rect draw path, and a changed
+  art-table invariant, to save 1.6 KB.
+- **Frame index location: the ECS** (`COMP_ANIMATION.current_frame`), owned by
+  `system_animation()`. Frame -> art id -> texture is a render-side table (the
+  shared art table), not ECS state. Spike B proves the ECS side is invisible to
+  the gate.
+- **HARD RULE, binding on the content phase: the animation frame period must be
+  >= 67 ms (<= 15 fps).** At 10 fps an 8-frame cycle is 800 ms.
+
+### NT4 (the sword) - answered here because net asked for it in this verdict
+
+**NT4 = (b) procedural blade**, NOT frame-based sword art.
+
+- The blade's angle is continuous and unbounded: `SWORD_SPIN_SPEED` is 5.0 rad/s
+  = 286 deg/s, one full turn every 1.26 s. Frame-based sword art would need
+  >= 16 frames per revolution just to keep the angular error under 22.5 deg,
+  i.e. >= 12.7 frames/s - sitting exactly on the aliasing limit measured above.
+- The host draws the sword procedurally (`sprite_draw_blade()`, render.c:22-32,
+  from `CSwordTag.angle` and `outer_radius - radius`). Frame-based sword art
+  would change the single-player picture, which the invariance rule forbids.
+- So the snapshot carries the angle (quantised, int16 centidegrees, wrapping at
+  180 deg) and the client draws the blade through the SAME
+  `sprite_draw_blade()` path, interpolating the angle between the two host
+  frames with wrap-safe shortest-path maths - the same interpolation the mirror
+  already does for positions (`net_mirror_sample()`).
+- Required `NET_ENT_SWORD` fields: kind + owner + art (blade art) + size_q
+  (blade length) + tint + `angle` (int16 centidegrees), plus the extensible
+  attribute block owner D1 asked for (attack speed and later additions). The
+  angle rides the SAME wire bump as B38 - one bump, not two - and
+  `net_snapshot.c` is net's to write under the freeze protocol.
+
+### What this does NOT prove
+
+A green gate cannot see a picture. The walk cycle's on-screen look, the
+perceptual effect of the <= 15 fps rule, and the client's frame cadence are
+**UNPROVEN** until a human watches two windows (Phase D is blocked on that
+check anyway).
+
+**Why:** The two measurable constraints in the 2026-10-09 entry both came out
+in design A's favour, but not for the reason the argument expected. The sheet
+constraint was real and it is what rules sheets out - not because a sheet
+cannot be named, but because naming one costs a change in a file animation does
+not own. The aliasing constraint is real too, and it does not force B; it
+forces a RATE LIMIT (<= 15 fps), which is a content rule rather than a wire
+redesign. Design A therefore stands, with one hard rule attached to it.

@@ -42,7 +42,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B28 | Remote health bars divided by a hardcoded maximum | `56cce96` | FIXED |
 | B29 | Particles and effects are not replicated | — | OPEN (accepted) |
 | B30 | A client could "buy" from the shop with no effect | `e9e5107` | FIXED |
-| B31 | Zombie animation state never replicated | — | RETRACTED (no code path) |
+| B31 | Zombie animation state never replicated | — | REOPENED 2026-10-22 — answered by design: the frame travels as the art id (design A). Live again when animation content lands; see below |
 | B32 | Client shows a blank screen when its player dies, and never shows its own name tag | `e5c6dec` | FIXED |
 | B33 | Client shop prices are drawn from a frozen local inventory, not host state | `d5da693` | FIXED |
 | B34 | Player name tag overlaps the zombie/wave counter | `50a2365` | FIXED |
@@ -407,7 +407,7 @@ about what the client *displays* or *derives* despite simulating nothing.
 | B28 | Remote zombie health bars overflow at wave 2+ | hardcoded constant | **FIXED (N4)** |
 | B29 | No particles/effects on clients at all | unreplicated cosmetic | ACCEPTED |
 | B30 | Client can open the shop; purchases mutate a local struct the host never sees | authority violation | FIXED (N5) — **unproven on screen** |
-| B31 | Animation phase not replicated | ~~cosmetic, small~~ | **RETRACTED — not a bug** |
+| B31 | Animation phase not replicated | ~~cosmetic, small~~ | **REOPENED 2026-10-22 — answered by design (design A: the frame travels as the art id; no phase field exists). See the main B31 entry.** |
 
 ## B26. The client HUD's wave panel never updated
 
@@ -453,7 +453,7 @@ about what the client *displays* or *derives* despite simulating nothing.
   guess" shape that caused R13-I5, one level up.
 - **Status**: FIXED.
 
-### B31 — RETRACTED. "Animation phase is not replicated" was never a bug
+### B31 — REOPENED 2026-10-22. "Animation phase is not replicated": the retraction was right then, and the answer is now a design decision
 
 I listed this as an N4 candidate in the planning doc (`f09cb29`), under N1's
 "out of scope" list, and then carried it into the audit table without ever
@@ -472,6 +472,28 @@ multiplayer divergence.
 I should not have promoted an unverified line from a planning list into a
 numbered bug with a disposition. Retracted; recorded here rather than deleted so
 the mistake is visible instead of quietly reappearing.
+
+**Reopened 2026-10-22 (animation spike verdict).** The retraction was accurate
+*for the code that existed* — nothing animated, so nothing could diverge. But
+the spike decided how animation will reach a client, and that decision is the
+answer this bug row exists to hold:
+
+- **Design A won the spike** (measurements in `docs/knowledge/animation-transport`):
+  the frame travels as the **art id** that is already in the entity snapshot.
+  There is no phase field, so "the animation phase is not replicated" is not a
+  gap — the phase was never on the wire and does not need to be.
+- **The host remains the only author of appearance.** The client draws the art
+  id it was given; it never advances frames itself and never derives one
+  (the B19-B23 class).
+- **Consequence for this row:** B31 becomes live again the moment animation
+  content lands (Phase C), and its acceptance is then: *a client's zombie
+  shows the same walk frame the host shows, within one snapshot interval.*
+  Until a human has watched two windows, that acceptance is **unproven** —
+  a green gate cannot see a picture.
+
+- **Status:** ANSWERED BY DESIGN (spike, 2026-10-22) / re-opens as a
+  verification item with the animation content. No code change is owed by this
+  row on its own.
 
 ## B29. Particles and effects are not replicated
 

@@ -215,9 +215,40 @@ or HUD defects, so none of them is proven by any test in this repo.** Two window
 - Particles/effects are not replicated (B29, accepted). Note this one is real:
   the host draws particles through the generic sprite path and the client has
   no way to see them.
-- ~~Animation phase is not replicated (B31)~~ — **retracted in N4, not a bug.**
-  `COMP_ANIMATION` is never added to any entity and animation state is never
-  read, so no entity animates on either side. See `docs/BUGS.md` B31.
+- ~~Animation phase is not replicated (B31)~~ — **answered by design on
+  2026-10-22** (animation spike): the frame travels as the art id the
+  snapshot already carries, so no phase field exists to replicate. It re-opens
+  as a verification item when animation content lands. See `docs/BUGS.md` B31
+  and `docs/knowledge/animation-transport`.
 - Zombie speed/size variants (`docs/FUTURE_IDEAS.md`) — lowest priority, after
   all of the above, and only with an explicit decision about single-player
   gameplay invariance.
+
+## Unproven — animation spike verdict (2026-10-22)
+
+The spike decided the *transport*; it could not see the *picture*. Everything
+below is believed true from measurement or from reading the code, and **none of
+it is proven on screen**. `render()` returns immediately in headless mode, so no
+gate in this repo can clear any of it.
+
+- [ ] **The zombie walk cycle reads as a walk.** Design A won the spike
+      (frame travels as the art id); the art itself is new content and has
+      never been drawn. Check that the frames are distinguishable and that the
+      cycle does not look like a slide.
+- [ ] **The <= 15 fps frame-rate rule is invisible in practice.** Measured:
+      at 15 fps and slower every cycle shows all 8 frames with 0 skipped and 0
+      backwards steps; at 24 fps a quarter of the steps are skipped. The rule
+      is arithmetic, not perception — confirm the chosen rate (target 10 fps,
+      8-frame cycle = 800 ms) looks right and does not read as a slideshow.
+- [ ] **A client's zombie shows the same walk frame the host shows.** The
+      client holds the last art id for one snapshot interval, so it lags the
+      host by up to ~50 ms. Check that a client and a host side by side show
+      the same frame of the same walk cycle, and that the client does not
+      stutter between frames.
+- [ ] **The host's own walk cycle is unaffected.** Host-side animation is
+      driven by `system_animation()` at the render tick; confirm the host's
+      zombies walk smoothly and that nothing else in the picture moved.
+- [ ] **The sword (NT4) still needs its own check** when it lands: the blade
+      angle is interpolated client-side between two host frames with
+      wrap-safe maths, and a wrap across 180 deg is exactly the case that
+      looks wrong and never shows up in a headless run.
