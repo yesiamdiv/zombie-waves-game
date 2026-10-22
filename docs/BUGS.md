@@ -53,7 +53,7 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
 | B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (execution needs refinement — see B45) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
-| B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | — | OPEN |
+| B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | `fba930e` | FIXED (art, not blend) |
 | B44 | Menu UI text overlaps (regression of B1's class) | — | OPEN |
 | B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | — | OPEN |
 
@@ -890,3 +890,32 @@ Found 2026-10-15 by the owner, playing.
   commit `8452630`.
 - **Status**: FIXED (`8452630`). Docs defect only: no code or build impact. The
   same markers exist in the lane worktrees until they re-align to main.
+
+## B43. Dropped loot draws a white box and is too small
+
+Found 2026-10-22 by the owner, playing.
+
+- **Symptom**: dropped loot (health/ammo/speed pickups) shows a white box lying
+  on the ground, and the icons are too small to notice.
+- **Root cause (art, not the blend path)**: `entity_pickup()` in
+  `tools/gen_assets.py` filled most of the sprite with an opaque near-white card
+  — `medkit`/`ammo`/`speed` were the **only** entity textures with opaque
+  corners, `(40,40,44,255)`, while `player`/`zombie`/`bullet`/`grenade`/
+  `rocket`/`sword_blade` already had `(0,0,0,0)`. The blend path was fine
+  (`asset_manager_get()` sets `SDL_BLENDMODE_BLEND`; `sprite_draw()` uses
+  `SDL_RenderTextureRotated`), so the "transparent area rendered white" was
+  really the drawn card.
+- **Fix**: `entity_pickup()` now draws its icon (cross / cartridges / bolt)
+  directly on a transparent background with a 1px dark outline (new `blit()`
+  helper), so the terrain shows through; and `items_spawn()` scale went
+  `0.5 -> 0.75` so a 32px icon covers 24 world units rather than 16. Cosmetic
+  only: the radius-10 collider and 20-unit pickup range are unchanged, and
+  `size_q` follows `scale` (`net_snapshot.c` computes `scale * base_px`), so the
+  client draws 24 units too. Commit `fba930e`.
+- **Recheck of all art**: swept every texture — only these three had opaque
+  backgrounds; tile/terrain art is fully opaque by design. Texture count is
+  unchanged (33), so `gate-baseline.md` needs no edit.
+- **Status**: FIXED (`fba930e`). Build clean under `-Werror`, `ctest` 3/3,
+  `zombie_tests` 1186/0, `gen_assets --verify` 33 textures, two `--seed=42` SP
+  runs byte-identical at 125938 bytes / 1603 lines. **On-screen result is
+  UNPROVEN until the owner looks** (`i5-unverified-on-screen`).
