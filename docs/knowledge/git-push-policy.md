@@ -27,3 +27,26 @@ Context at the time of the instruction: main was ~14-16 commits ahead of origin/
 If an agent is unsure, do not push; ask the owner.
 
 **Why:** The owner's 2026-10-22 kickoff message explicitly states 'main has 14 unpushed commits and feature/assets-maps has 96 — nothing is pushed without the owner', which overrides the 2026-10-15 allowance to push completed+tested work. Recorded so no agent relies on the older revision.
+
+## 2026-10-22 13:23 UTC - decision by pm: Owner 2026-10-22: push the lane branches, NOT main
+
+Owner instruction (2026-10-22, direct): "i want the local repos also to be pushed to github ok. but not main for now. thats only when needed and assured everything works fine right."
+
+Current rule:
+
+- **Lane/feature branches may be pushed** on the owner's go. Pushed 2026-10-22:
+  `feature/animation-assets` @ `e45304c`, `feature/assets-maps` @ `7dfb49a`,
+  `feature/audio` @ `8f3e4c3`, `feature/net-protocol` @ `cd7e8ea`.
+- **`main` is NOT pushed** until the owner says so and the work is verified.
+  `origin/main` stays at `069d4d0`.
+- Only **committed** work is pushed; uncommitted WIP in a worktree (e.g. net's
+  v9 bump in `net.h`/`net_codec.c`) is not part of a push.
+- No force-push. No rewriting published history.
+- Pushing a lane branch also uploads `main`'s unpushed commits **as ancestry**
+  (the lanes forked from main). That does not move the `main` ref on GitHub and
+  is accepted.
+
+**Why:** The owner explicitly authorized feature-branch pushes while retaining
+main as the verified-only branch. This amends (does not erase) the 2026-10-22
+"nothing without the owner" rule: the owner gave the go for the lane branches;
+main still needs its own go.
