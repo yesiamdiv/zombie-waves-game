@@ -9,6 +9,7 @@ Usage:  python3 tools/gen_assets.py [--scale N] [--verify]
 """
 
 import argparse
+import math
 import os
 import random
 import sys
@@ -212,6 +213,57 @@ def entity_zombie():
                "s": (140, 140, 150)}
 
 
+# --- animation cycles -------------------------------------------------------
+# One walk cycle is WALK_FRAMES frames, and each frame is its OWN PNG.
+#
+# Why one file per frame: the frame travels to the client as an art id, and
+# an art id is resolved from a texture's PATH. Every frame of a sprite sheet
+# shares one path, so a sheet cannot be named and the frame identity never
+# reaches the wire. One file per frame keeps the path, the art id and the
+# frame one-to-one. See docs/knowledge/animation-transport.md.
+#
+# The frame RATE is not here: the generator draws the poses, the game decides
+# how fast they play (ANIM_FRAME_DURATION in the C code). The rule that rate
+# must obey is in the same topic: a frame period of at least 67 ms (<= 15 fps),
+# or the 20 Hz snapshot starts skipping frames on the client.
+WALK_FRAMES = 8
+
+
+def _zombie_walk_grid(i, n=WALK_FRAMES):
+    """One frame of the zombie walk cycle. n frames make one full cycle.
+
+    The body is the same blob as the idle zombie, so the frames read as the
+    same creature; the pose changes with the phase: the trailing arm swings
+    fore and aft, the reaching arm the opposite way, the body bobs twice per
+    cycle and the head lolls down over the second half of it (a limp, and the
+    term that makes all n frames differ from each other). Frame 0 is the idle
+    pose exactly, so a zombie that starts walking does not pop."""
+    g = body_any(32, 32, 11)
+    phase = 2.0 * math.pi * i / n
+    trail = int(round(3.0 * math.sin(phase)))              # trailing arm
+    lead = int(round(3.0 * math.sin(phase + math.pi)))     # reaching arm
+    bob = 1 if math.sin(2.0 * phase) > 0.0 else 0          # twice a cycle
+    dip = int(round(1.5 * math.cos(phase))) - 2            # the limp
+
+    disc(g, 16, 12 - bob - dip, 5, 6, "w")                 # head, slumped
+    disc(g, 14, 12 - bob - dip, 2, 2, "K")                 # eye hole
+    rect(g, 12, 9 - bob - dip, 17, 10 - bob - dip, "K")    # open mouth
+    rect(g, 9 + lead, 6 - bob - dip, 20 + lead, 8 - bob - dip, "w")  # reach
+    rect(g, 23 + trail, 14 - bob - dip, 25 + trail, 27 - bob - dip, "w")
+    return g, {".": (0, 0, 0), "K": (30, 30, 34), "w": (215, 210, 205),
+               "s": (140, 140, 150)}
+
+
+def entity_zombie_walk(n=WALK_FRAMES):
+    """The zombie walk cycle: n frames, one PNG each."""
+    paths = []
+    for i in range(n):
+        g, p = _zombie_walk_grid(i, n)
+        paths.append(make_entity("zombie_walk%d" % i, g, p, 1))
+    assert len(paths) == n, "walk cycle must have exactly n frames"
+    return paths
+
+
 def entity_bullet():
     g = canvas(8, 8)
     disc(g, 4, 4, 3, 3, "w")
@@ -340,6 +392,11 @@ def main():
     for name, fn in entity_specs:
         g, p = fn()
         paths.append(make_entity(name, g, p, 1))
+
+    # The walk cycle is part of the entity set: its frames are textures like
+    # any other, and --verify has to open them like any other.
+    paths.extend(entity_zombie_walk())
+    assert len(paths) == len(set(paths)), "duplicate texture path"
 
     if args.verify:
         for p in paths:

@@ -25,3 +25,17 @@ mark: any change that adds a line to the single-player `--events` log moves it.
 Moving it is allowed but is a deliberate re-baseline that must be announced and
 re-verified, not a silent drift. See the `GE_EXPLOSION` entry in
 [relayed-events].
+
+## 2026-10-22 18:41 UTC - note by animation: the texture count moves 33 -> 41 (the zombie walk cycle)
+
+The zombie walk cycle added 8 frame textures, so `python3 tools/gen_assets.py
+--verify` now reports **41 textures** instead of 33. Every other number in this
+baseline is UNCHANGED and was re-verified in the same commit: `zombie_tests`
+1186/0, ctest 3/3, the release build clean, and the two `--seed=42`
+single-player runs still byte-identical at **125938 bytes / 1603 lines** with
+wave 1 still `8 zombies, interval: 1.90s, difficulty: 1.00`.
+
+Art does not touch the simulation, so the byte/line reference did not move.
+The 33 in the 2026-10-09 entry above is the historical number; **41** is
+current. The byte/line reference is untouched by this commit and stays a
+deliberate re-baseline only if a line is added to the single-player events log.
