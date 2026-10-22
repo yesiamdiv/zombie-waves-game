@@ -292,3 +292,35 @@ B35's colour on the *client* is still unproven.
   images, so every check stays numeric. `docs/PENDING_VERIFICATION.md`'s
   two-window checklist (B32 client death screen, SP overlay absent) is still the
   outstanding item.
+
+## Session 2026-10-22 — Sprint 6 DEV (net): NT2 GE_EXPLOSION
+
+### Planned
+Land `GE_EXPLOSION` (D3) as a relayed blast event with a locked payload
+(`x,y` origin, `a` radius, `b` spare, `kind` grenade/rocket), no wire bump, and
+re-measure the single-player gate reference.
+
+### Done
+- Added `GE_EXPLOSION` before `GE_COUNT` in `src/events/event_bus.h` (no existing
+  enum value moves) and `EXPLOSION` to `event_type_names[]` (`event_bus.c`).
+- Emitted host-side in `grenades.c` (`explode_grenade`, `a=90.0`) and
+  `rockets.c` (terminal lifetime/out-of-bounds, `a=ROCKET_RADIUS`).
+- Relayed in `relay_net_events()` (`src/main.c`), and removed the duplicated
+  `GE_PLAYER_SHOT` clause in that filter while adding the new type.
+- Tests: extended `test_grenade_detonation` and
+  `test_rocket_damage_and_destruction` to init a bus and assert the logged
+  `EVT=EXPLOSION` with the right `kind` and `a`. Suite now 1194/0.
+- Updated `docs/knowledge/gate-baseline.md` and `relayed-events.md`; replaced the
+  copied gate literals in `docs/QA_MULTIPLAYER_S5.md` with a citation.
+
+### Measured gate
+- build `-Werror` clean; `ctest` 3/3; `zombie_tests` **1194 passed / 0 failed**.
+- Two seed-42 25s SP runs byte-identical at **125938 bytes / 1603 lines —
+  unchanged**, because the bot only fires the pistol and never detonates an
+  explosive. So the events reference did *not* move; only the test count did.
+- `gen_assets.py --verify` not run (no asset change).
+
+### Next
+- Coordinate landing with [audio] (AT7) and report the corrected re-baseline
+  finding to [pm]: the SP log reference is unchanged, contrary to the earlier
+  prediction.

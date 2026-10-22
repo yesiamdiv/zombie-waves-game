@@ -119,6 +119,9 @@ void system_rockets(World *ecs, Player *p, GameWorld *world, float dt) {
         if (tag->lifetime <= 0 || !world_in_bounds(world, pos.x, pos.y)) {
             event_emit(g_events, GE_ENTITY_DEATH, i, GEK_ROCKET,
                        pos.x, pos.y, 0, 0, 0, 0);
+            /* NT2: terminal blast point for client audio; a = radius. */
+            event_emit(g_events, GE_EXPLOSION, i, GEK_ROCKET,
+                       pos.x, pos.y, ROCKET_RADIUS, 0, 0, 0);
             ecs_destroy_entity(ecs, i);
             continue;
         }

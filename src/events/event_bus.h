@@ -26,6 +26,12 @@ typedef enum {
     /* R13-I4: authoritative-host pause state, relayed so a joined client's
      * freeze is explained instead of silent. a != 0 means paused. */
     GE_HOST_PAUSE,
+    /* NT2/D3: explosion/impact point, relayed so a client can play the blast
+     * sound. x,y = impact origin, a = radius, b spare; kind = grenade/rocket.
+     * Appended before GE_COUNT so no existing enum value moves; the relayed
+     * type is already a u8, so no NET_WIRE_VERSION bump. See
+     * docs/knowledge/relayed-events.md. */
+    GE_EXPLOSION,
     GE_COUNT
 } GameEventType;
 

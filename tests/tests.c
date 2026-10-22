@@ -1062,6 +1062,11 @@ static void test_zombie_contact_and_slow(void) {
 
 static void test_rocket_damage_and_destruction(void) {
     LOG_INFO("--- Test: Rocket pierce & out-of-bounds destruction ---");
+    const char *path = test_tmp_path("test_rocket_explosion_events.log");
+    remove(path);
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+
     World ecs;
     ecs_init(&ecs);
     GameWorld world = {0};
@@ -1107,10 +1112,37 @@ static void test_rocket_damage_and_destruction(void) {
     *ecs_get_position(&ecs, rocket) = (CPosition){{-100.0f, -100.0f}};
     system_rockets(&ecs, &p, &world, 0.01f);
     CHECK(!ecs_is_alive(&ecs, rocket));
+
+    /* NT2: terminal detonation emits a relayable blast event at the point. */
+    event_bus_flush(bus);
+    bool saw_explosion = false;
+    char explosion_line[512] = "";
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            if (strstr(line, "EVT=EXPLOSION")) {
+                saw_explosion = true;
+                strcpy(explosion_line, line);
+            }
+        }
+        fclose(f);
+    }
+    CHECK(saw_explosion);
+    CHECK(strstr(explosion_line, "k=rocket") != NULL);
+    CHECK(strstr(explosion_line, "a=5.00") != NULL);
+
+    event_bus_shutdown(bus);
+    remove(path);
 }
 
 static void test_grenade_detonation(void) {
     LOG_INFO("--- Test: Grenade AoE detonation ---");
+    const char *path = test_tmp_path("test_grenade_explosion_events.log");
+    remove(path);
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+
     World ecs;
     ecs_init(&ecs);
     GameWorld world = {0};
@@ -1156,6 +1188,29 @@ static void test_grenade_detonation(void) {
     }
     CHECK(!ecs_is_alive(&ecs, grenade));
     CHECK(ecs_get_health(&ecs, zombie)->current < hp_before);
+
+    /* NT2: the detonation must emit a relayable blast event at the impact
+     * point, with the grenade radius in a and the weapon class in kind. */
+    event_bus_flush(bus);
+    bool saw_explosion = false;
+    char explosion_line[512] = "";
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            if (strstr(line, "EVT=EXPLOSION")) {
+                saw_explosion = true;
+                strcpy(explosion_line, line);
+            }
+        }
+        fclose(f);
+    }
+    CHECK(saw_explosion);
+    CHECK(strstr(explosion_line, "k=grenade") != NULL);
+    CHECK(strstr(explosion_line, "a=90.00") != NULL);
+
+    event_bus_shutdown(bus);
+    remove(path);
 }
 
 /* ---------------------------------------------------------------- End Weapons */
