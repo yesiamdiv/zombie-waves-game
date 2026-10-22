@@ -239,22 +239,50 @@ def entity_rocket():
                "r": (150, 74, 32)}
 
 
+def blit(grid, cells, fill, outline="K"):
+    """Fill `cells` with `fill`, ringed by a 1px `outline`; leave the rest
+    untouched (transparent)."""
+    s = set(cells)
+    for (x, y) in s:
+        grid[y][x] = fill
+    for (x, y) in s:
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                nx, ny = x + dx, y + dy
+                if 0 <= ny < len(grid) and 0 <= nx < len(grid[0]) \
+                        and (nx, ny) not in s:
+                    grid[ny][nx] = outline
+
+
 def entity_pickup(cross=False, stripes=False, bolt=False):
+    """Pickup icons on a TRANSPARENT background (B43).
+
+    The old art filled most of the sprite with an opaque near-white card,
+    which read as a white box lying on the ground. The icon is now drawn
+    directly, larger, on nothing but transparent pixels, with its own dark
+    outline so it stays legible over any terrain."""
     g = canvas(32, 32)
-    rect(g, 4, 8, 27, 27, "w")
-    rect(g, 7, 10, 24, 25, "w")
-    frame(g, "K")
-    if cross:
-        rect(g, 13, 12, 18, 23, "R")
-        rect(g, 10, 15, 21, 20, "R")
-    if stripes:  # diagonal ammo bands
-        for i in range(8):
-            rect(g, 6 + i, 27 - i - 3, 8 + i, 29 - i - 3, "Y")
-    if bolt:     # lightning
-        pts = [(16, 10), (11, 19), (14, 19), (12, 26), (19, 16), (16, 16)]
-        for ch, (x, y) in zip("B" * 6, pts):
-            g[y][x] = "B"
-        rect(g, 12, 20, 20, 21, "B")
+    if cross:  # medkit: a bold red plus
+        cells = {(x, y) for y in range(3, 29) for x in range(11, 21)}
+        cells |= {(x, y) for y in range(11, 21) for x in range(3, 29)}
+        blit(g, cells, "R")
+    if stripes:  # ammo: three cartridges
+        cells = set()
+        for x0 in (6, 14, 22):
+            cells |= {(x, y) for y in range(8, 28) for x in range(x0, x0 + 4)}
+            cells |= {(x, y) for y in range(6, 8) for x in range(x0 + 1, x0 + 3)}
+        blit(g, cells, "Y")
+    if bolt:  # speed: a lightning bolt
+        spans = [
+            (4, 18, 24), (5, 17, 24), (6, 16, 24), (7, 15, 24), (8, 14, 24),
+            (9, 13, 24), (10, 12, 24), (11, 11, 16), (12, 10, 16),
+            (13, 9, 16), (14, 9, 16), (15, 10, 22), (16, 11, 23),
+            (17, 12, 24), (18, 13, 24), (19, 14, 24), (20, 15, 24),
+            (21, 16, 24), (22, 17, 24), (23, 18, 24), (24, 19, 24),
+            (25, 20, 24), (26, 21, 24), (27, 22, 24),
+        ]
+        cells = {(x, y) for y, x0, x1 in spans for x in range(x0, x1 + 1)}
+        blit(g, cells, "B")
     return g, {".": (0, 0, 0), "K": (40, 40, 44), "w": (238, 238, 242),
                "R": (214, 68, 62), "Y": (214, 178, 60), "B": (88, 140, 224)}
 
