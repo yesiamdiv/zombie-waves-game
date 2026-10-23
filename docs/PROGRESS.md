@@ -356,11 +356,13 @@ Freeze lifted by animation when AN1 landed (35a8b46).
 - Client: `net_mirror_sample_attr()` blends the angle the short way around the
   circle; `system_render_mirror()` draws the sword with `sprite_draw_blade()`.
 - Tests: `test_net_snapshot_u16_count` (300 entities), sword attr round-trip,
-  wrap-safe mirror interpolation. Suite **1214/0**.
+  a builder-level check that a real ECS sword is emitted as NET_ENT_SWORD with
+  the host's length/width/angle, and wrap-safe mirror interpolation. Suite
+  **1226/0**.
 - Docs: VERSIONING registry/worked note, BUGS B38 resolution, gate baseline.
 
 ### Measured gate
-- build `-Werror` clean; `zombie_tests` **1214 passed / 0 failed**; `ctest` 3/3.
+- build `-Werror` clean; `zombie_tests` **1226 passed / 0 failed**; `ctest` 3/3.
 - Two seed-42 25s SP runs byte-identical at **125938 bytes / 1603 lines —
   unchanged** (snapshots are host-only and no relay runs in SP).
 - `gen_assets.py --verify` not run (no asset change on this lane).

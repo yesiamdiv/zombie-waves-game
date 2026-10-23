@@ -2139,6 +2139,78 @@ static void test_net_snapshot_sword_attr(void) {
     CHECK(net_attr_width_q(&got.attrs[0]) == 16);
 }
 
+/* NT4: the BUILDER (not just the codec) must report a real ECS sword as
+ * NET_ENT_SWORD with the host's own length/width/angle. The codec test above
+ * would still pass if net_snapshot_build kept skipping swords, which was the
+ * old behaviour. */
+static void test_net_snapshot_sword_build(void) {
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    p.inventory.points = 1000;
+    weapons_buy_sword(&p.inventory);
+    weapons_select(&p.inventory, WEAPON_SWORD);
+    p.input.mouse_buttons[0] = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+
+    Entity sword = ECS_NULL_ENTITY;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_SWORD_TAG))) {
+            sword = i;
+            break;
+        }
+    }
+    CHECK(sword != ECS_NULL_ENTITY);
+
+    NetSnapshot snap;
+    CHECK(net_snapshot_build(&ecs, NULL, 0, 2.0f, NULL, &snap) >= 0);
+
+    const NetEntitySnap *se = NULL;
+    for (int i = 0; i < (int)snap.count; i++) {
+        if (snap.entities[i].id == (uint16_t)sword &&
+            snap.entities[i].kind == NET_ENT_SWORD) {
+            se = &snap.entities[i];
+            break;
+        }
+    }
+    CHECK(se != NULL);
+    if (!se) return;
+
+    const CSwordTag *sw = ecs_get_sword_tag(&ecs, sword);
+    CHECK(se->owner == (uint16_t)player);
+    /* `art` is not asserted here: the test binary has no asset manager (no
+     * renderer), so sprite_tex() returns NULL and the sword's sprite stays a
+     * flat rect. The art id -> NET_ART_SWORD mapping is covered by the art-table
+     * test and the codec round-trip; this test is about the sword-specific
+     * semantics the builder must add on top. */
+    CHECK(se->size_q == (uint8_t)((sw->outer_radius - sw->radius) * 2.0f + 0.5f));
+    CHECK(snap.attr_count == 1);
+    CHECK(snap.attrs[0].id == (uint16_t)sword);
+    CHECK(snap.attrs[0].kind == NET_ENT_SWORD);
+    CHECK(snap.attrs[0].len == NET_SWORD_ATTR_LEN);
+    CHECK(net_attr_width_q(&snap.attrs[0]) == 16);   /* SWORD_WIDTH 8 * 2 */
+
+    /* Compare the angle in degrees, wrapped to (-180, 180]. */
+    float deg = sw->angle * (180.0f / 3.14159265358979323846f);
+    while (deg > 180.0f) deg -= 360.0f;
+    while (deg <= -180.0f) deg += 360.0f;
+    float got = (float)net_attr_angle_cdeg(&snap.attrs[0]) * 0.01f;
+    float diff = got - deg;
+    while (diff > 180.0f) diff -= 360.0f;
+    while (diff < -180.0f) diff += 360.0f;
+    CHECK(diff > -0.01f && diff < 0.01f);
+}
+
 /* NT4: the client mirrors the sword angle and blends it the short way around
  * the circle, so +170deg -> -170deg is a 20deg step, not a 340deg unwind. */
 static void test_net_mirror_sword_angle(void) {
@@ -2519,6 +2591,7 @@ int tests_run_all(void) {
     test_net_codec_game();
     test_net_snapshot_u16_count();
     test_net_snapshot_sword_attr();
+    test_net_snapshot_sword_build();
     test_net_mirror_sword_angle();
     test_net_art_table();
     test_net_snapshot_build();
