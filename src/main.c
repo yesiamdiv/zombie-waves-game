@@ -1520,7 +1520,9 @@ static void step_frame(float dt) {
         relay_net_events();
         /* Audio reads the same ring for the same reason: after the flush it is
          * empty, and GE_KILL is emitted from system_cleanup (audio-plan §3). */
-        audio_tick(g_events, game.camera.position.x, game.camera.position.y);
+        audio_tick(g_events, game.camera.position.x, game.camera.position.y,
+                   game.camera.viewport_w / game.camera.zoom,
+                   game.camera.viewport_h / game.camera.zoom);
         event_bus_flush(g_events);
     }
 

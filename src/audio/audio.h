@@ -39,8 +39,11 @@ void audio_shutdown(void);
 /* Read the newly-emitted gameplay events and queue their sounds. Must run
  * before event_bus_flush() drains the ring (main.c step_frame): after the
  * flush the ring is empty, and GE_KILL is emitted from system_cleanup.
- * `listener_*` is the camera centre, used for distance falloff and pan. */
-void audio_tick(EventBus *events, float listener_x, float listener_y);
+ * `listener_*` is the camera centre, used for distance falloff and pan, and
+ * `view_*` is the visible world size, which sets the audible radius (so a
+ * resized window does not change the mix). */
+void audio_tick(EventBus *events, float listener_x, float listener_y,
+                float view_w, float view_h);
 
 bool audio_available(void);
 const char *audio_sfx_name(AudioSfx sfx);

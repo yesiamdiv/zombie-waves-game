@@ -15,6 +15,7 @@
 #include "items/items.h"
 #include "events/event_bus.h"
 #include "audio/audio_mixer.h"
+#include "audio/audio_triggers.h"
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
 #include "ui/hud.h"
@@ -3115,6 +3116,106 @@ static void test_audio_spatialise(void) {
     CHECK(gain == 0.0f && pan == 0.0f); /* directly below: no horizontal pan */
 }
 
+
+/* ------------------------------------------------------------- Audio triggers
+ * The event -> sound table is where the relay silently drifts: a payload that
+ * changes shape (or a sound added for an event that never leaves the host)
+ * fails here instead of in someone's ears. */
+
+static GameEvent audio_event(GameEventType type, EventKind kind) {
+    GameEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = type;
+    ev.kind = kind;
+    return ev;
+}
+
+static void test_audio_trigger_table(void) {
+    GameEvent ev = audio_event(GE_PLAYER_SHOT, GEK_BULLET);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_SHOT_BULLET);
+    ev.kind = GEK_GRENADE;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_SHOT_GRENADE);
+    ev.kind = GEK_ROCKET;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_SHOT_ROCKET);
+    ev.kind = GEK_SWORD;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE);
+
+    ev = audio_event(GE_DAMAGE, GEK_ZOMBIE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_HIT_ZOMBIE);
+    ev.kind = GEK_PLAYER;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_HIT_PLAYER);
+
+    ev = audio_event(GE_KILL, GEK_ZOMBIE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_DEATH_ZOMBIE);
+    ev.kind = GEK_PLAYER;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_DEATH_PLAYER);
+
+    ev = audio_event(GE_EXPLOSION, GEK_GRENADE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_EXPLOSION);
+    ev.kind = GEK_ROCKET;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_EXPLOSION); /* payload kind-agnostic */
+
+    ev = audio_event(GE_WAVE_START, GEK_NONE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_WAVE_START);
+    ev = audio_event(GE_WAVE_END, GEK_NONE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_WAVE_END);
+    ev = audio_event(GE_ITEM_PICKUP, GEK_ITEM);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_PICKUP);
+    ev = audio_event(GE_POINTS, GEK_NONE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_POINTS);
+
+    /* Events that must stay silent: a grenade's own death (the blast is
+     * GE_EXPLOSION), the rocket's expiry despawn, host-only events. */
+    ev = audio_event(GE_ENTITY_DEATH, GEK_GRENADE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE);
+    ev = audio_event(GE_ENTITY_DEATH, GEK_ROCKET);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE);
+    ev = audio_event(GE_ENTITY_SPAWN, GEK_ZOMBIE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE);
+    ev = audio_event(GE_SHOP_PURCHASE, GEK_NONE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE);
+    ev = audio_event(GE_ENTITY_SPAWN, GEK_PARTICLE);
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE);
+}
+
+static void test_audio_health_hurt_vs_heal(void) {
+    audio_triggers_reset();
+    GameEvent ev = audio_event(GE_PLAYER_HEALTH, GEK_PLAYER);
+    ev.entity = 7;
+    ev.b = 100.0f;
+
+    ev.a = 70.0f;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_PLAYER_HURT);
+    ev.a = 80.0f;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE); /* heal */
+    ev.a = 60.0f;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_PLAYER_HURT);
+    ev.a = 100.0f;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE); /* topped up */
+    ev.a = 90.0f;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_PLAYER_HURT);
+
+    /* A second entity has its own history. */
+    ev.entity = 9;
+    ev.a = 100.0f;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_NONE);
+    ev.entity = 7;
+    ev.a = 85.0f;
+    CHECK(audio_sfx_for_event(&ev) == AUDIO_SFX_PLAYER_HURT);
+
+    audio_triggers_reset();
+}
+
+static void test_audio_sfx_2d(void) {
+    CHECK(audio_sfx_is_2d(AUDIO_SFX_WAVE_START));
+    CHECK(audio_sfx_is_2d(AUDIO_SFX_WAVE_END));
+    CHECK(audio_sfx_is_2d(AUDIO_SFX_POINTS));
+    CHECK(!audio_sfx_is_2d(AUDIO_SFX_SHOT_BULLET));
+    CHECK(!audio_sfx_is_2d(AUDIO_SFX_EXPLOSION));
+    CHECK(!audio_sfx_is_2d(AUDIO_SFX_PLAYER_HURT));
+    CHECK(!audio_sfx_is_2d(AUDIO_SFX_NONE));
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -3182,6 +3283,9 @@ int tests_run_all(void) {
     test_audio_mixer_clamps();
     test_audio_mixer_fixed_limits();
     test_audio_spatialise();
+    test_audio_trigger_table();
+    test_audio_health_hurt_vs_heal();
+    test_audio_sfx_2d();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);
