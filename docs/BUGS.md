@@ -915,6 +915,10 @@ Found 2026-10-22 by the owner, playing.
 - **Recheck of all art**: swept every texture — only these three had opaque
   backgrounds; tile/terrain art is fully opaque by design. Texture count is
   unchanged (33), so `gate-baseline.md` needs no edit.
+- **Regression guard (AT13)**: `tools/gen_assets.py --verify` now fails if any
+  entity PNG is not RGBA or has an opaque corner, if an entity's width disagrees
+  with `net_art` `base_px`, or if the emitted texture count differs from the
+  latest `gate-baseline.md` declaration (`knowledge/asset-verify-invariants`).
 - **Status**: FIXED (`fba930e`). Build clean under `-Werror`, `ctest` 3/3,
   `zombie_tests` 1186/0, `gen_assets --verify` 33 textures, two `--seed=42` SP
   runs byte-identical at 125938 bytes / 1603 lines. **On-screen result is

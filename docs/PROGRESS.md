@@ -321,3 +321,25 @@ Each fix: build clean `-Werror`, `ctest` 3/3, `zombie_tests` 1186/0, two
 `--seed=42` SP runs byte-identical at 125938 bytes / 1603 lines. All four are
 visual, so all remain **UNPROVEN on screen** until the owner looks
 (`i5-unverified-on-screen`).
+
+### DEV — assets lane: AT13 verifier invariant hardening (2026-10-23)
+
+`tools/gen_assets.py --verify` now enforces three invariants after regenerating,
+so the B2/B43 class cannot regress silently through the headless gate:
+
+- entity PNGs must be **RGBA with transparent corners** (an opaque corner is the
+  B2/B43 white-box bug);
+- each entity's real **width must equal `net_art` `base_px`**, parsed from
+  `src/net/net_art.c` rather than duplicated (a mismatch mis-scales the client
+  draw);
+- the **emitted texture count must equal the latest `N textures`** declaration
+  in `docs/knowledge/gate-baseline.md` — lane-local and read from the file,
+  never hard-coded. Adding/removing a texture still requires a deliberate
+  re-baseline in the same commit.
+
+All three were negative-tested (opaque corner, RGB entity, 31px `player.png`
+against `base_px` 32, count mismatch): each exits 1 with an explicit message.
+No C, asset bytes, wire or version change. Gate: build clean, `ctest` 3/3,
+`zombie_tests` 1186/0, `gen_assets --verify` 34 textures, two `--seed=42` SP
+runs byte-identical at 125938 bytes / 1603 lines. Commit `56154f0`; decision in
+`knowledge/asset-verify-invariants`.
