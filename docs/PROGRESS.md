@@ -937,3 +937,29 @@ No C, asset bytes, wire or version change. Gate: build clean, `ctest` 3/3,
 `zombie_tests` 1186/0, `gen_assets --verify` 34 textures, two `--seed=42` SP
 runs byte-identical at 125938 bytes / 1603 lines. Commit `56154f0`; decision in
 `knowledge/asset-verify-invariants`.
+---
+
+## Session 2026-10-23 — Net re-verify of the audio landing (merged main)
+
+### Planned
+Re-run the net-side checks on `main` after audio landed Phase D. Another
+agent's merge is not evidence for the gate, and the relay is the shared seam.
+
+### Done
+- Measured on `main` after `5997c86` (audio merge): build clean `-Werror`,
+  `zombie_tests` **1862/0**, ctest 3/3, `gen_assets.py --verify` 50 textures,
+  `gen_audio.py --verify` 13 sounds.
+- Two seed-42 25s SP runs byte-identical **125938 bytes / 1603 lines**; wave 1
+  unchanged; headless opens no audio device.
+- Headless two-instance: host spawned the remote slot, the client mirror
+  reached `wave=1 ents=2`, relayed events included WAVE_START/KILL/POINTS/
+  DAMAGE, and there were no rejects. `relay_net_events()` and the NT2 payload
+  are untouched by audio: the only `main.c` change is the `audio_tick` call.
+- Found and fixed a stray `>>>>>>>` merge marker in
+  `docs/knowledge/gate-baseline.md` (`c710f13`), left by the
+  main-into-`feature/audio` merge `534c438`. No other markers remain in
+  `docs/`.
+
+### Next
+- Owner push decision; human checks remain: B40 sword, animation M11 walk,
+  audio's listen-for list. None can be cleared headlessly.
