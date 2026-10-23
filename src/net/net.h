@@ -62,8 +62,13 @@
  * rows in the art table (NET_ART_ZOMBIE_WALK0..7). A peer without them cannot
  * resolve a walk frame, so the art set, not just the table, is what this
  * version guards. The PNGs landed in the previous commit; they are inert until
- * the ids that name them exist, which is why the bump rides with the rows. */
-#define NET_ASSET_VERSION 2
+ * the ids that name them exist, which is why the bump rides with the rows.
+ *
+ * 3 (2026-10-22): the player walk cycle - eight new frame files and eight new
+ * rows (NET_ART_PLAYER_WALK0..7). Same reasoning as 2: a peer without the
+ * files cannot resolve a player frame. The PNGs landed in the previous commit
+ * and are inert until the ids exist, so the bump rides with the rows. */
+#define NET_ASSET_VERSION 3
 
 #define NET_CH_CTRL 0                   /* reliable / ordered handshake+events */
 #define NET_CH_SNAP 1                   /* unreliable / sequenced game traffic */

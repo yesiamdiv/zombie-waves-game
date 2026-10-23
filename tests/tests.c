@@ -1901,6 +1901,27 @@ static void test_net_art_table(void) {
     /* Frame 0 is the idle zombie pose, so a zombie that starts walking does
      * not pop. The pixels are checked, not the intent. */
     CHECK(net_art_base_px(NET_ART_ZOMBIE) == net_art_base_px(NET_ART_ZOMBIE_WALK0));
+
+    /* The player walk cycle: eight frames, eight FILES, same rule. */
+    CHECK(NET_ART_PLAYER_WALK_COUNT == 8);
+    for (int i = 0; i < NET_ART_PLAYER_WALK_COUNT; i++) {
+        uint8_t id = (uint8_t)(NET_ART_PLAYER_WALK0 + i);
+        const char *path = net_art_path(id);
+        CHECK(path != NULL);
+        CHECK(net_art_base_px(id) == 32);
+        char expect[64];
+        snprintf(expect, sizeof expect, "textures/entities/player_walk%d.png", i);
+        CHECK(strcmp(path, expect) == 0);
+        const char *full = asset_path(path);
+        FILE *f = fopen(full, "rb");
+        CHECK(f != NULL);
+        if (f) fclose(f);
+    }
+    CHECK((uint8_t)(NET_ART_PLAYER_WALK0 + NET_ART_PLAYER_WALK_COUNT - 1)
+          == NET_ART_PLAYER_WALK7);
+    /* Frame 0 is the standing player pose (a different FILE with identical
+     * pixels), so starting to move does not pop. */
+    CHECK(net_art_base_px(NET_ART_PLAYER) == net_art_base_px(NET_ART_PLAYER_WALK0));
 }
 
 /* The rate rule: the frame period must be at least 1/15 s.

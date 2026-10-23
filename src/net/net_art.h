@@ -36,11 +36,22 @@ enum {
     NET_ART_ZOMBIE_WALK5 = 15,
     NET_ART_ZOMBIE_WALK6 = 16,
     NET_ART_ZOMBIE_WALK7 = 17,
-    NET_ART_COUNT   = 18
+    /* The player walk cycle: same rule, one file per frame. */
+    NET_ART_PLAYER_WALK0 = 18,
+    NET_ART_PLAYER_WALK1 = 19,
+    NET_ART_PLAYER_WALK2 = 20,
+    NET_ART_PLAYER_WALK3 = 21,
+    NET_ART_PLAYER_WALK4 = 22,
+    NET_ART_PLAYER_WALK5 = 23,
+    NET_ART_PLAYER_WALK6 = 24,
+    NET_ART_PLAYER_WALK7 = 25,
+    NET_ART_COUNT   = 26
 };
 
 /* How many frames the zombie walk cycle has. */
 #define NET_ART_ZOMBIE_WALK_COUNT 8
+/* How many frames the player walk cycle has. */
+#define NET_ART_PLAYER_WALK_COUNT 8
 
 /* One row of the shared art table. `base_px` is the PNG's natural width; it
  * converts the snapshot's world diameter into a draw scale. */

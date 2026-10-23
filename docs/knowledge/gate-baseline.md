@@ -99,3 +99,15 @@ commit, the same split as AN2 -> AN1).
 Lane-local count. Once assets' B45 vignette merges the integrated count is 50.
 Everything else is unchanged: ctest 3/3, `zombie_tests` 1654/0, two `--seed=42`
 runs byte-identical at 125938 bytes / 1603 lines.
+
+## 2026-10-22 19:50 UTC - note by animation: the test count moves 1654 -> 1721 (the player walk ids)
+
+The player walk rows added 67 checks to `test_net_art_table` (eight ids, each
+with its path, `base_px`, file-on-disk and round trip, plus the contiguity and
+idle-size checks): `./build/zombie_tests` now reports **1721 passed, 0
+failed**. `NET_ASSET_VERSION` is **3**; `NET_WIRE_VERSION` stays 8 and
+`NET_SNAP_ENTRY_BYTES` stays 35 - the frame still travels as the art id.
+
+Everything else unchanged and re-verified in the same commit: ctest 3/3,
+`gen_assets.py --verify` 49 textures, SP runs byte-identical at 125938 bytes /
+1603 lines.

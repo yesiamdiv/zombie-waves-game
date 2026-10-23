@@ -42,6 +42,15 @@ static const NetArtSpec k_art[NET_ART_COUNT] = {
     [NET_ART_ZOMBIE_WALK5] = { "textures/entities/zombie_walk5.png", 32 },
     [NET_ART_ZOMBIE_WALK6] = { "textures/entities/zombie_walk6.png", 32 },
     [NET_ART_ZOMBIE_WALK7] = { "textures/entities/zombie_walk7.png", 32 },
+    /* The player walk cycle, one file per frame (same rule as the zombie's). */
+    [NET_ART_PLAYER_WALK0] = { "textures/entities/player_walk0.png", 32 },
+    [NET_ART_PLAYER_WALK1] = { "textures/entities/player_walk1.png", 32 },
+    [NET_ART_PLAYER_WALK2] = { "textures/entities/player_walk2.png", 32 },
+    [NET_ART_PLAYER_WALK3] = { "textures/entities/player_walk3.png", 32 },
+    [NET_ART_PLAYER_WALK4] = { "textures/entities/player_walk4.png", 32 },
+    [NET_ART_PLAYER_WALK5] = { "textures/entities/player_walk5.png", 32 },
+    [NET_ART_PLAYER_WALK6] = { "textures/entities/player_walk6.png", 32 },
+    [NET_ART_PLAYER_WALK7] = { "textures/entities/player_walk7.png", 32 },
 };
 
 const char *net_art_path(uint8_t art) {
