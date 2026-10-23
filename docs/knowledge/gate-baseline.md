@@ -183,6 +183,7 @@ Measured on `main` at `6801d7c` (merge of `feature/net-protocol` into animation'
 animation's tests and 1759 is animation's lane-only figure; neither is the gate
 number for this tree. Version registry here: `NET_WIRE_VERSION` **9**,
 `NET_ASSET_VERSION` **3**, `NET_ART_COUNT` **26**, `NET_SNAP_ENTRY_BYTES` **35**.
+
 ## 2026-10-22 - note by assets: B45 adds the baked vignette texture
 
 B45 replaces the banded damage vignette with one baked texture,
@@ -217,7 +218,6 @@ tip (`6801d7c`), on the **merged** tree:
 **50 is the merged texture count.** Version registry here: `NET_WIRE_VERSION`
 **9**, `NET_ASSET_VERSION` **3**, `NET_ART_COUNT` **26**,
 `NET_SNAP_ENTRY_BYTES` **35**.
->>>>>>>
 
 ## 2026-10-23 - note by audio: the test count moves (lane figure); texture count and SP reference unchanged
 
