@@ -212,6 +212,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 |---|---|---|---|
 | HU1 | **Ideation proposal only (no code):** 6–10 concrete HUD/effects ideas, each with player-visible result, files touched, cost S/M/L, risk, on-screen verification; ranked with top 3 named; menu backdrop included; wire/sim changes flagged separately. Board: `task_01a168c19b7d139fadc3c13b`. | assets | **in progress** (lane synced to `0da6e3f`) |
 | HU2 | Approved HUD/effect slices — one commit each, full gate, **unproven until the owner looks**. | assets | pending owner ranking |
+| AP1 | **Ideation only:** animation polish (staggered horde bob/phase, item bob phase, relayed-event muzzle flash, player damage feedback, sword trail). No sim changes, rand-free, SP-byte-identical. | animation | **review** (`task_01a168cde42e6f4418f66391`) |
 
 Constraints: HUD readability beats decoration; cosmetics must be client-safe
 (host is truth; a client computes only deterministic cosmetics); anything
