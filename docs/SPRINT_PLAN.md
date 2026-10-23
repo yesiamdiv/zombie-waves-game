@@ -190,13 +190,33 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 > semantically by net, should merge cleanly — still verify at integration.
 >
 > **Landing sequence — progress:** animation **LANDED** (`3648856`), net v9+NT2
-> **LANDED** (`6801d7c`, merged gate 1808/0, 49 textures) → assets merging `main`
-> and landing (texture **50**) → audio rebases and lands Phase D. Main not pushed.
+> **LANDED** (`6801d7c`), assets **LANDED** (`b0ccc28`; merged gate 1808/0,
+> **50 textures**, SP identical) → audio merges `main` and lands Phase D. Main
+> not pushed. Owner verified B43/B44/B45/AT9 on `b0ccc28` (`0da6e3f`).
+> Assets' parallel lane merge `b88a99d` was **discarded** — it committed conflict
+> markers into BUGS/PROGRESS and truncated gate-baseline; the lane is reset to
+> `main`.
 >
 > **Playtest provenance (`knowledge/playtest-provenance`):** the 2026-10-23
 > playtest ran `main` before assets landed, so the owner saw none of
 > B43/B45/B44/AT9 although the fixes were on `feature/assets-maps`. Always launch
 > the tree that contains the fix, or land first and run one merged build.
+
+### HUD + effects (owner request 2026-10-23)
+
+> Owner: "a very plain HUD interface and mediocre effects." Wants assets to
+> **ideate first**, owner reviews/ranks, then build. Process mirrors the B45
+> vignette win. Nothing here is approved until the owner ranks the proposal.
+
+| ID | Task | Owner | Status |
+|---|---|---|---|
+| HU1 | **Ideation proposal only (no code):** 6–10 concrete HUD/effects ideas, each with player-visible result, files touched, cost S/M/L, risk, on-screen verification; ranked with top 3 named; menu backdrop included; wire/sim changes flagged separately. Board: `task_01a168c19b7d139fadc3c13b`. | assets | **in progress** (lane synced to `0da6e3f`) |
+| HU2 | Approved HUD/effect slices — one commit each, full gate, **unproven until the owner looks**. | assets | pending owner ranking |
+
+Constraints: HUD readability beats decoration; cosmetics must be client-safe
+(host is truth; a client computes only deterministic cosmetics); anything
+touching the sim or wire needs its own decision and cannot move the SP
+byte-identity baseline silently.
 
 ### shared
 
