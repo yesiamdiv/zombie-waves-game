@@ -79,7 +79,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
      "src/core/*.c" "src/ecs/*.c" "src/graphics/*.c"
      "src/world/*.c" "src/systems/*.c" "src/ui/*.c" "src/items/*.c"
      "src/events/*.c" "src/ai/*.c" "src/weapons/*.c" "src/net/*.c"
-     "src/players.c" "src/assets/*.c")
+     "src/audio/*.c" "src/players.c" "src/assets/*.c")
 add_library(zombie_core STATIC ${CORE_SOURCES})
 target_compile_options(zombie_core PRIVATE ${PROJECT_WARNINGS})
 target_include_directories(zombie_core PUBLIC src "${enet_SOURCE_DIR}/include")

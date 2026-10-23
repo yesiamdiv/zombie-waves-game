@@ -635,6 +635,258 @@ Freeze lifted by animation when AN1 landed (35a8b46).
   (`docs/PENDING_VERIFICATION.md`). Headless cannot see either.
 - No push; `main` stays local until the owner's next go.
 
+## Session 2026-10-22 — AT6 audio Phase-0 spike: backend chosen, triggers audited, double-fire ruled out, latency measured
+
+### PM standup — planned
+- AT6 spikes A (backend), B (trigger audit), C (double-fire), D (relayed
+  latency), plus the soft-fail proof, all measured before any implementation.
+- Deliverable: `docs/knowledge/audio-plan.md` §10 filled in, raw numbers in a
+  measurements topic, verdict committed **before** Phase B writes a line of
+  audio code.
+
+### DEV — done
+- **Baseline gate re-verified** in `worktrees/audio/build` before touching
+  anything: build clean, `ctest` 3/3, `zombie_tests` 1186/0, two `--seed=42`
+  single-player runs diff-empty at the [gate-baseline] byte/line reference.
+- **Spike A — backend: SDL3's audio API, not vendored miniaudio.** Measured
+  both: SDL3 = 0 bytes of binary, 0 s of build, no new link flag, no vendored
+  file, no licence to track (SDL3 is already linked and exports
+  `SDL_OpenAudioDeviceStream`/`SDL_LoadWAV`/`SDL_ResumeAudioStreamDevice`);
+  miniaudio
+  0.11.25 = a 4,108,168 B header, **19.27 s** of compile for one TU at `-O3`
+  (6.64 s at `-O1`), 646-884 KB of binary, `-ldl -lpthread`. **Both were proven
+  to put sound on the speakers** — a 12 kHz tone captured off the PipeWire sink
+  monitor and detected with a Goertzel filter (SDL3 −34.0 dBFS, miniaudio
+  −29.3 dBFS, silence control −46.6 dBFS), because ambient desktop audio makes
+  RMS useless. So this is a cost decision, not a capability one. Losing SDL3's
+  mixer costs ~150-250 lines we own and can unit-test.
+- **Spike A — soft-fail proven at probe level:** no device
+  (`SDL_AUDIODRIVER=nosuchdriver`), missing file (both backends), and an
+  explicit no-device mode all degrade to silence with **exit 0**, no assert.
+  Game level (`--headless` opens no device) is still a Phase B item.
+- **Spike B — trigger audit complete**, one row per intended sound, read from
+  the emit sites, not from `EVENT_FORMAT.md` (the table is audio-plan §6).
+  Findings that change a design: the client cannot tell *who* hit it (`ib` is
+  dropped by the relay); it cannot tell hurt from heal (`ia` is dropped)
+  without keeping the previous `GE_PLAYER_HEALTH` event's hp; **a rocket
+  impact has no event at all** (only its despawn does) so a rocket-explosion
+  sound needs `GE_EXPLOSION` — net's NT2; and **there is no reload** to sound
+  (pistol ammo is unlimited; `NetPlayerState` has no reload field).
+- **Spike C — double-fire ruled out, by counting.** Two co-op runs (25 s
+  headless, 18 s windowed, both peers `--ai=bot`). Every relayed type arrives
+  at ratio **1.00** on the client — `PLAYER_SHOT` 102/102 and 63/63, `DAMAGE`
+  42/42 and 25/25, `KILL` 10/10 and 5/5, `POINTS` 10/10 and 5/5, `WAVE_START`
+  1/1, `WAVE_END` 1/1 — with matching entity ids and no duplicates.
+  `ENTITY_SPAWN` is 0 on the client because it is not relayed: expected shape.
+- **Spike D — relayed latency measured.** Temporary `CLOCK_MONOTONIC`
+  instrumentation at the host relay and the client receive (reverted after;
+  tree verified clean). Unthrottled: the relay itself costs **~1 ms**
+  (102 matched shots, 0 entity-id mismatches, residual median 0.0 ms).
+  Windowed: the client hears a relayed shot after **median 89.6 ms** (min
+  52.6, max 106.1) — because the delay is **one host frame + one client frame
+  + ~1 ms**, and this machine ran the windowed game at ~25 FPS (40 ms frames).
+  At 60 FPS the same path costs ~33 ms. **The delay is frame-bound, not
+  network-bound.**
+- **Docs written:** `docs/knowledge/audio-measurements.md` (new topic — raw
+  numbers, method, reproduction), `docs/knowledge/audio-plan.md` §6 trigger
+  table and §10 verdicts, `docs/PENDING_VERIFICATION.md` (the listen-for list
+  a human has to work through, and on which peer).
+- **No product code touched.** The only source edits during the spike were the
+  two temporary instrumentation hunks, both reverted; `git status` is clean
+  apart from the docs in this commit.
+
+### PM — next
+- Decide the §4 option (c) question the latency measurement opened: play the
+  local player's own gunfire locally and dedupe the relayed copy by bullet
+  entity id (removes two frames of latency, costs a mirror-side derivation),
+  or accept ~33 ms at 60 FPS. **Audio is not re-opening §4** — §4 stays
+  closed; this is the PM's call on a measured input.
+- Phase B (`src/audio/`, SDL3 backend, init/update/shutdown in `main.c`,
+  `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`), then
+  Phase C (`tools/gen_audio.py`, `assets/audio/**`), then Phase D (consume the
+  relayed events), then Phase E (a human listens, two windows).
+- `GE_EXPLOSION` stays net's NT2; audio consumes it, audio does not add the
+  event type.
+
+### Blocked
+- Nothing is blocked. Two open questions are owned by the PM (the option (c)
+  latency decision) and one by net (the `GE_EXPLOSION` payload, which audio
+  needs for a rocket explosion sound).
+- Nothing in this session is `fixed`: no sound has been heard by a human, so
+  the audio feature remains **unproven** by construction.
+
+**Commits:** `cce1990` (the spike verdicts + the trigger audit + the new
+`audio-measurements` topic) and `f23ecdc` (the listen-for list + this log).
+
+---
+
+## Session 2026-10-23 — Phase B: the audio system
+
+### PM — planned
+- A7 (Phase B): `src/audio/` on SDL3, init/tick/shutdown in `main.c`, no
+  per-frame allocation, headless silent, gate green.
+- Keep §4 at option (a); do not build (c) (A6 follow-up, `9c89126`).
+- No branch pushes; audio rebases onto animation and merges after it.
+
+### DEV — done
+- **`src/audio/audio.{h,c}`** — `audio_init(headless, test_cue)` /
+  `audio_shutdown()` / `audio_tick(bus, listener_x, listener_y)`. One device,
+  one 48 kHz mono-float format, WAVs decoded and resampled at init so the audio
+  thread only copies. A mutex-guarded trigger ring means a game hitch cannot
+  underrun: the voices keep reading on the audio thread. Soft-fail everywhere —
+  no device, no file and headless all mean silence and a running game.
+- **`src/audio/audio_mixer.{h,c}`** — fixed 32-voice pool, 64-entry pending
+  ring, linear pan, distance falloff at 24 world units, output clamp. Pure (no
+  SDL), which is why it is the unit-tested part.
+- **`src/main.c`** — four small insertions: `audio_init()` after the event
+  bus, `audio_shutdown()` before `event_bus_shutdown()`, `audio_tick()` between
+  `relay_net_events()` and `event_bus_flush()` (the only window where `GE_KILL`
+  still exists), and `--audio-test`.
+- **Stubs by design:** `SFX_PATHS[]` all NULL and `audio_sfx_for_event()`
+  returns `AUDIO_SFX_NONE` — Phase C owns the files, Phase D the mapping. The
+  enum already has the 13 slots from the §6 audit, and deliberately none for
+  reload / out-of-ammo / shop.
+- **API correction found while implementing:** the SDL3 the project fetches
+  (`SDL.git` `main` @ `9bb6a861`, 3.5.0) no longer *declares*
+  `SDL_OpenAudioDeviceStream`; the symbol is exported but an implicit
+  declaration fails `-Werror`. Phase B uses `SDL_OpenAudioDevice` +
+  `SDL_CreateAudioStream` + `SDL_SetAudioStreamGetCallback` + bind + resume.
+  Recorded in `audio-measurements`, together with the capture-level drift
+  (-34.0 dBFS on the saved A1 capture, -42.1 dBFS from the same probe today on
+  the same sink - only same-session comparisons mean anything).
+- **Device path proven without an ear:** SDL's disk driver
+  (`SDL_AUDIODRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=...`) captured what the
+  device was handed during `--audio-test`: peak **0.3000** on both channels,
+  1 kHz, the designed 150 ms, L == R, and 184,290 of 191,488 frames exact
+  zeros. That is the whole chain - queue -> audio-thread callback -> mixer ->
+  stream -> device - measured, not assumed.
+- **Gate:** build clean under `-Werror` (no warnings), `ctest` 3/3,
+  `zombie_tests` 1207/0 (was 1186; +21 audio checks), three 25 s `--seed=42`
+  SP runs byte-identical (125938 B / 1603 lines) - one of them with
+  `SDL_AUDIODRIVER=nosuchdriver`, which cannot change a headless run because the
+  device path is never entered. Wave 1 unchanged.
+- **Docs:** audio-plan §7 (phases A/B done, nothing vendored) and §10 (the API
+  correction), `audio-measurements` (new Phase B section), this log, and
+  `PENDING_VERIFICATION.md` (status: Phase B landed, still silent by
+  construction; no-device and headless checks ticked, missing-file still open
+  until Phase C).
+
+### PM — next
+- Phase C: `tools/gen_audio.py` + `assets/audio/**`, deterministic, verified
+  with `python3 tools/gen_assets.py --verify`.
+- Phase D once net's NT2 (`eadc98e`) reaches the branch audio merges onto:
+  fill `audio_sfx_for_event()` and the slot paths; consume `GE_EXPLOSION` as
+  net ships it.
+- Phase E: a human listens - the listen-for list is in
+  `PENDING_VERIFICATION.md`.
+
+### Blocked
+- Nothing blocks B or C. D waits for NT2 on the merge target; E waits for a
+  human. **No sound has been heard**, so nothing audio is `done` - Phase B is
+  `unproven` on the ear test by construction.
+
+**Commits:** `ecf7a2f` (Phase B foundations) and this docs commit.
+
+---
+
+## Session 2026-10-23 — Phase C: audio assets
+
+### PM — planned
+- Phase C: `tools/gen_audio.py`, `assets/audio/**`, wire `SFX_PATHS`. Keep the
+  rule "replacing a WAV 1:1 swaps it, missing is silence". Phase D waits on NT2.
+
+### DEV — done
+- **`tools/gen_audio.py`** — stdlib-only, deterministic (fixed seed via
+  xorshift32). Synthesises 13 slots to 48 kHz mono 16-bit PCM, fades edges,
+  normalises each sound to its own peak. `--verify` re-synthesises and compares
+  bytes to the committed files. No dependencies, regenerating leaves nothing
+  dirty if outputs match.
+- **`assets/audio/*.wav`** — placeholders for every `AudioSfx` slot: bullets,
+  grenade, rocket, zombie/player hits and deaths, explosion, wave start/end,
+  player hurt, pickup, points. Decoded at init and converted to mono float at
+  48 kHz.
+- **`src/audio/audio.c`** — `SFX_PATHS[]` filled; the loader is already in place
+  from Phase B (silent on failure). Adding files is the generator + the table.
+- **Docs** — `docs/EXTENDING.md` documents the "replace 1:1" rule and
+  regeneration, same as textures.
+- **Gate** — build clean, `ctest` 3/3, `zombie_tests` 1207/0, two 25 s `--seed=42`
+  SP runs byte-identical (125938 B / 1603 lines), wave 1 unchanged.
+  `python3 tools/gen_audio.py --verify` and `python3 tools/gen_assets.py --verify`
+  both clean.
+
+### PM — next
+- **Phase D (blocked on NT2):** fill `audio_sfx_for_event()` from the relayed
+  bus. Read from the §6 audit, use the agreed `GE_EXPLOSION` payload when it
+  lands (`x,y,a` radius, `b` spare, `kind`), do **not** edit the relay list or
+  add wire fields. Audio must not invent shooter/attacker ids the wire does
+  not provide.
+- **Phase E:** human listen on host and client; listen-for list is in
+  `PENDING_VERIFICATION.md`. Still `unproven`.
+
+### Blocked
+- D blocked on NT2 in main. E blocked on a human.
+
+**Commits:** `9d4e592` (Phase C). C is committed; the game still has no
+event->sound mapping so it remains silent until D, but the assets and
+generator are in place.
+
+---
+
+## Session 2026-10-23 — Phase D: the relayed bus drives the mix
+
+### PM standup — planned
+- A9 is unblocked (NT2 + wire v9 are on main). Land Phase D: map events to
+  slots from the relayed bus only, no wire field, no relay-list edit, no
+  version bump. Gate and reply to `[net]` with the SHA so it can re-verify the
+  merged tree.
+
+### DEV — done
+- **`src/audio/audio_triggers.{h,c}`** — the event -> slot table
+  (`audio_sfx_for_event`) and `audio_sfx_is_2d`, pure and unit-tested: 33 new
+  checks cover every mapped row, the rows that must stay silent
+  (`GE_ENTITY_DEATH` for bullets/particles/rocket expiry, host-only events),
+  the 2D set, and hurt-vs-heal.
+- **Hurt vs heal without `ia`**: the relay drops hp-before, so a per-entity
+  last-hp cache decides it; the host uses the same cache on purpose so the two
+  peers cannot diverge (SYSTEM_DESIGN_RULES §3). Cache reset in `audio_init`.
+- **2D slots**: `WAVE_START`/`WAVE_END`/`POINTS` carry `x=y=0`; spatialising
+  them would fade them to silence at the world origin. They play centred.
+- **Radius from the viewport**: `AUDIO_FALLOFF_RADIUS 24.0f` was ~1/50 of the
+  visible world; `audio_tick` now takes the visible world size and uses
+  0.55 x the diagonal (`Camera.zoom` is always 1.0, so this is stable).
+- **Same-slot collapse (30 ms)**: one grenade/rocket damages many zombies in
+  one tick; one voice per slot per 30 ms keeps the sum from clipping. The
+  pistol's cooldown is 0.2 s, so separate shots never collapse.
+- **`GE_ENTITY_DEATH` is not mapped** — `GE_EXPLOSION` is the blast, and the
+  death event also fires for bullets, particles and the rocket's expiry.
+- **Verification beyond the gate** (method in `audio-measurements`, Phase D):
+  captured the product's own output through SDL's disk driver. SP: `wave_start`
+  NCC 1.000 at full gain, `shot_bullet`/`hit_zombie` 1.000, `wave_end` 0.908 at
+  the logged `WAVE_END`, `death_zombie` 0.861. Client of a **headless** host:
+  every sound is relay-derived — `wave_start` 1.000, `shot_bullet` 1.000,
+  `hit_zombie` 1.000, `hit_player` 0.999, `death_zombie` 0.882,
+  `player_hurt` 0.791.
+- **Missing-file soft-fail, at game level**: renaming `points.wav` logs one WARN
+  and the game runs on. That closes an item that had been probe-level only.
+- **`tools/match_audio_capture.py`** — the waveform-NCC matcher used above, so
+  the next agent can re-run it in Phase E (needs numpy; not part of the gate).
+- **Gate**: green, numbers in `gate-baseline` (2026-10-23 audio note). Two
+  sequential same-seed SP runs byte-identical, wave 1 unchanged, headless opens
+  no device, `gen_audio.py --verify` and `gen_assets.py --verify` clean.
+
+### PM — next
+- Phase E: a human listens on host and client. `explosion` and `pickup` have
+  never been observed in a capture (the bot uses only the pistol and never
+  collects items) — throw a grenade and pick something up in the listen run.
+- Landing: audio may merge main now; the assets lane still has to land before
+  the merged figure counts.
+
+### Blocked
+- E blocked on a human. Nothing else.
+
+**Commits:** `b483324` (Phase D), plus the docs/verification commit.
+
+
 ### DEV — assets lane: owner-reported batch B43/B45/B44 + AT9 (2026-10-22)
 
 Owner queue, in the order the owner set (B43 → B45 → B44 → AT9), all in
