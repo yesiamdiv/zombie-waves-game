@@ -634,3 +634,54 @@ Freeze lifted by animation when AN1 landed (35a8b46).
 - Human checks remain: B40 sword on screen and AN8/M11 mirrored walk
   (`docs/PENDING_VERIFICATION.md`). Headless cannot see either.
 - No push; `main` stays local until the owner's next go.
+
+### DEV — assets lane: owner-reported batch B43/B45/B44 + AT9 (2026-10-22)
+
+Owner queue, in the order the owner set (B43 → B45 → B44 → AT9), all in
+`worktrees/assets` (`feature/assets-maps`), lane re-aligned to `76b0458` first.
+
+- **B43** (`fba930e`) — loot pickups drew a white box. Root cause was the art,
+  not the blend path: `entity_pickup()` was the only entity art with opaque
+  corners. Now outlined icons on a transparent background; pickup scale
+  `0.5 → 0.75` (size follows the entity scale, so the client matches). Texture
+  count unchanged.
+- **B45** (`f7e2556`) — the B41 vignette was banded because it drew 24 live
+  bands. Baked the falloff into `assets/textures/ui/vignette.png` and blit it
+  stretched, faded by the damage timer; `gate-baseline` re-baselined 33 → 34 in
+  the same commit (UI-only art; `NET_ASSET_VERSION` untouched).
+- **B44** (`267665f`) — map-select rows were spaced `lh*2.2` with the detail
+  line at `+lh+6`, so the highlighted map's detail clipped the next map's name
+  by ~1.8px at every window size (B1-class regression). Rows now `lh*2+12`; the
+  menu and shop blocks are clamped clear of the line above/below on short
+  windows. Verified by re-deriving every screen's line rectangles from the same
+  formulas: no overlap for any window ≥480px tall.
+- **AT9** (`c01c0fc`) — F11 / Alt+Enter toggles desktop-fullscreen; the windowed
+  size is captured and restored. No window dragging (Wayland: programmatic
+  placement is only a request).
+
+Each fix: build clean `-Werror`, `ctest` 3/3, `zombie_tests` 1186/0, two
+`--seed=42` SP runs byte-identical at 125938 bytes / 1603 lines. All four are
+visual, so all remain **UNPROVEN on screen** until the owner looks
+(`i5-unverified-on-screen`).
+
+### DEV — assets lane: AT13 verifier invariant hardening (2026-10-23)
+
+`tools/gen_assets.py --verify` now enforces three invariants after regenerating,
+so the B2/B43 class cannot regress silently through the headless gate:
+
+- entity PNGs must be **RGBA with transparent corners** (an opaque corner is the
+  B2/B43 white-box bug);
+- each entity's real **width must equal `net_art` `base_px`**, parsed from
+  `src/net/net_art.c` rather than duplicated (a mismatch mis-scales the client
+  draw);
+- the **emitted texture count must equal the latest `N textures`** declaration
+  in `docs/knowledge/gate-baseline.md` — lane-local and read from the file,
+  never hard-coded. Adding/removing a texture still requires a deliberate
+  re-baseline in the same commit.
+
+All three were negative-tested (opaque corner, RGB entity, 31px `player.png`
+against `base_px` 32, count mismatch): each exits 1 with an explicit message.
+No C, asset bytes, wire or version change. Gate: build clean, `ctest` 3/3,
+`zombie_tests` 1186/0, `gen_assets --verify` 34 textures, two `--seed=42` SP
+runs byte-identical at 125938 bytes / 1603 lines. Commit `56154f0`; decision in
+`knowledge/asset-verify-invariants`.

@@ -12,6 +12,7 @@ import argparse
 import math
 import os
 import random
+import re
 import sys
 
 from PIL import Image
@@ -20,6 +21,10 @@ TILE_BASE = 16
 DEFAULT_SCALE = 4
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "tiles")
 ENT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "entities")
+UI_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "ui")
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+NET_ART_C = os.path.join(ROOT, "src", "net", "net_art.c")
+GATE_BASELINE = os.path.join(ROOT, "docs", "knowledge", "gate-baseline.md")
 
 
 def render(grid, palette, scale):
@@ -340,22 +345,50 @@ def entity_rocket():
                "r": (150, 74, 32)}
 
 
+def blit(grid, cells, fill, outline="K"):
+    """Fill `cells` with `fill`, ringed by a 1px `outline`; leave the rest
+    untouched (transparent)."""
+    s = set(cells)
+    for (x, y) in s:
+        grid[y][x] = fill
+    for (x, y) in s:
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                nx, ny = x + dx, y + dy
+                if 0 <= ny < len(grid) and 0 <= nx < len(grid[0]) \
+                        and (nx, ny) not in s:
+                    grid[ny][nx] = outline
+
+
 def entity_pickup(cross=False, stripes=False, bolt=False):
+    """Pickup icons on a TRANSPARENT background (B43).
+
+    The old art filled most of the sprite with an opaque near-white card,
+    which read as a white box lying on the ground. The icon is now drawn
+    directly, larger, on nothing but transparent pixels, with its own dark
+    outline so it stays legible over any terrain."""
     g = canvas(32, 32)
-    rect(g, 4, 8, 27, 27, "w")
-    rect(g, 7, 10, 24, 25, "w")
-    frame(g, "K")
-    if cross:
-        rect(g, 13, 12, 18, 23, "R")
-        rect(g, 10, 15, 21, 20, "R")
-    if stripes:  # diagonal ammo bands
-        for i in range(8):
-            rect(g, 6 + i, 27 - i - 3, 8 + i, 29 - i - 3, "Y")
-    if bolt:     # lightning
-        pts = [(16, 10), (11, 19), (14, 19), (12, 26), (19, 16), (16, 16)]
-        for ch, (x, y) in zip("B" * 6, pts):
-            g[y][x] = "B"
-        rect(g, 12, 20, 20, 21, "B")
+    if cross:  # medkit: a bold red plus
+        cells = {(x, y) for y in range(3, 29) for x in range(11, 21)}
+        cells |= {(x, y) for y in range(11, 21) for x in range(3, 29)}
+        blit(g, cells, "R")
+    if stripes:  # ammo: three cartridges
+        cells = set()
+        for x0 in (6, 14, 22):
+            cells |= {(x, y) for y in range(8, 28) for x in range(x0, x0 + 4)}
+            cells |= {(x, y) for y in range(6, 8) for x in range(x0 + 1, x0 + 3)}
+        blit(g, cells, "Y")
+    if bolt:  # speed: a lightning bolt
+        spans = [
+            (4, 18, 24), (5, 17, 24), (6, 16, 24), (7, 15, 24), (8, 14, 24),
+            (9, 13, 24), (10, 12, 24), (11, 11, 16), (12, 10, 16),
+            (13, 9, 16), (14, 9, 16), (15, 10, 22), (16, 11, 23),
+            (17, 12, 24), (18, 13, 24), (19, 14, 24), (20, 15, 24),
+            (21, 16, 24), (22, 17, 24), (23, 18, 24), (24, 19, 24),
+            (25, 20, 24), (26, 21, 24), (27, 22, 24),
+        ]
+        cells = {(x, y) for y, x0, x1 in spans for x in range(x0, x1 + 1)}
+        blit(g, cells, "B")
     return g, {".": (0, 0, 0), "K": (40, 40, 44), "w": (238, 238, 242),
                "R": (214, 68, 62), "Y": (214, 178, 60), "B": (88, 140, 224)}
 
@@ -370,6 +403,111 @@ def entity_blade():
                "S": (176, 194, 206), "H": (226, 236, 244)}
 
 
+def ui_vignette(size=256, max_alpha=170, color=(220, 30, 30)):
+    """Damage vignette (B45): a square red radial-alpha texture, alpha 0 in the
+    centre rising from ~40% of the radius outward to a maximum at the edges and
+    corners (smoothstep falloff). The HUD draws it stretched to the screen and
+    fades it on the damage timer; this replaces the banded real-time fill from
+    B41/e637a5d. It is UI-only art (not in the net art table), so
+    NET_ASSET_VERSION is untouched, but it is a new texture, so the gate-baseline
+    count moves 33 -> 34 in the same commit (`knowledge/ui-damage-vignette`)."""
+    img = Image.new("RGBA", (size, size))
+    px = img.load()
+    c = size / 2.0
+    r0 = 0.40 * c
+    r1 = c * (2.0 ** 0.5)   # distance from centre to a corner
+    for y in range(size):
+        for x in range(size):
+            r = ((x - c) ** 2 + (y - c) ** 2) ** 0.5
+            t = (r - r0) / (r1 - r0)
+            t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+            a = int(round(max_alpha * (t * t * (3.0 - 2.0 * t))))  # smoothstep
+            px[x, y] = (color[0], color[1], color[2], a)
+    return img
+
+
+def _asset_fail(msg):
+    print("ASSET VERIFY FAILED:", msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def verify_entity_art(paths):
+    """Every entity PNG must be RGBA with fully transparent corners.
+
+    An opaque corner is exactly the B2/B43 bug: the transparent background was
+    baked in as an opaque card, so the sprite drew as a box on the ground. The
+    render path already blends correctly, so this is the only place the class
+    can hide."""
+    ent_dir = os.path.abspath(ENT_DIR)
+    entities = [p for p in paths
+                if os.path.dirname(os.path.abspath(p)) == ent_dir]
+    if not entities:
+        _asset_fail(f"no entity textures were generated into {ENT_DIR}")
+    for p in entities:
+        name = os.path.basename(p)
+        with Image.open(p) as im:
+            im.load()
+            if im.mode != "RGBA":
+                _asset_fail(f"{name} is {im.mode}, expected RGBA")
+            w, h = im.size
+            for (cx, cy) in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+                if im.getpixel((cx, cy))[3] != 0:
+                    _asset_fail(
+                        f"{name} has a non-transparent corner "
+                        f"({cx},{cy})={im.getpixel((cx, cy))}; entity art must "
+                        f"have a transparent background (B2/B43)")
+
+
+def verify_entity_sizes_vs_net_art(paths):
+    """net_art's `base_px` must equal the real PNG width.
+
+    base_px converts a replicated diameter into a draw scale, so a mismatch
+    makes the client draw the wrong size (B43). Parse the C table instead of
+    duplicating its numbers here, so the two cannot drift apart."""
+    with open(NET_ART_C, encoding="utf-8") as f:
+        text = f.read()
+    rows = re.findall(r'"([^"]+\.png)"\s*,\s*(\d+)\s*\}', text)
+    if not rows:
+        _asset_fail(f"could not parse any art rows from {NET_ART_C}")
+    by_name = {os.path.basename(p): p for p in paths}
+    for rel, base_px in rows:
+        name = os.path.basename(rel)
+        if name not in by_name:
+            _asset_fail(f"net_art references {rel}, which this generator "
+                        f"does not emit")
+        with Image.open(by_name[name]) as im:
+            if im.width != int(base_px):
+                _asset_fail(
+                    f"{rel}: PNG width {im.width} != net_art base_px {base_px} "
+                    f"in src/net/net_art.c (they must match)")
+
+
+def declared_texture_count():
+    """Read the CURRENT texture count from gate-baseline.md.
+
+    The file is a chronological log, so the last `N textures` declaration in
+    the tree is the current one. This stays lane-local: animation's lane
+    declares its own number and the merged tree declares the combined one, so
+    never hard-code a count here."""
+    last = None
+    with open(GATE_BASELINE, encoding="utf-8") as f:
+        for line_no, line in enumerate(f, 1):
+            for m in re.finditer(r"(\d+)\s+textures\b", line):
+                last = (int(m.group(1)), line_no)
+    if last is None:
+        _asset_fail(f"no 'N textures' declaration found in {GATE_BASELINE}")
+    return last
+
+
+def verify_texture_count(paths):
+    declared, line_no = declared_texture_count()
+    if len(paths) != declared:
+        _asset_fail(
+            f"generator emits {len(paths)} textures but {GATE_BASELINE} "
+            f"(line {line_no}) declares {declared}. Textures change only via a "
+            f"deliberate re-baseline: update gate-baseline.md in the same commit.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scale", type=int, default=DEFAULT_SCALE)
@@ -379,6 +517,7 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(ENT_DIR, exist_ok=True)
+    os.makedirs(UI_DIR, exist_ok=True)
 
     specs = []
     # ---- grassland ----
@@ -446,12 +585,22 @@ def main():
     # any other, and --verify has to open them like any other.
     paths.extend(entity_zombie_walk())
     paths.extend(entity_player_walk())
+
+    # ---- ui (screen overlays) ----
+    vignette_path = os.path.join(UI_DIR, "vignette.png")
+    ui_vignette().save(vignette_path)
+    print("wrote", os.path.abspath(vignette_path), (256, 256))
+    paths.append(vignette_path)
+
     assert len(paths) == len(set(paths)), "duplicate texture path"
 
     if args.verify:
         for p in paths:
             with Image.open(p) as im:
                 im.verify()
+        verify_entity_art(paths)
+        verify_entity_sizes_vs_net_art(paths)
+        verify_texture_count(paths)
         print(f"verified {len(paths)} textures")
 
 

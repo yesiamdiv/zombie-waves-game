@@ -64,7 +64,7 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
         .base_pos = pos};
     *ecs_get_sprite(ecs, e) = (CSprite){
         .sprite = is,
-        .scale = 0.5f,   /* 32px art -> 16 world units, same footprint as player */
+        .scale = 0.75f,  /* 32px icon art -> 24 world units, plainly visible (B43) */
         .base_alpha = 1.0f
     };
 

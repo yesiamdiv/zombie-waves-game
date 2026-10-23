@@ -61,6 +61,11 @@ typedef struct {
 
     bool headless;
     bool vsync_active;
+    /* AT9: windowed <-> desktop-fullscreen toggle state. The pre-fullscreen size
+     * is remembered so returning to windowed restores it exactly. */
+    bool fullscreen;
+    int  windowed_w;
+    int  windowed_h;
     GameMode mode;
     float run_seconds;
     double elapsed_sim;
@@ -1470,6 +1475,39 @@ static void drain_net_events(void) {
     }
 }
 
+/* AT9: toggle windowed <-> borderless desktop-fullscreen (F11 or Alt+Enter from
+ * the event loop). The windowed size is captured on the way in and restored on
+ * the way out.
+ *
+ * Wayland note: programmatic window *placement* is only a request - a compositor
+ * is free to ignore SDL_SetWindowPosition - and window decorations / drag-to-move
+ * are owned by the WM (libdecor), not the app. That is why this game
+ * deliberately has no in-window window dragging: it cannot work portably here.
+ * This only toggles fullscreen; it never attempts to move the window itself. */
+static void toggle_fullscreen(void) {
+    if (!game.window) return;
+
+    if (!game.fullscreen) {
+        SDL_GetWindowSize(game.window, &game.windowed_w, &game.windowed_h);
+    }
+
+    if (!SDL_SetWindowFullscreen(game.window, !game.fullscreen)) {
+        LOG_WARN("Fullscreen toggle failed: %s", SDL_GetError());
+        return;
+    }
+
+    if (game.fullscreen) {
+        /* Leaving fullscreen: ask for the remembered size back. Under a
+         * tiling/maximizing WM this is only a request and may be ignored. */
+        SDL_SetWindowSize(game.window, game.windowed_w, game.windowed_h);
+        SDL_SetWindowPosition(game.window, SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED);
+    }
+
+    game.fullscreen = !game.fullscreen;
+    LOG_INFO("Fullscreen %s", game.fullscreen ? "enabled" : "disabled");
+}
+
 /* One simulation step. Handles input (real + injected), the AI driver,
  * game update, event log flushing, and input edge clearing. */
 static void step_frame(float dt) {
@@ -1477,6 +1515,15 @@ static void step_frame(float dt) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             input_process_event(&game.input, &event);
+            /* AT9: fullscreen toggle. Read from the raw event so it does not
+             * disturb gameplay input; auto-repeat is ignored. */
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+                if (event.key.scancode == SDL_SCANCODE_F11 ||
+                    (event.key.scancode == SDL_SCANCODE_RETURN &&
+                     (event.key.mod & SDL_KMOD_ALT))) {
+                    toggle_fullscreen();
+                }
+            }
         }
     }
 
