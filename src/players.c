@@ -1,5 +1,6 @@
 #include "players.h"
 #include "core/log.h"
+#include "graphics/anim.h"
 #include "core/input.h"
 #include "events/event_bus.h"
 #include <string.h>
@@ -30,6 +31,16 @@ static Entity spawn_player_entity(World *ecs, Vec2 pos, const SDL_FColor *color)
     ecs_add_component(ecs, e, COMP_SPRITE);
     ecs_add_component(ecs, e, COMP_COLLIDER);
     ecs_add_component(ecs, e, COMP_PLAYER_TAG);
+    /* AN8: the player walk cycle. Frame 0 is the standing pose, which is
+     * pixel-identical to player.png above, so the sprite and frame 0 are the
+     * same picture and nothing pops when the player first moves. */
+    ecs_add_component(ecs, e, COMP_ANIMATION);
+    *ecs_get_animation(ecs, e) = (CAnimation){
+        .current_frame = 0,
+        .frame_timer = 0.0f,
+        .frame_duration = ANIM_FRAME_PERIOD,
+        .total_frames = ANIM_PLAYER_WALK_FRAMES,
+    };
 
     *ecs_get_position(ecs, e) = (CPosition){{pos.x, pos.y}};
     *ecs_get_velocity(ecs, e) = (CVelocity){{0, 0}, 200.0f};

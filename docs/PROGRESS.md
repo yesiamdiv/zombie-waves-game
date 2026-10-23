@@ -492,3 +492,28 @@ B35's colour on the *client* is still unproven.
 - Gate: build clean, ctest 3/3, `zombie_tests` 1382 → 1654 / 0 (declared in
   `docs/knowledge/gate-baseline.md` same commit), `gen_assets.py --verify` 41,
   SP runs byte-identical (125938 bytes / 1603 lines), wave 1 unchanged.
+
+### AN8 - the player walk cycle (2026-10-22)
+
+- `13621b8` art: `_player_walk_grid()` / `entity_player_walk()` in
+  `tools/gen_assets.py`, eight 32x32 PNGs. The art has no legs, so the walk is
+  the arm swing + a 1 px lift/sag; the eight poses are a table because a pure
+  sine swing makes frame 0 and frame 4 identical. Frame 0 is pixel-identical to
+  `player.png` (asserted by the generator and compared as files), so starting
+  to move does not pop. `--verify` 41 -> 49.
+- `e4f730f` ids: `NET_ART_PLAYER_WALK0..7 = 18..25`, `NET_ART_COUNT 26`,
+  `NET_ASSET_VERSION 2 -> 3` (WIRE stays 8, the frame is still the art id),
+  `test_net_art_table` mirrored for the player cycle. Landed under net's freeze,
+  which was released back to net in the same pass.
+- `AN8 wiring`: `players.c` spawn gets `COMP_ANIMATION` (frame 0, 8 frames,
+  `ANIM_FRAME_PERIOD`); `system_animation()` reads the player's velocity and
+  holds frame 0 while it is zero, so a standing player does not run in place and
+  stopping returns to the idle pose; `anim_show_frame()` picks the player frames
+  by `COMP_PLAYER_TAG` so the renderer and the snapshot builder agree.
+  `anim_player_walk_*()` added beside the zombie helpers.
+- Gate: build clean, ctest 3/3, `zombie_tests` 1721 -> 1759 / 0 (declared in
+  `docs/knowledge/gate-baseline.md` same commit), `--verify` 49, SP runs
+  byte-identical (125938 bytes / 1603 lines). Teeth: forcing the movement gate
+  open fails four checks.
+- Unproven on screen (PENDING_VERIFICATION M11): does the walk read as walking,
+  and does the mirrored player show the same frame on the other peer.

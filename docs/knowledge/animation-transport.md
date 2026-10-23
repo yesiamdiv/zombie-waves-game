@@ -362,3 +362,28 @@ entity and never a crash.
 
 **Unproven:** whether the lunge frame reads as an attack and whether the 2.5 px
 bob reads as hovering (docs/PENDING_VERIFICATION.md).
+
+## AN8 - the player walk cycle, and why the cycle only runs while moving
+
+The player got the same treatment as the zombie, with one addition: a player
+only advances the cycle while it is actually moving. `system_animation()` reads
+the player's `CVelocity` (after `system_movement`, so the first tick of a step
+already shows a step) and holds frame 0 when the velocity is zero. Standing
+still therefore looks exactly as it always did - frame 0 is pixel-identical to
+`player.png`, checked by the generator - and stopping returns to the idle pose
+rather than freezing mid-stride.
+
+Eight files again (`player_walk0..7.png`), ids `NET_ART_PLAYER_WALK0..7 = 18..25`,
+`NET_ASSET_VERSION 3`, `NET_WIRE_VERSION` unchanged (8 on this lane): the frame
+is still just the art id. `docs/VERSIONING.md` count: lane-local textures 49.
+
+`anim_show_frame()` is the one place that decides which cycle an entity shows -
+`COMP_PLAYER_TAG` selects the player frames, everything else the zombie frames -
+so the host's screen and the snapshot builder cannot disagree about a frame.
+The host's remote-player entity is spawned by `player_respawn()` and so carries
+the same component and velocity; it animates on the host's screen the same way
+the local player does on its own.
+
+**Unproven:** whether the walk reads as walking at all on a legless 32 px
+figure, whether the 1 px lift/sag reads as a step, and how the stop-snap to
+frame 0 feels (docs/PENDING_VERIFICATION.md M11).

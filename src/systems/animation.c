@@ -23,7 +23,11 @@ static void anim_show_frame(World *ecs, uint32_t slot) {
     if (!(ecs->component_masks[slot] & (1u << COMP_SPRITE))) return;
 
     CAnimation *anim = &ecs->animations[slot];
-    SDL_Texture *tex = anim_walk_texture(anim->current_frame);
+    /* Which cycle: a player has its own frames (AN8). One place decides, so
+     * the renderer and the snapshot builder cannot disagree about it. */
+    SDL_Texture *tex = (ecs->component_masks[slot] & (1u << COMP_PLAYER_TAG))
+        ? anim_player_walk_texture(anim->current_frame)
+        : anim_walk_texture(anim->current_frame);
     if (!tex) return;
 
     CSprite *spr = &ecs->sprites[slot];
@@ -53,6 +57,28 @@ void system_animation(World *ecs, float dt) {
          *   DEAD   - freeze (the entity is destroyed by system_cleanup, so
          *            this only matters if it lingers for a frame).
          * An animated entity without a zombie tag just advances the cycle. */
+        /* A player walks only while it is actually moving (AN8): standing
+         * still holds the idle pose, the same rule as a zombie's IDLE state,
+         * so a player who stops does not run in place. The velocity is read
+         * after system_movement (main.c), so the first tick of a step already
+         * shows a step rather than the idle pose for one more frame. */
+        if (ecs->component_masks[i] & (1u << COMP_PLAYER_TAG)) {
+            bool moving = false;
+            if (ecs->component_masks[i] & (1u << COMP_VELOCITY)) {
+                const CVelocity *v = &ecs->velocities[i];
+                moving = (v->vel.x != 0.0f || v->vel.y != 0.0f);
+            }
+            if (!moving) {
+                if (anim->current_frame != 0) {
+                    anim->current_frame = 0;
+                    anim->frame_timer = 0.0f;
+                }
+                anim_show_frame(ecs, i);
+                continue;
+            }
+            /* Moving: fall through to the generic advance below. */
+        }
+
         const CZombieTag *ztag = NULL;
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
             ztag = &ecs->zombie_tags[i];

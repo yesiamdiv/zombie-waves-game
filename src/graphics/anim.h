@@ -21,6 +21,9 @@
  * than written down again: the ids and the frame count must not drift apart. */
 #define ANIM_WALK_FRAMES NET_ART_ZOMBIE_WALK_COUNT
 
+/* How many frames the player walk cycle has (AN8). Same rule: from the table. */
+#define ANIM_PLAYER_WALK_FRAMES NET_ART_PLAYER_WALK_COUNT
+
 /* How long one frame lasts, in seconds. 0.1 s = 10 fps.
  *
  * THE CEILING IS 15 fps, and it is not negotiable: the snapshot stream is
@@ -53,5 +56,12 @@ const char *anim_walk_path(int frame);
 /* The texture of that frame, or NULL in headless builds and when the art is
  * missing. Resolved through the asset manager, so it is cached. */
 SDL_Texture *anim_walk_texture(int frame);
+
+/* The same three for the player walk cycle. Separate names because separate
+ * art ids: a player frame is NOT a zombie frame, and swapping the two would
+ * put a zombie's arm on the rifle. */
+uint8_t anim_player_walk_art_id(int frame);
+const char *anim_player_walk_path(int frame);
+SDL_Texture *anim_player_walk_texture(int frame);
 
 #endif /* ANIM_H */

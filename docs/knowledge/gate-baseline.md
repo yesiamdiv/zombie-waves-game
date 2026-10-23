@@ -111,3 +111,15 @@ failed**. `NET_ASSET_VERSION` is **3**; `NET_WIRE_VERSION` stays 8 and
 Everything else unchanged and re-verified in the same commit: ctest 3/3,
 `gen_assets.py --verify` 49 textures, SP runs byte-identical at 125938 bytes /
 1603 lines.
+
+## 2026-10-22 20:10 UTC - note by animation: the test count moves 1721 -> 1759 (the player wiring)
+
+AN8's wiring (player spawn carries `COMP_ANIMATION`, `system_animation()` holds
+frame 0 until the player's velocity is non-zero, the frame set is chosen by
+`COMP_PLAYER_TAG`) plus `test_animation_player_walk` (ids/paths/wrap, the two
+cycles never sharing an id, standing holds 0, moving advances, wrap, stop
+returns to 0) takes `zombie_tests` to **1759 passed, 0 failed**. Teeth proven:
+forcing `moving = true` fails four of the checks, including the standing one.
+
+Textures stay 49; ctest 3/3; two `--seed=42` SP runs byte-identical at 125938
+bytes / 1603 lines (the player's frame is display-only).

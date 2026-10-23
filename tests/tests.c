@@ -2109,6 +2109,62 @@ static void test_animation_frame_advance(void) {
     CHECK(ecs_is_alive(&ecs, plain));
 }
 
+/* AN8: the player walk cycle. Same design as the zombie's (eight files, ids
+ * in a contiguous block), but the cycle only runs while the player is
+ * actually moving - a standing player holds the idle pose. */
+static void test_animation_player_walk(void) {
+    LOG_INFO("--- Test: the player walk cycle ---");
+
+    CHECK(ANIM_PLAYER_WALK_FRAMES == 8);
+    CHECK(ANIM_PLAYER_WALK_FRAMES == NET_ART_PLAYER_WALK_COUNT);
+    for (int i = 0; i < ANIM_PLAYER_WALK_FRAMES; i++) {
+        CHECK(anim_player_walk_art_id(i) == (uint8_t)(NET_ART_PLAYER_WALK0 + i));
+        char expect[64];
+        snprintf(expect, sizeof expect, "textures/entities/player_walk%d.png", i);
+        CHECK(strcmp(anim_player_walk_path(i), expect) == 0);
+        /* A player frame must never resolve to a zombie frame: the two cycles
+         * share the frame NUMBER but not the art. */
+        CHECK(anim_player_walk_art_id(i) != anim_walk_art_id(i));
+    }
+    CHECK(anim_player_walk_art_id(ANIM_PLAYER_WALK_FRAMES) == NET_ART_PLAYER_WALK0);
+    CHECK(anim_player_walk_art_id(-1) == NET_ART_PLAYER_WALK7);
+
+    World ecs;
+    ecs_init(&ecs);
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    CHECK(player_respawn(players, &ecs, 0, "P1", &COLOR_RED, vec2(100, 100)) == 0);
+    Entity p = players[0].entity;
+    CHECK(ecs_has_component(&ecs, p, COMP_ANIMATION));
+
+    CAnimation *anim = ecs_get_animation(&ecs, p);
+    CHECK(anim->total_frames == ANIM_PLAYER_WALK_FRAMES);
+    CHECK(anim->frame_duration == ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == 0);
+
+    /* Standing still: the cycle does not run - a player waiting out a respawn
+     * must not look like it is running in place. */
+    for (int i = 0; i < 20; i++) system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == 0);
+
+    /* Moving: it advances at the same period as the zombie cycle. */
+    ecs_get_velocity(&ecs, p)->vel = vec2(100.0f, 0.0f);
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == 1);
+    system_animation(&ecs, ANIM_FRAME_PERIOD * 0.5f);
+    CHECK(anim->current_frame == 1);
+    /* ...and wraps instead of running past the last frame. */
+    anim->current_frame = ANIM_PLAYER_WALK_FRAMES - 1;
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == 0);
+
+    /* Stopping returns to the idle pose rather than freezing mid-stride. */
+    anim->current_frame = 3;
+    ecs_get_velocity(&ecs, p)->vel = vec2(0.0f, 0.0f);
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == 0);
+}
+
 /* AN5: the pose follows the zombie's state. CHASE walks, ATTACK holds the
  * lunge frame, HURT/DEAD freeze, IDLE holds the stationary pose. */
 static void test_animation_states(void) {
@@ -2725,6 +2781,7 @@ int tests_run_all(void) {
     test_animation_missing_texture();
     test_item_bob();
     test_animation_rate_rule();
+    test_animation_player_walk();
     test_net_snapshot_build();
     test_net_player_state();
     test_net_mirror_interp();
