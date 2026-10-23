@@ -2255,6 +2255,38 @@ static void test_net_mirror_sword_angle(void) {
     CHECK(mid == 18000 || mid == -18000);
 }
 
+/* NT4: GE_ENTITY_DEATH strips a dead entity from BOTH mirror snapshots. The
+ * attribute table must be stripped with it, or a recycled id inherits the old
+ * sword's angle as the older interpolation basis. */
+static void test_net_mirror_sword_attr_death(void) {
+    NetMirror m;
+    net_mirror_reset(&m);
+
+    NetSnapshot s;
+    memset(&s, 0, sizeof(s));
+    s.sim_time = 1.0f;
+    s.count = 1;
+    s.entities[0].id = 9;
+    s.entities[0].kind = NET_ENT_SWORD;
+    s.attr_count = 1;
+    s.attrs[0].id = 9;
+    s.attrs[0].kind = NET_ENT_SWORD;
+    s.attrs[0].len = NET_SWORD_ATTR_LEN;
+    s.attrs[0].bytes[1] = 0x45;   /* 17664 cdeg, just a non-zero angle */
+    s.attrs[0].bytes[2] = 16;
+    net_mirror_push(&m, &s);
+
+    uint16_t dead[] = {9};
+    net_mirror_push_removing(&m, NULL, dead, 1);
+
+    CHECK(m.newer.count == 0);
+    CHECK(m.older.count == 0);
+    CHECK(m.newer.attr_count == 0);
+    CHECK(m.older.attr_count == 0);
+    NetEntityAttr attr;
+    CHECK(!net_mirror_sample_attr(&m, 9, 0.5f, &attr));
+}
+
 /* Sprint N3 (B22/B23): the per-slot state block the client HUD now reads.
  *
  * Before this, the HUD asked the client's OWN ECS for HP and the client's own
@@ -2593,6 +2625,7 @@ int tests_run_all(void) {
     test_net_snapshot_sword_attr();
     test_net_snapshot_sword_build();
     test_net_mirror_sword_angle();
+    test_net_mirror_sword_attr_death();
     test_net_art_table();
     test_net_snapshot_build();
     test_net_player_state();

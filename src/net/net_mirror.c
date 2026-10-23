@@ -34,6 +34,21 @@ void net_mirror_push_removing(NetMirror *m, const NetSnapshot *snap,
             if (!drop) s->entities[w++] = s->entities[i];
         }
         s->count = w;
+
+        /* v9/NT4: attributes are keyed by the same entity id, so a dead id's
+         * attribute must go with it. Leaving it behind would hand a recycled
+         * id the old sword's angle as the "older" interpolation basis, and the
+         * new blade would visibly snap through the dead one's spin. */
+        int aw = 0;
+        for (int i = 0; i < s->attr_count; i++) {
+            uint16_t id = s->attrs[i].id;
+            bool drop = false;
+            for (int j = 0; j < ndead; j++) {
+                if (dead[j] == id) { drop = true; break; }
+            }
+            if (!drop) s->attrs[aw++] = s->attrs[i];
+        }
+        s->attr_count = (uint16_t)aw;
     }
 }
 
