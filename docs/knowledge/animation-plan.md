@@ -276,3 +276,24 @@ just landed in, and audio's only shared files are `main.c`, `systems.h`,
 drew — the property I5 protects) and needs no wire change, but two measurable
 constraints can force B; the spike decides, not the argument. Swords must ship
 with room for attack speed so the wire is not redesigned twice (owner D1).
+
+## 2026-10-22 20:30 UTC - note by animation: IMPLEMENTED - AN1..AN5, AN7, AN8 all landed
+
+The plan above is now history rather than a forecast. Delivered on
+`feature/animation-assets`:
+
+- AT3 spike verdict (design A, one PNG per frame, <= 15 fps) - `4cc0aea`.
+- AN1/AN2 zombie walk: eight frame files + art ids 10..17, `NET_ASSET_VERSION 2`.
+- AN3 the frame lives on the sprite: `system_animation()` advances the frame and
+  swaps the texture; the renderer and the snapshot builder both read it.
+- AN4 the 15 fps ceiling as a tested rule (`test_animation_rate_rule`).
+- AN5 the pose follows `CZombieTag.state`; the pickup bob is display-only
+  (`CItemTag.base_pos` keeps the sim position).
+- AN7 the sword: no code needed once NT4 landed (art 9, signed centidegrees).
+- AN8 the player walk: eight files, ids 18..25, `NET_ASSET_VERSION 3`, the
+  cycle advances only while the player moves.
+
+Gate numbers live in `knowledge/gate-baseline.md` (1759/0 on this lane, 49
+textures). Still open: AN6 (the client path) is human-gated on a two-window I5
+check, and the visual questions (lunge, bob, walk, mirrored player) are
+unproven on screen - `docs/PENDING_VERIFICATION.md` M9/M10/M11.

@@ -36,7 +36,7 @@ topic rather than copying its contents into another doc.
 | `knowledge/gate-baseline.md` | **the exact numbers a green gate produces** |
 | `knowledge/versioning-decisions.md` | which version moves when — and the "no wire bump is not no version bump" trap |
 | `knowledge/relayed-events.md` | what crosses the wire, and what adding an event costs |
-| `knowledge/animation-transport.md` | animation design A vs B — parked, spike-gated |
+| `knowledge/animation-transport.md` | how an animation frame reaches a client — design A chosen (frames ride the art id), the ≤15 fps rule, the pose/bob split, the player walk |
 | `knowledge/netfile-ownership-and-freeze.md` | who may touch `net.h`, and the freeze protocol |
 | `knowledge/i5-unverified-on-screen.md` | what is fixed in code but **unproven visually** |
 | `knowledge/client-cannot-double-fire-events.md` | why a client cannot double-emit a relayed event |

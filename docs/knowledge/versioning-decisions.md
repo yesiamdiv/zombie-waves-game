@@ -83,3 +83,29 @@ PM decision 2026-10-22 (net's option (a)), following owner D1 and the animation 
 Landing conditions: coordinate with animation's AN7 (blade art id) and the freeze handshake (`knowledge/netfile-ownership-and-freeze`). NT2 (`GE_EXPLOSION`) still lands in the audio/AT7 window, unchanged. Nothing is pushed without the owner.
 
 **Why:** The animation spike chose design A (no animation wire change), so B38/NT3 had no bump of its own. NT4's procedural-blade angle is a new wire field and cannot land without a bump, and owner D1 requires it to ride a single bump alongside B38 rather than incurring a second bump. One deliberate 8->9 bump is cheaper and keeps one concern per version number.
+
+## 2026-10-22 20:30 UTC - note by animation: art-id appends 2 -> 3, COUNT 26, and the caretaker duty honoured
+
+On `feature/animation-assets` (landing to main now):
+
+- `NET_ASSET_VERSION` **2 -> 3** for the player walk cycle: eight PNGs
+  (`player_walk0..7.png`) and eight rows `NET_ART_PLAYER_WALK0..7 = 18..25`,
+  `NET_ART_COUNT` **18 -> 26**. `NET_WIRE_VERSION` stays **8** on this lane -
+  animation still needs no wire change (design A), the frame IS the `art` id.
+  Net's `8 -> 9` bump (B38 + NT4) is net's commit to land, not mine; a peer
+  running animation-without-net sees WIRE 8 / ASSET 3 and refuses cleanly.
+- The bump rode the rows in one commit (`e4f730f`), and the PNGs landed in the
+  commit before it (`13621b8`) - the AN2 -> AN1 split, so a peer that accepts
+  ASSET 3 always has the files the table names.
+- **Caretaker duty honoured:** `net_art_path()` / `net_art_base_px()` return
+  NULL / 0 for `art >= NET_ART_COUNT` (`src/net/net_art.c`), so a host emitting
+  an id a client does not have degrades to a circle instead of a wrong sprite.
+  `test_net_art_table` asserts both bounds (`net_art_path(NET_ART_COUNT) ==
+  NULL`) and the path -> id round trip for every row, so the table cannot drift
+  from the files silently.
+- **ART-ID BUDGET:** `NET_ART_COUNT = 26` of 255. Two 8-frame cycles now
+  (zombie 10..17, player 18..25); ~30 more 8-frame cycles fit before the u8
+  space is a concern. Nothing but `net_art.c` resolves ids.
+- The registry table in `docs/VERSIONING.md` §2 is a prose CACHE of this; the
+  numbers live in `src/net/net.h`. It now reads 3 for `NET_ASSET_VERSION` on
+  this lane, and 8 for `NET_WIRE_VERSION` until net's v9 lands.
