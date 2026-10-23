@@ -120,6 +120,10 @@ typedef struct {
     Entity owner;
     float damage;
     float lifetime;
+    /* NT2: the blast event is the rocket's FIRST hit, not its despawn. The
+     * rocket pierces, so without this flag every frame of contact would emit
+     * another explosion. */
+    bool impact_emitted;
 } CRocketTag;
 
 typedef enum {

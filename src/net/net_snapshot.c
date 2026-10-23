@@ -2,6 +2,7 @@
 #include "ecs/ecs.h"
 #include "assets/asset_manager.h"
 #include "weapons/weapons.h"
+#include <math.h>
 
 /* Float colour component -> byte. Clamps in FLOAT space: casting first would
  * make an out-of-range or negative component undefined, and comparing the
@@ -27,6 +28,29 @@ static uint16_t net_clamp_u16(int v) {
     if (v <= 0) return 0;
     if (v >= 65535) return 65535u;
     return (uint16_t)v;
+}
+
+/* NT4: radians -> signed centidegrees in (-18000, 18000]. Signed because the
+ * blade is drawn from a pivot; an unsigned half-turn range would render one
+ * half of the spin backwards. */
+static int16_t net_sword_angle_cdeg(float rad) {
+    float deg = rad * (180.0f / 3.14159265358979323846f);
+    /* The sword's tag angle grows without bound (`angle += spin_speed*dt`), so
+     * this must be O(1): a subtract-in-a-loop would cost more every second the
+     * host plays. fmodf then folds the remainder into (-180, 180]. */
+    deg = fmodf(deg, 360.0f);
+    if (deg > 180.0f) deg -= 360.0f;
+    else if (deg <= -180.0f) deg += 360.0f;
+    float c = deg * 100.0f;
+    if (c > 18000.0f) c = 18000.0f;
+    if (c < -18000.0f) c = -18000.0f;
+    return (int16_t)(c >= 0.0f ? (c + 0.5f) : (c - 0.5f));
+}
+
+static uint8_t net_clamp_u8(int v) {
+    if (v <= 0) return 0;
+    if (v >= 255) return 255;
+    return (uint8_t)v;
 }
 
 /* Build the 20 Hz world snapshot on the host. Only semantic (networked)
@@ -107,8 +131,12 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
             owner = ecs->rocket_tags[e].owner;
         } else if (mask & (1u << COMP_ITEM_TAG)) {
             kind = NET_ENT_ITEM;
+        } else if (mask & (1u << COMP_SWORD_TAG)) {
+            /* NT4: the local sword is a real, visible object for every peer. */
+            kind = NET_ENT_SWORD;
+            owner = ecs->sword_tags[e].owner;
         } else {
-            continue;   /* swords/particles are visuals, not replicated */
+            continue;   /* particles are visuals, not replicated */
         }
         if (out->count >= NET_SNAP_MAX_ENTITIES) break;
 
@@ -172,6 +200,34 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
                                  : cs->sprite.as.rect.w;
                 int q = (int)(diam * 2.0f + 0.5f);
                 se->size_q = (uint8_t)(q > 255 ? 255 : (q < 0 ? 0 : q));
+            }
+        }
+
+        /* NT4: a sword's `size_q` is its BLADE LENGTH (half units), not the
+         * texture diameter the generic block computed: the client draws the
+         * blade from the handle pivot, so length and width are the two numbers
+         * it needs. Both are read from the host's own tag/sprite. */
+        if (kind == NET_ENT_SWORD) {
+            const CSwordTag *sw = &ecs->sword_tags[e];
+            float length = sw->outer_radius - sw->radius;
+            if (length < 0.0f) length = 0.0f;
+            se->size_q = net_clamp_u8((int)(length * 2.0f + 0.5f));
+
+            float width = 8.0f;
+            if ((mask & (1u << COMP_SPRITE)) &&
+                ecs->sprites[e].sprite.as.rect.w > 0.0f) {
+                width = ecs->sprites[e].sprite.as.rect.w;
+            }
+            if (out->attr_count < NET_SNAP_MAX_ATTRS) {
+                NetEntityAttr *a = &out->attrs[out->attr_count++];
+                int16_t cdeg = net_sword_angle_cdeg(sw->angle);
+                a->id = (uint16_t)e;
+                a->kind = NET_ENT_SWORD;
+                a->len = NET_SWORD_ATTR_LEN;
+                a->bytes[0] = (uint8_t)((uint16_t)cdeg & 0xFFu);
+                a->bytes[1] = (uint8_t)(((uint16_t)cdeg >> 8) & 0xFFu);
+                a->bytes[2] = net_clamp_u8((int)(width * 2.0f + 0.5f));
+                for (int b = 3; b < NET_SNAP_ATTR_MAX_BYTES; b++) a->bytes[b] = 0;
             }
         }
     }

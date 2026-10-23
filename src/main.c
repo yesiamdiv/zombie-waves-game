@@ -1421,7 +1421,7 @@ static void relay_net_events(void) {
             ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL ||
             ev->type == GE_POINTS || ev->type == GE_DAMAGE ||
             ev->type == GE_ITEM_PICKUP || ev->type == GE_HOST_PAUSE ||
-            ev->type == GE_PLAYER_SHOT) {
+            ev->type == GE_EXPLOSION) {
             batch[n++] = (NetRelayedEvent){
                 (uint8_t)ev->type, (uint8_t)ev->kind,
                 (uint16_t)ev->entity,

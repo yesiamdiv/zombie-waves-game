@@ -18,6 +18,9 @@ static void explode_grenade(World *ecs, Entity grenade) {
     LOG_DEBUG("Grenade exploded at (%.0f, %.0f)", gpos.x, gpos.y);
     event_emit(g_events, GE_ENTITY_DEATH, grenade, GEK_GRENADE,
                gpos.x, gpos.y, tag->explosion_radius, tag->damage, 0, 0);
+    /* NT2: blast point for client audio; a = radius. */
+    event_emit(g_events, GE_EXPLOSION, grenade, GEK_GRENADE,
+               gpos.x, gpos.y, tag->explosion_radius, 0, 0, 0);
 
     /* Area-of-effect damage to every zombie within the blast radius. */
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {

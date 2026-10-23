@@ -6,7 +6,7 @@ Target lanes: worktrees/multiplayer (feature/net-protocol) and worktrees/assets 
 - Configure and build from the multiplayer worktree:
   - cd worktrees/multiplayer && cmake -S . -B build -G Ninja && cmake --build build -j
 - Always use -G Ninja; FETCHCONTENT_BASE_DIR defaults to $HOME/.cache/cmake-deps (shared). Never build under /tmp.
-- Gate: build -Werror clean, ctest --test-dir build (3/3), ./build/zombie_tests (1186/0), python3 ../../tools/gen_assets.py --verify (33 textures byte-identical). Two seed-42 SP runs must remain 125938/1603 byte-identical (docs/knowledge/gate-baseline.md).
+- Gate: build -Werror clean, ctest --test-dir build (3/3), ./build/zombie_tests green, python3 ../../tools/gen_assets.py --verify (33 textures byte-identical). Two seed-42 SP runs must be byte-identical. The exact expected counts are declared once in docs/knowledge/gate-baseline.md — cite that topic, do not copy the numbers here.
 
 ## Two-instance local test (AGENTS.md)
 Run host and client in background (detached) — GUI windows cannot block the tool call:
@@ -43,7 +43,7 @@ I5 is deliberately unverified on-screen in headless gates; check:
 Review all "unverified" items listed there. Anything marked "unproven" requires human confirmation. Note observations (screenshots not available here; describe pass/fail and brief evidence).
 
 ## References
-- docs/knowledge/gate-baseline.md (1186/0, 33 textures, 125938/1603)
+- docs/knowledge/gate-baseline.md (current test count, texture count, SP log reference)
 - docs/PENDING_VERIFICATION.md (B32–B35 checklist)
 - docs/BUGS.md (B32–B37 fixed, B38–B40 open)
 - AGENTS.md § "Launching two local instances"

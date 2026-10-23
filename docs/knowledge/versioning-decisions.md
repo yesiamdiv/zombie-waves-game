@@ -70,6 +70,60 @@ not trust these numbers if the file has moved:
   state (it is state, not an instant) - there is room for it without growing the
   struct.
 
+## 2026-10-22 - decision by net: NT4 (B40 swords) needs the ONE wire bump; animation's AT3 needs none
+
+INPUT FROM [animation]'s AT3 verdict (commit `7ee1e16`, `knowledge/animation-transport`):
+**Design A, individual PNG frames at >= 67 ms.** The frame is the art id the
+snapshot already carries, so animation itself adds **no** snapshot field:
+`NET_WIRE_VERSION` stays 8 and `NET_SNAP_ENTRY_BYTES` stays 35 for that work.
+
+NT4 IS NOT FREE, and is unrelated to animation's wire cost:
+- New kind `NET_ENT_SWORD` (append after `NET_ENT_ITEM`; the snapshot loop at
+  `net_snapshot.c:111` currently skips swords as "visuals").
+- It must carry: `kind`, `owner`, `art` (blade art), `size_q` (blade length),
+  `tint`, and **`angle` as `int16` centidegrees** (0..18000, wrapping at
+  180 deg). The blade is drawn through the same `sprite_draw_blade()` path the
+  host uses; the client interpolates angle wrap-safe between the two host
+  frames. Frame-based sword art was rejected in AT3 (would need >= 16 frames/rev
+  and would change the SP picture).
+- This adds a field, so it **requires a `NET_WIRE_VERSION` bump**. D1 says the
+  angle rides the ONE bump that also fixes B38 (u16 entity count) - not two
+  separate bumps. **Open dependency: B38/NT3 is parked by pm, so no bump window
+  is open yet; NT4 cannot land until pm opens it.**
+
+EXTENSIBLE ATTRIBUTE BLOCK (D1's "no rework" requirement): keep the fixed
+`NetEntitySnap` stride and put kind-specific extras in a versioned side table
+after the entity array, not in every entry:
+`u16 attr_count`, then `{u16 id, u8 kind, u8 len, u8 bytes[len]}` records.
+Sword's record starts with the angle; future attributes (attack speed, etc.)
+append bytes and the client reads `min(len, known_len)`, so adding one is
+additive rather than a redesign. A per-entry variable blob was rejected because
+it destroys the fixed `NET_SNAP_ENTRY_BYTES` stride the codec and B38 depend on.
+Payload contents are finalised only after [animation]'s AT4 art append.
+
+**Why:** One bump is cheaper and safer than two, and a side table keeps the
+hot-path entity entry fixed while leaving room for attributes D1 already knows
+are coming. Recording this now means the codec work is a plan, not a guess.
+
+## 2026-10-22 - net: v9 implemented (single 8 -> 9 commit)
+
+B38 and NT4 landed as one bump, as decided:
+
+- `NetSnapshot.count` is `uint16_t`; encode/decode use `put_u16`/`get_u16`;
+  `NET_SNAP_HEADER_BYTES` count term 1 -> 2. `NET_SNAP_MAX_ENTITIES` stays 1024
+  and the encoder rejects anything larger. Test: 300 entities round-trip.
+- `NetSnapshot` gained `attr_count` + `attrs[NET_SNAP_MAX_ATTRS]`
+  (`NetEntityAttr`: `id`, `kind`, `len`, `bytes[8]`), encoded AFTER the entity
+  array. Unknown kinds are preserved and ignored by readers.
+- `NET_ENT_SWORD = 7`. `net_snapshot.c` emits swords with `owner`, art/blade
+  length (`size_q` = blade length in half units) and one attr record
+  `{int16 angle_cdeg, u8 width_q}` (len 3). **The angle is SIGNED centidegrees**
+  in (-18000, 18000], not 0..18000: the blade is drawn from a pivot, and an
+  unsigned half-turn would draw one half of the spin backwards.
+- Client: `net_mirror_sample_attr()` blends the sword angle the short way
+  around the circle; `system_render_mirror()` draws it with
+  `sprite_draw_blade()` at the host's length/width.
+- `NET_SNAP_ENTRY_BYTES` stays 35; no existing field offset moved.
 ## 2026-10-22 13:07 UTC - decision by pm: One NET_WIRE_VERSION 8→9 bump carries both B38 (u16 entity count) and NT4 (sword angle + extensible attrs)
 
 PM decision 2026-10-22 (net's option (a)), following owner D1 and the animation AT3 verdict.

@@ -1064,6 +1064,11 @@ static void test_zombie_contact_and_slow(void) {
 
 static void test_rocket_damage_and_destruction(void) {
     LOG_INFO("--- Test: Rocket pierce & out-of-bounds destruction ---");
+    const char *path = test_tmp_path("test_rocket_explosion_events.log");
+    remove(path);
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+
     World ecs;
     ecs_init(&ecs);
     GameWorld world = {0};
@@ -1109,10 +1114,37 @@ static void test_rocket_damage_and_destruction(void) {
     *ecs_get_position(&ecs, rocket) = (CPosition){{-100.0f, -100.0f}};
     system_rockets(&ecs, &p, &world, 0.01f);
     CHECK(!ecs_is_alive(&ecs, rocket));
+
+    /* NT2: terminal detonation emits a relayable blast event at the point. */
+    event_bus_flush(bus);
+    bool saw_explosion = false;
+    char explosion_line[512] = "";
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            if (strstr(line, "EVT=EXPLOSION")) {
+                saw_explosion = true;
+                strcpy(explosion_line, line);
+            }
+        }
+        fclose(f);
+    }
+    CHECK(saw_explosion);
+    CHECK(strstr(explosion_line, "k=rocket") != NULL);
+    CHECK(strstr(explosion_line, "a=5.00") != NULL);
+
+    event_bus_shutdown(bus);
+    remove(path);
 }
 
 static void test_grenade_detonation(void) {
     LOG_INFO("--- Test: Grenade AoE detonation ---");
+    const char *path = test_tmp_path("test_grenade_explosion_events.log");
+    remove(path);
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+
     World ecs;
     ecs_init(&ecs);
     GameWorld world = {0};
@@ -1158,6 +1190,29 @@ static void test_grenade_detonation(void) {
     }
     CHECK(!ecs_is_alive(&ecs, grenade));
     CHECK(ecs_get_health(&ecs, zombie)->current < hp_before);
+
+    /* NT2: the detonation must emit a relayable blast event at the impact
+     * point, with the grenade radius in a and the weapon class in kind. */
+    event_bus_flush(bus);
+    bool saw_explosion = false;
+    char explosion_line[512] = "";
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            if (strstr(line, "EVT=EXPLOSION")) {
+                saw_explosion = true;
+                strcpy(explosion_line, line);
+            }
+        }
+        fclose(f);
+    }
+    CHECK(saw_explosion);
+    CHECK(strstr(explosion_line, "k=grenade") != NULL);
+    CHECK(strstr(explosion_line, "a=90.00") != NULL);
+
+    event_bus_shutdown(bus);
+    remove(path);
 }
 
 /* ---------------------------------------------------------------- End Weapons */
@@ -2400,7 +2455,7 @@ static void test_net_snapshot_build(void) {
     CHECK(player_e.tint[0] == 255);   /* COLOR_RED */
 
     /* The built snapshot round-trips through the wire codec. */
-    uint8_t buf[NET_HDR_SIZE + 18 + NET_SNAP_MAX_ENTITIES * NET_SNAP_ENTRY_BYTES];
+    uint8_t buf[NET_SNAP_MAX_BYTES];
     NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 3, 0, 0};
     int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
     CHECK(len > NET_HDR_SIZE);
@@ -2429,8 +2484,10 @@ static void test_net_snapshot_build(void) {
     /* Header via the constant, not a hand-counted 18: the header grew by
      * NET_PLAYER_STATE_BYTES * NET_MAX_PLAYERS in wire v6 and a literal here
      * would have gone stale silently. */
+    /* v9: the trailing attribute table starts with its u16 count (this
+     * snapshot has no swords, so the table is just that count). */
     int expect_len = NET_HDR_SIZE + NET_SNAP_HEADER_BYTES +
-                     n * NET_SNAP_ENTRY_BYTES;
+                     n * NET_SNAP_ENTRY_BYTES + 2;
     CHECK(len == expect_len);
     /* NetEntitySnap is NOT packed: the compiler pads it (36 bytes here against
      * 31 on the wire). That is fine and intended — the codec writes each field
@@ -2438,6 +2495,237 @@ static void test_net_snapshot_build(void) {
      * so nobody "fixes" NET_SNAP_ENTRY_BYTES to sizeof() and silently changes
      * the protocol. The load-bearing check is the encoded length above. */
     CHECK(sizeof(NetEntitySnap) >= NET_SNAP_ENTRY_BYTES);
+}
+
+/* B38: the entity count is a u16 as of wire v9. A u8 silently wrapped above
+ * 255 while the encoder still wrote every entity, desyncing every following
+ * byte. This crosses the old boundary (300 entities) and round-trips. */
+static void test_net_snapshot_u16_count(void) {
+    NetSnapshot snap, got;
+    memset(&snap, 0, sizeof(snap));
+    memset(&got, 0, sizeof(got));
+    snap.count = 300;
+    for (int i = 0; i < snap.count; i++) {
+        snap.entities[i].id = (uint16_t)(1000 + i);
+        snap.entities[i].kind = NET_ENT_ZOMBIE;
+        snap.entities[i].pos.x = (float)i;
+        snap.entities[i].pos.y = (float)(i * 2);
+    }
+
+    uint8_t buf[NET_SNAP_MAX_BYTES];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 9, 0, 0};
+    int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
+    CHECK(len > 0);
+    CHECK(len == NET_HDR_SIZE + NET_SNAP_HEADER_BYTES +
+                   300 * NET_SNAP_ENTRY_BYTES + 2);
+
+    NetHeader oh;
+    CHECK(net_decode_snapshot(buf, len, &oh, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    CHECK(got.count == 300);
+    CHECK(got.entities[0].id == 1000);
+    CHECK(got.entities[299].id == 1299);
+    CHECK(got.entities[299].pos.y == 598.0f);
+}
+
+/* NT4: the sword's angle/width travel as a self-describing extension attribute
+ * after the fixed entity array, so NET_SNAP_ENTRY_BYTES is still 35. */
+static void test_net_snapshot_sword_attr(void) {
+    NetSnapshot snap, got;
+    memset(&snap, 0, sizeof(snap));
+    memset(&got, 0, sizeof(got));
+    snap.count = 1;
+    snap.entities[0].id = 77;
+    snap.entities[0].kind = NET_ENT_SWORD;
+    snap.entities[0].owner = 3;
+    snap.entities[0].art = NET_ART_SWORD;
+    snap.entities[0].size_q = 64;    /* 32-unit blade */
+
+    int16_t cdeg = -17250;           /* -172.5 degrees, past the +-180 seam */
+    snap.attr_count = 1;
+    snap.attrs[0].id = 77;
+    snap.attrs[0].kind = NET_ENT_SWORD;
+    snap.attrs[0].len = NET_SWORD_ATTR_LEN;
+    snap.attrs[0].bytes[0] = (uint8_t)((uint16_t)cdeg & 0xFFu);
+    snap.attrs[0].bytes[1] = (uint8_t)(((uint16_t)cdeg >> 8) & 0xFFu);
+    snap.attrs[0].bytes[2] = 16;     /* 8-unit blade */
+
+    uint8_t buf[NET_SNAP_MAX_BYTES];
+    NetHeader h = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 9, 0, 0};
+    int len = net_encode_snapshot(buf, (int)sizeof(buf), &h, &snap);
+    CHECK(len == NET_HDR_SIZE + NET_SNAP_HEADER_BYTES + NET_SNAP_ENTRY_BYTES +
+                   2 + NET_SNAP_ATTR_HDR_BYTES + NET_SWORD_ATTR_LEN);
+
+    NetHeader oh;
+    CHECK(net_decode_snapshot(buf, len, &oh, &got, NET_SNAP_MAX_ENTITIES) == 0);
+    CHECK(got.count == 1);
+    CHECK(got.entities[0].kind == NET_ENT_SWORD);
+    CHECK(got.entities[0].size_q == 64);
+    CHECK(got.attr_count == 1);
+    CHECK(got.attrs[0].id == 77);
+    CHECK(got.attrs[0].kind == NET_ENT_SWORD);
+    CHECK(got.attrs[0].len == NET_SWORD_ATTR_LEN);
+    CHECK(net_attr_angle_cdeg(&got.attrs[0]) == cdeg);
+    CHECK(net_attr_width_q(&got.attrs[0]) == 16);
+}
+
+/* NT4: the BUILDER (not just the codec) must report a real ECS sword as
+ * NET_ENT_SWORD with the host's own length/width/angle. The codec test above
+ * would still pass if net_snapshot_build kept skipping swords, which was the
+ * old behaviour. */
+static void test_net_snapshot_sword_build(void) {
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    p.inventory.points = 1000;
+    weapons_buy_sword(&p.inventory);
+    weapons_select(&p.inventory, WEAPON_SWORD);
+    p.input.mouse_buttons[0] = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+
+    Entity sword = ECS_NULL_ENTITY;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_SWORD_TAG))) {
+            sword = i;
+            break;
+        }
+    }
+    CHECK(sword != ECS_NULL_ENTITY);
+
+    NetSnapshot snap;
+    CHECK(net_snapshot_build(&ecs, NULL, 0, 2.0f, NULL, &snap) >= 0);
+
+    const NetEntitySnap *se = NULL;
+    for (int i = 0; i < (int)snap.count; i++) {
+        if (snap.entities[i].id == (uint16_t)sword &&
+            snap.entities[i].kind == NET_ENT_SWORD) {
+            se = &snap.entities[i];
+            break;
+        }
+    }
+    CHECK(se != NULL);
+    if (!se) return;
+
+    const CSwordTag *sw = ecs_get_sword_tag(&ecs, sword);
+    CHECK(se->owner == (uint16_t)player);
+    /* `art` is not asserted here: the test binary has no asset manager (no
+     * renderer), so sprite_tex() returns NULL and the sword's sprite stays a
+     * flat rect. The art id -> NET_ART_SWORD mapping is covered by the art-table
+     * test and the codec round-trip; this test is about the sword-specific
+     * semantics the builder must add on top. */
+    CHECK(se->size_q == (uint8_t)((sw->outer_radius - sw->radius) * 2.0f + 0.5f));
+    CHECK(snap.attr_count == 1);
+    CHECK(snap.attrs[0].id == (uint16_t)sword);
+    CHECK(snap.attrs[0].kind == NET_ENT_SWORD);
+    CHECK(snap.attrs[0].len == NET_SWORD_ATTR_LEN);
+    CHECK(net_attr_width_q(&snap.attrs[0]) == 16);   /* SWORD_WIDTH 8 * 2 */
+
+    /* Compare the angle in degrees, wrapped to (-180, 180]. */
+    float deg = sw->angle * (180.0f / 3.14159265358979323846f);
+    while (deg > 180.0f) deg -= 360.0f;
+    while (deg <= -180.0f) deg += 360.0f;
+    float got = (float)net_attr_angle_cdeg(&snap.attrs[0]) * 0.01f;
+    float diff = got - deg;
+    while (diff > 180.0f) diff -= 360.0f;
+    while (diff < -180.0f) diff += 360.0f;
+    CHECK(diff > -0.01f && diff < 0.01f);
+
+    /* The host accumulates angle without wrapping, so a long session reaches
+     * thousands of radians. The encode must still land in (-180, 180]. */
+    ecs_get_sword_tag(&ecs, sword)->angle = 5000.0f;
+    CHECK(net_snapshot_build(&ecs, NULL, 0, 2.1f, NULL, &snap) >= 0);
+    CHECK(snap.attr_count == 1);
+    int16_t huge = net_attr_angle_cdeg(&snap.attrs[0]);
+    CHECK(huge > -18000 && huge <= 18000);
+    float expect = fmodf(5000.0f * (180.0f / 3.14159265358979323846f), 360.0f);
+    if (expect > 180.0f) expect -= 360.0f;
+    else if (expect <= -180.0f) expect += 360.0f;
+    CHECK(fabsf((float)huge * 0.01f - expect) < 0.01f);
+}
+
+/* NT4: the client mirrors the sword angle and blends it the short way around
+ * the circle, so +170deg -> -170deg is a 20deg step, not a 340deg unwind. */
+static void test_net_mirror_sword_angle(void) {
+    NetMirror m;
+    net_mirror_reset(&m);
+
+    NetSnapshot a, b;
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    a.count = 1;
+    a.entities[0].id = 5;
+    a.entities[0].kind = NET_ENT_SWORD;
+    b.count = 1;
+    b.entities[0].id = 5;
+    b.entities[0].kind = NET_ENT_SWORD;
+
+    a.sim_time = 0.0f;
+    a.attr_count = 1;
+    a.attrs[0].id = 5;
+    a.attrs[0].kind = NET_ENT_SWORD;
+    a.attrs[0].len = NET_SWORD_ATTR_LEN;
+    a.attrs[0].bytes[0] = (uint8_t)((uint16_t)17000 & 0xFFu);
+    a.attrs[0].bytes[1] = (uint8_t)(((uint16_t)17000 >> 8) & 0xFFu);
+    a.attrs[0].bytes[2] = 16;
+
+    b.sim_time = 0.05f;
+    b.attr_count = 1;
+    b.attrs[0].id = 5;
+    b.attrs[0].kind = NET_ENT_SWORD;
+    b.attrs[0].len = NET_SWORD_ATTR_LEN;
+    b.attrs[0].bytes[0] = (uint8_t)((uint16_t)(int16_t)-17000 & 0xFFu);
+    b.attrs[0].bytes[1] = (uint8_t)(((uint16_t)(int16_t)-17000 >> 8) & 0xFFu);
+    b.attrs[0].bytes[2] = 16;
+
+    net_mirror_push(&m, &a);
+    net_mirror_push(&m, &b);
+
+    NetEntityAttr attr;
+    CHECK(net_mirror_sample_attr(&m, 5, 0.5f, &attr));
+    /* Halfway along +20deg: |angle| is 180deg exactly (the seam). */
+    int16_t mid = net_attr_angle_cdeg(&attr);
+    CHECK(mid == 18000 || mid == -18000);
+}
+
+/* NT4: GE_ENTITY_DEATH strips a dead entity from BOTH mirror snapshots. The
+ * attribute table must be stripped with it, or a recycled id inherits the old
+ * sword's angle as the older interpolation basis. */
+static void test_net_mirror_sword_attr_death(void) {
+    NetMirror m;
+    net_mirror_reset(&m);
+
+    NetSnapshot s;
+    memset(&s, 0, sizeof(s));
+    s.sim_time = 1.0f;
+    s.count = 1;
+    s.entities[0].id = 9;
+    s.entities[0].kind = NET_ENT_SWORD;
+    s.attr_count = 1;
+    s.attrs[0].id = 9;
+    s.attrs[0].kind = NET_ENT_SWORD;
+    s.attrs[0].len = NET_SWORD_ATTR_LEN;
+    s.attrs[0].bytes[1] = 0x45;   /* 17664 cdeg, just a non-zero angle */
+    s.attrs[0].bytes[2] = 16;
+    net_mirror_push(&m, &s);
+
+    uint16_t dead[] = {9};
+    net_mirror_push_removing(&m, NULL, dead, 1);
+
+    CHECK(m.newer.count == 0);
+    CHECK(m.older.count == 0);
+    CHECK(m.newer.attr_count == 0);
+    CHECK(m.older.attr_count == 0);
+    NetEntityAttr attr;
+    CHECK(!net_mirror_sample_attr(&m, 9, 0.5f, &attr));
 }
 
 /* Sprint N3 (B22/B23): the per-slot state block the client HUD now reads.
@@ -2774,6 +3062,11 @@ int tests_run_all(void) {
     test_net_codec_shop();
     test_net_codec();
     test_net_codec_game();
+    test_net_snapshot_u16_count();
+    test_net_snapshot_sword_attr();
+    test_net_snapshot_sword_build();
+    test_net_mirror_sword_angle();
+    test_net_mirror_sword_attr_death();
     test_net_art_table();
     test_animation_frames();
     test_animation_frame_advance();

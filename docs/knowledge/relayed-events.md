@@ -77,3 +77,33 @@ SUPERSEDED COMMIT TRAIL (kept so older notes can be dated): `704090c`/`c2201dc`
 = B36 and `-Werror`; `b7a1851` = the tip `main` was declared cuttable at, plus
 `458fb9b`, `4b3df18` for deferral docs and the Windows backlog task. All
 superseded by `48a68fd`, the tip after B37 landed.
+
+## 2026-10-22 - decision by net: NT2 landed GE_EXPLOSION (payload locked, no wire bump)
+
+`GE_EXPLOSION` is a new `GameEventType` appended immediately before `GE_COUNT`
+in `src/events/event_bus.h`, so every existing enum value is unchanged. Name
+added to `event_type_names[]` as `EXPLOSION`. It is emitted host-side at both
+detonation sites:
+
+- `src/systems/grenades.c` `explode_grenade()` — `kind=GEK_GRENADE`, `a =
+  tag->explosion_radius` (GRENADE_EXPLOSION_RANGE 90.0f).
+- `src/systems/rockets.c` FIRST CONTACT (`damage_overlapping`) — `kind=GEK_ROCKET`,
+  `a = ROCKET_RADIUS` (5.0f), once per rocket (`CRocketTag.impact_emitted`). The
+  rocket pierces, so the blast is the first hit; the lifetime/out-of-bounds
+  branch is a DESPAWN and deliberately emits no `GE_EXPLOSION` (it is also how a
+  rocket that flew off the map ends). Corrected after [audio]'s AT6 finding.
+
+Payload is FINAL and confirmed with [audio]: `x,y` = impact origin, `a` =
+radius, `b` spare (0), `kind` = grenade/rocket. No `ia`/`ib`. Relayed through
+`relay_net_events()` in `src/main.c`.
+
+No `NET_WIRE_VERSION` bump: the relayed `type` is already a `uint8_t` and
+`NetRelayedEvent` already carries `x,y,a,b`; widening the filter is not a layout
+change. Old peers see a type `>= GE_COUNT` and log/ignore it as `UNKNOWN`.
+Single-player is unaffected because `relay_net_events()` returns early when not
+hosting.
+
+Determinism: emitting extra events advances `sid` for subsequent events, so the
+sid sequence differs from before, but two same-seed runs are still identical.
+The fixed 25s bot gate log is unchanged (the bot never uses explosives) — the
+measurement is recorded in [gate-baseline].

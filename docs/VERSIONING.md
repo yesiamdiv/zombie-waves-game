@@ -37,7 +37,7 @@ find out why it was duplicated.
 
 | Version | Declared in | Current | Guards | Bump when |
 |---|---|---|---|---|
-| `NET_WIRE_VERSION` | `src/net/net.h` | **8** | Byte layout of every net packet body | Any field is added/removed/resized/ reordered in any packet body |
+| `NET_WIRE_VERSION` | `src/net/net.h` | **9** | Byte layout of every net packet body | Any field is added/removed/resized/ reordered in any packet body |
 | `NET_WORLD_GEN_VERSION` | `src/net/net.h` | **2** | Two peers derive the *same world* | Map format, world generation, theme selection, or spawn rules change |
 | `NET_ASSET_VERSION` | `src/net/net.h` | **3** | Two peers ship the *same art* | Any file in `assets/` is added, removed, resized, or replaced, **including `src/net/net_art.c`** (ids resolve to pixel sizes the wire divides by) |
 | `MAP_FORMAT_VERSION` | map loader | *(planned)* | A `.map` file means the same thing | The map grammar changes at all |
@@ -130,6 +130,14 @@ tests                  appearance round-trip in test_net_codec
 Five touches in five files, one commit. The comment at the macro records that a
 v3 peer strides 26 bytes over 31-byte entries — which is the sentence that will
 save whoever hits this in six months.
+
+**v8 → v9 (2026-10-22)** was deliberately one bump for two concerns that both
+change the snapshot body: B38 (the entity count widened `u8` → `u16`, so the
+header grows by one byte) and NT4 (a trailing extension-attribute table carrying
+the sword's angle/width). `NET_SNAP_ENTRY_BYTES` is still **35** — the count is
+in the header and attributes ride after the array, so the fixed stride and every
+existing field offset are untouched. A v8 peer that reads a v9 count as its
+first entity byte would decode garbage, so the handshake rejects it.
 
 ## 7. Before you open the pull request
 

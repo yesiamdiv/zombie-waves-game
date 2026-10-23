@@ -34,3 +34,21 @@ until the animation work lands — sword blades (B40).
 `agents/` directory was deleted (2026-10-15); it was the one non-decision item in
 that file, kept so nothing was lost. It is code-derivable background, so treat it
 as a starting map, not a spec — read the structs.
+
+## 2026-10-23 - note by net: wire v9 — swords now replicate; count is u16; attribute table
+
+Supersedes the "NOT REPLICATED ... sword blades (B40)" line above. Current state
+on `feature/net-protocol` (`99f8db4` + fixes), protocol `NET_WIRE_VERSION` **9**:
+
+- SNAPSHOT ENTITIES add the local sword as `NET_ENT_SWORD` (7): one per player
+  while swinging, carrying `owner`, `art` (`NET_ART_SWORD` = 9), `size_q` =
+  BLADE LENGTH (not a texture diameter), and one extension attribute
+  `{int16 signed centidegrees angle (-18000..18000], u8 width_q}`. The client
+  draws it with `sprite_draw_blade()` and interpolates the angle wrap-safe.
+- The entity count is now `u16` (was `u8`; B38). The snapshot header is one byte
+  longer; `NET_SNAP_ENTRY_BYTES` is unchanged at **35**.
+- A self-describing attribute table follows the entity array:
+  `u16 attr_count`, then `{u16 id, u8 kind, u8 len, u8 bytes[len]}`. Unknown
+  kinds are preserved and ignored, so future per-entity attributes are additive
+  within v9's design rather than a redesign.
+- Still accepted NOT replicated: particles / muzzle flashes / blood (B29).

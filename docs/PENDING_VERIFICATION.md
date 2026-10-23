@@ -265,3 +265,22 @@ gate in this repo can clear any of it.
       angle is interpolated client-side between two host frames with
       wrap-safe maths, and a wrap across 180 deg is exactly the case that
       looks wrong and never shows up in a headless run.
+## Unproven on screen — NT4 sword replication (`99f8db4`, wire v9)
+
+Headless tests prove the wire, the builder and the mirror maths; none of them can
+see the blade. Two instances, one player holding the sword:
+
+- [ ] **The other instance sees the spinning blade** at the same angle as the
+      host's, and it extends from the handle point rather than the player's
+      centre (the pivot is the handle, not the sprite centre).
+- [ ] **Length and width match the host** (blade length 32, width 8 in world
+      units) and the blade uses `sword_blade.png` (handle at the left edge), not
+      a fallback rect.
+- [ ] **No visible unwind at the ±180° seam** during a full spin: the blade must
+      take the short arc (interpolation is wrap-safe), not sweep the long way.
+- [ ] **The sword appears/disappears when the host starts/stops swinging**, with
+      no stale blade left on the client.
+
+The client mirror is render-only: the host remains the sole source of the angle.
+If any of these fail, the fix is on the net side — do not "correct" it by having
+the client derive an angle from the owner's input.

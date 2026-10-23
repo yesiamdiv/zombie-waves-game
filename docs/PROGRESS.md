@@ -517,3 +517,88 @@ B35's colour on the *client* is still unproven.
   open fails four checks.
 - Unproven on screen (PENDING_VERIFICATION M11): does the walk read as walking,
   and does the mirrored player show the same frame on the other peer.
+## Session 2026-10-22 — Sprint 6 DEV (net): NT2 GE_EXPLOSION
+
+### Planned
+Land `GE_EXPLOSION` (D3) as a relayed blast event with a locked payload
+(`x,y` origin, `a` radius, `b` spare, `kind` grenade/rocket), no wire bump, and
+re-measure the single-player gate reference.
+
+### Done
+- Added `GE_EXPLOSION` before `GE_COUNT` in `src/events/event_bus.h` (no existing
+  enum value moves) and `EXPLOSION` to `event_type_names[]` (`event_bus.c`).
+- Emitted host-side in `grenades.c` (`explode_grenade`, `a=90.0`) and
+  `rockets.c` (terminal lifetime/out-of-bounds, `a=ROCKET_RADIUS`).
+- Relayed in `relay_net_events()` (`src/main.c`), and removed the duplicated
+  `GE_PLAYER_SHOT` clause in that filter while adding the new type.
+- Tests: extended `test_grenade_detonation` and
+  `test_rocket_damage_and_destruction` to init a bus and assert the logged
+  `EVT=EXPLOSION` with the right `kind` and `a`. Suite now 1194/0.
+- Follow-up from audio's AT6 finding: a rocket's blast now emits at its FIRST
+  CONTACT (`CRocketTag.impact_emitted`), not at expiry/out-of-bounds. That
+  branch is a despawn (it also covers "flew off the map") and now emits only
+  `GE_ENTITY_DEATH`; the rocket pierces, so the first hit is the impact. Gate
+  unchanged (build clean, ctest 3/3, 1194/0, SP 125938/1603 identical).
+- Updated `docs/knowledge/gate-baseline.md` and `relayed-events.md`; replaced the
+  copied gate literals in `docs/QA_MULTIPLAYER_S5.md` with a citation.
+
+### Measured gate
+- build `-Werror` clean; `ctest` 3/3 (three targets: net_spike, net_loopback,
+  core_tests); `zombie_tests` **1194 passed / 0 failed**.
+- Observed once: a single `net_spike` failure on the first `ctest` run, then
+  four consecutive full runs each 3/3. Not reproduced, no code correlation with
+  this change (net_spike does not touch the event bus); recorded here so a
+  recurrence is treated as a real bug rather than another flake.
+- Two seed-42 25s SP runs byte-identical at **125938 bytes / 1603 lines —
+  unchanged**, because the bot only fires the pistol and never detonates an
+  explosive. So the events reference did *not* move; only the test count did.
+- `gen_assets.py --verify` not run (no asset change).
+
+### Next
+- Coordinate landing with [audio] (AT7) and report the corrected re-baseline
+  finding to [pm]: the SP log reference is unchanged, contrary to the earlier
+  prediction.
+
+## Session 2026-10-22 — Sprint 6 DEV (net): wire v9 — B38 u16 count + NT4 sword
+
+### Planned
+Land the single `NET_WIRE_VERSION` 8 -> 9 commit pm specified: B38's entity
+count widened to `u16`, plus NT4's sword replication via a trailing
+extension-attribute table (angle + width), with client mirror interpolation.
+Freeze lifted by animation when AN1 landed (35a8b46).
+
+### Done
+- `net.h` v9: `count` -> `uint16_t`; `NET_ENT_SWORD = 7`; new
+  `NetEntityAttr` + `attr_count`/`attrs[]` on `NetSnapshot`; header count term
+  1 -> 2; `NET_SNAP_MAX_BYTES` includes the attr table. `NET_SNAP_ENTRY_BYTES`
+  stays 35.
+- Codec: encode/decode the u16 count and the attr table; unknown attr kinds are
+  preserved rather than rejected; bounds-checked on both sides.
+- Snapshot builder: swords are no longer skipped. They carry `owner`, the art
+  id, `size_q` = **blade length**, and one attr `{signed int16 centidegrees,
+  u8 width_q}`. Signed because the blade is drawn from a pivot.
+- Client: `net_mirror_sample_attr()` blends the angle the short way around the
+  circle; `system_render_mirror()` draws the sword with `sprite_draw_blade()`.
+- Tests: `test_net_snapshot_u16_count` (300 entities), sword attr round-trip,
+  a builder-level check that a real ECS sword is emitted as NET_ENT_SWORD with
+  the host's length/width/angle, and wrap-safe mirror interpolation. Suite
+  **1235/0**.
+- Docs: VERSIONING registry/worked note, BUGS B38 resolution, gate baseline.
+- Review follow-up (33c4663): `net_mirror_push_removing()` compacted entities
+  but not the new attribute table, so a dead sword's angle survived in the
+  older/newer snapshots and a recycled id would blend through it. Attributes are
+  now stripped by the same dead-id test; test asserts both snapshots and the
+  sampler forget the id.
+- B40: added its missing bug-table row and wrote the two-instance sword checks
+  into `PENDING_VERIFICATION.md` as UNPROVEN (headless cannot see the blade).
+
+### Measured gate
+- build `-Werror` clean; `zombie_tests` **1235 passed / 0 failed**; `ctest` 3/3.
+- Two seed-42 25s SP runs byte-identical at **125938 bytes / 1603 lines —
+  unchanged** (snapshots are host-only and no relay runs in SP).
+- `gen_assets.py --verify` not run (no asset change on this lane).
+
+### Next
+- Merge/rebase with animation's AN1 (this lane predates it) and audio's Phase D;
+  re-run the integrated gate before landing. Do not push (pm's one-time push go
+  covered only cd7e8ea).

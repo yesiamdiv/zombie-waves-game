@@ -34,6 +34,21 @@ void net_mirror_push_removing(NetMirror *m, const NetSnapshot *snap,
             if (!drop) s->entities[w++] = s->entities[i];
         }
         s->count = w;
+
+        /* v9/NT4: attributes are keyed by the same entity id, so a dead id's
+         * attribute must go with it. Leaving it behind would hand a recycled
+         * id the old sword's angle as the "older" interpolation basis, and the
+         * new blade would visibly snap through the dead one's spin. */
+        int aw = 0;
+        for (int i = 0; i < s->attr_count; i++) {
+            uint16_t id = s->attrs[i].id;
+            bool drop = false;
+            for (int j = 0; j < ndead; j++) {
+                if (dead[j] == id) { drop = true; break; }
+            }
+            if (!drop) s->attrs[aw++] = s->attrs[i];
+        }
+        s->attr_count = (uint16_t)aw;
     }
 }
 
@@ -75,6 +90,48 @@ bool net_mirror_sample(const NetMirror *m, uint16_t id, float t,
         out->pos.x = in_older->pos.x + (in_newer->pos.x - in_older->pos.x) * blend;
         out->pos.y = in_older->pos.y + (in_newer->pos.y - in_older->pos.y) * blend;
     }
+    return true;
+}
+
+static const NetEntityAttr *mirror_find_attr(const NetSnapshot *s,
+                                             uint16_t id) {
+    if (!s) return NULL;
+    for (int i = 0; i < s->attr_count; i++) {
+        if (s->attrs[i].id == id) return &s->attrs[i];
+    }
+    return NULL;
+}
+
+bool net_mirror_sample_attr(const NetMirror *m, uint16_t id, float t,
+                            NetEntityAttr *out) {
+    if (!m || !out || !m->has_newer) return false;
+    const NetEntityAttr *an = mirror_find_attr(&m->newer, id);
+    if (!an) return false;
+    *out = *an;
+    /* Only the sword has a defined interpolation. Any future attribute starts
+     * as hold-newest until its own blending rule is written. */
+    if (an->kind != NET_ENT_SWORD || an->len < 2) return true;
+
+    const NetEntityAttr *ao = m->has_older ? mirror_find_attr(&m->older, id)
+                                           : NULL;
+    if (!ao || ao->kind != NET_ENT_SWORD || ao->len < 2) return true;
+
+    float blend = (t < 0.0f) ? 0.0f : (t > 1.0f ? 1.0f : t);
+    int32_t a0 = net_attr_angle_cdeg(ao);
+    int32_t a1 = net_attr_angle_cdeg(an);
+    /* Shortest path around the circle: +170deg -> -170deg is +20deg, not
+     * -340deg. Without this the blade visibly unwinds at the seam. */
+    int32_t d = a1 - a0;
+    if (d > 18000) d -= 36000;
+    else if (d < -18000) d += 36000;
+    float f = (float)d * blend;
+    int32_t v = a0 + (int32_t)(f >= 0.0f ? f + 0.5f : f - 0.5f);
+    while (v > 18000) v -= 36000;
+    while (v <= -18000) v += 36000;
+
+    uint16_t bits = (uint16_t)(int16_t)v;
+    out->bytes[0] = (uint8_t)(bits & 0xFFu);
+    out->bytes[1] = (uint8_t)((bits >> 8) & 0xFFu);
     return true;
 }
 
