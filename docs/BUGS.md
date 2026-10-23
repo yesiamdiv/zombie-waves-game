@@ -49,8 +49,9 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B35 | A client's own name tag shows "Player" in the wrong colour | `7d0cb15` | FIXED |
 | B36 | The documented `-Werror` / zero-warnings gate was never enabled in the build | `704090c` | FIXED |
 | B37 | A client can never hear a gunshot — `GE_PLAYER_SHOT` is not relayed | `acdffff` | FIXED |
-| B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | 99f8db4 | FIXED (v9) |
+| B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | `99f8db4` | FIXED (v9) |
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
+| B40 | Sword blades are not replicated, so other players' spinning swords are invisible | `99f8db4` | FIXED in code; on-screen UNPROVEN |
 | B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (execution needs refinement — see B45) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
 | B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | — | OPEN |
@@ -843,10 +844,14 @@ Found 2026-10-06 in the same audit. Same family as B29.
 - **Why it is a real gap and not just cosmetics**: unlike a particle, the sword
   *is* the weapon — a client fighting alongside a sword user cannot see the
   blade at all, which is a gameplay-legibility problem, not just polish.
-- **Status**: OPEN. Options are to replicate it as a new entity kind, to hang it
-  off the owning player's snapshot entry, or to let the client derive it from
-  the owner's position and tick — the last is derivation, which this project has
-  been burned by (B19-B23). Decide with animation; see the `agents/` topic.
+- **Resolution (2026-10-22, wire v9, `99f8db4`)**: a new entity kind
+  `NET_ENT_SWORD` replicates the sword itself (owner, art, blade length, and a
+  trailing attribute record carrying the signed centidegree angle and width), so
+  the client neither derives it from the owner nor guesses. The client draws it
+  with the same `sprite_draw_blade()` call as the host and blends the angle
+  wrap-safe. **On-screen unproven**: headless tests prove the wire and the
+  builder, not that the blade lands at the right angle/width; a two-instance
+  check is in `docs/PENDING_VERIFICATION.md`.
 - **Related robustness note found at the same time**: snapshot entity ids are
   raw ECS array indices (`se->id = (uint16_t)e`) and the ECS reuses freed
   indices with no generation counter (`src/ecs/ecs.c`). The client mirror keys
