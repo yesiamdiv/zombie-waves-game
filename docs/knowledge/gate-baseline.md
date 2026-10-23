@@ -86,3 +86,16 @@ Everything else is unchanged and was re-verified in the same commit: ctest 3/3,
 `--seed=42` single-player runs still byte-identical at **125938 bytes / 1603
 lines** - which is the point of the base_pos split; the bob does not move the
 sim by a tick. Wave 1 still `WAVE_START a=1.00 b=8.00`.
+
+## 2026-10-22 19:45 UTC - note by animation: the texture count moves 41 -> 49 (the player walk cycle)
+
+AN8's art landed: eight individual player-walk PNGs
+(`player_walk0..7.png`, 32x32, frame 0 pixel-identical to `player.png` so the
+player does not pop when it starts moving). `gen_assets.py --verify` now
+reports **49 textures**, and because `--verify` counts files, this is declared
+here with the art (the art ids and `NET_ASSET_VERSION 3` follow in their own
+commit, the same split as AN2 -> AN1).
+
+Lane-local count. Once assets' B45 vignette merges the integrated count is 50.
+Everything else is unchanged: ctest 3/3, `zombie_tests` 1654/0, two `--seed=42`
+runs byte-identical at 125938 bytes / 1603 lines.

@@ -264,6 +264,55 @@ def entity_zombie_walk(n=WALK_FRAMES):
     return paths
 
 
+def _player_walk_grid(i, n=WALK_FRAMES):
+    """One frame of the player walk cycle. n frames make one cycle.
+
+    The player is a 32px top-down figure with a rifle and no legs, so the walk
+    is read from what the art does have: the arms swing fore and aft in
+    opposite phase (the rifle follows the left arm), the figure lifts 1 px on
+    each step, and it sags 1 px between steps. Frame 0 is the standing pose
+    EXACTLY (lift/swing/sag all zero), so starting and stopping does not pop.
+
+    The eight poses are a TABLE, not a formula, for two reasons: a pure sine
+    swing makes frame 0 and frame n/2 identical (both are "arms neutral"), and
+    a table is where a human can see the stride at a glance."""
+    # (lift, swing, sag) per frame: a four-beat stride, mirrored for step two.
+    stride = [
+        (0,  0, 0),   # 0 standing - the idle pose
+        (1,  1, 0),   # 1 left arm forward, lifted
+        (0,  2, 0),   # 2 left arm furthest forward
+        (0,  1, 1),   # 3 step down
+        (0,  0, 1),   # 4 passing, weapon sags
+        (1, -1, 0),   # 5 right arm forward, lifted
+        (0, -2, 0),   # 6 right arm furthest forward
+        (0, -1, 1),   # 7 step down
+    ]
+    lift, swing, sag = stride[i % len(stride)]
+    dy = -lift + sag
+    g = body_any(32, 32, 7)
+    rect(g, 11, 5 + dy, 20, 11 + dy, "w")                    # head
+    rect(g, 13, 7 + dy, 18, 9 + dy, "K")                     # visor
+    rect(g, 9, 12 + dy, 22, 15 + dy, "w")                    # shoulders
+    rect(g, 10 + swing, 18 + dy, 14 + swing, 27 + dy, "w")   # left arm
+    rect(g, 17 - swing, 18 + dy, 21 - swing, 27 + dy, "w")   # right arm
+    rect(g, 3 + swing, 12 + dy, 8 + swing, 24 + dy, "w")     # rifle
+    rect(g, 4 + swing, 13 + dy, 7 + swing, 23 + dy, "K")     # barrel
+    return g, {".": (0, 0, 0), "K": (34, 34, 38), "w": (232, 232, 238),
+               "s": (150, 152, 160)}
+
+
+def entity_player_walk(n=WALK_FRAMES):
+    """The player walk cycle: n frames, one PNG each."""
+    paths = []
+    for i in range(n):
+        g, p = _player_walk_grid(i, n)
+        paths.append(make_entity("player_walk%d" % i, g, p, 1))
+    assert len(paths) == n, "player walk cycle must have exactly n frames"
+    idle, _ = entity_player()
+    assert _player_walk_grid(0)[0] == idle, "player walk frame 0 must be idle"
+    return paths
+
+
 def entity_bullet():
     g = canvas(8, 8)
     disc(g, 4, 4, 3, 3, "w")
@@ -396,6 +445,7 @@ def main():
     # The walk cycle is part of the entity set: its frames are textures like
     # any other, and --verify has to open them like any other.
     paths.extend(entity_zombie_walk())
+    paths.extend(entity_player_walk())
     assert len(paths) == len(set(paths)), "duplicate texture path"
 
     if args.verify:
