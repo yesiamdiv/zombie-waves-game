@@ -27,6 +27,23 @@ not a formality:
 The last point is why **R13-I5 survived nine commits**: it is a visual defect,
 and every automated gate in this repo is blind to visual defects.
 
+## Verified on screen — owner playtest 2026-10-23 (`main` @ `b0ccc28`)
+
+The owner ran the merged build (animation + net + assets) and confirmed all four
+owner-reported visual fixes are correct, with the vignette singled out as liked:
+
+- **B43 loot sprites** — pickups draw as icons on transparent ground, not white
+  cards, and read at gameplay size. VERIFIED.
+- **B44 menu text overlap** — menu/map-select layout no longer overlaps.
+  VERIFIED.
+- **B45 damage vignette** — baked radial vignette looks right (no bands).
+  VERIFIED.
+- **AT9 fullscreen toggle** — F11 / Alt+Enter works. VERIFIED.
+
+Do **not** extend this to the animation walk cycle (M10/M11) or NT4 mirrored
+sword (M9): the owner was checking the four fixes above, and those two remain
+unproven, so their checklists below still stand.
+
 ## Verified (safe to close)
 
 Headless-verified, reproducible, in `docs/R13_BUGFIX_TRACKER.md`:

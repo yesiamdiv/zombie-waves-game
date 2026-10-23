@@ -183,6 +183,41 @@ Measured on `main` at `6801d7c` (merge of `feature/net-protocol` into animation'
 animation's tests and 1759 is animation's lane-only figure; neither is the gate
 number for this tree. Version registry here: `NET_WIRE_VERSION` **9**,
 `NET_ASSET_VERSION` **3**, `NET_ART_COUNT` **26**, `NET_SNAP_ENTRY_BYTES` **35**.
+## 2026-10-22 - note by assets: B45 adds the baked vignette texture
+
+B45 replaces the banded damage vignette with one baked texture,
+`assets/textures/ui/vignette.png` (`knowledge/ui-damage-vignette`). It is
+UI-only art - not a net art id - so `NET_ASSET_VERSION` is untouched. It is
+still a new texture, so the count moves **33 -> 34**:
+
+- `python3 tools/gen_assets.py --verify` -> **34 textures**, byte-identical
+
+Everything else is unchanged at this tip: `zombie_tests` 1186/0, `ctest` 3/3,
+and the two `--seed=42` single-player runs are still byte-identical **125938
+bytes / 1603 lines** - the vignette is a HUD overlay and touches no simulation
+or event. Measured on `feature/assets-maps` after the B45 fix.
+
+## 2026-10-23 12:00 UTC - note by pm: the merged main tree measures 1808/0 and 50 textures (animation + net + assets)
+
+Measured on `main` after merging `feature/assets-maps` into the animation+net
+tip (`6801d7c`), on the **merged** tree:
+
+- `./build/zombie_tests` -> `Tests passed: 1808  Failed: 0` - unchanged from the
+  animation+net merge. The assets lane adds verifier checks in
+  `tools/gen_assets.py` (AT13), not C test cases, so the suite count does not move.
+- `ctest --test-dir build` -> 3/3: `net_spike`, `net_loopback`, `core_tests`.
+- `python3 tools/gen_assets.py --verify` -> **50 textures**: animation's 49
+  (33 + 8 zombie walk + 8 player walk) plus assets' B45
+  `ui/vignette.png`. This is the integrated count; the lane-local 41/34/49
+  figures above are historical.
+- Two `--seed=42` single-player runs (25s, `--ai=bot`) -> byte-identical,
+  **125938 bytes / 1603 lines - UNCHANGED**; wave 1 still `8 zombies,
+  interval: 1.90s, difficulty: 1.00`. The vignette and loot art are display-only.
+
+**50 is the merged texture count.** Version registry here: `NET_WIRE_VERSION`
+**9**, `NET_ASSET_VERSION` **3**, `NET_ART_COUNT` **26**,
+`NET_SNAP_ENTRY_BYTES` **35**.
+>>>>>>>
 
 ## 2026-10-23 - note by audio: the test count moves (lane figure); texture count and SP reference unchanged
 
@@ -193,9 +228,9 @@ wire v9), before and after Phase D's trigger table:
   **1862** with Phase D (+33: the event -> slot table, the 2D predicate and
   hurt-vs-heal through the hp cache).
 - `ctest --test-dir build` -> 3/3: `net_spike`, `net_loopback`, `core_tests`.
-- `python3 tools/gen_assets.py --verify` -> 49 textures. Audio ships WAVs, not
-  textures, so this count does not move (`tools/gen_audio.py --verify` reports
-  13 sounds separately).
+- `python3 tools/gen_assets.py --verify` -> **50 textures**, the merged count
+  declared in the note above. Audio ships WAVs, not textures, so this count does
+  not move (`tools/gen_audio.py --verify` reports 13 sounds separately).
 - Two **sequential** `--seed=42` single-player runs (25 s, `--ai=bot`) ->
   byte-identical, **125938 bytes / 1603 lines - UNCHANGED**; wave 1 still
   `8 zombies, interval: 1.90s, difficulty: 1.00`. Audio is inert headless

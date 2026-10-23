@@ -52,11 +52,11 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B38 | Snapshot entity count is a u8 but the limit is 1024 — silent truncation above 255 | `99f8db4` (main `6801d7c`) | FIXED (v9) |
 | B39 | `GE_WAVE_END` is not relayed, so a client can never evidence a wave ending | `10fd6005` | FIXED |
 | B40 | Sword blades are not replicated, so other players' spinning swords are invisible | `99f8db4` (main `6801d7c`) | FIXED in code; on-screen UNPROVEN |
-| B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (execution needs refinement — see B45) |
+| B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (refined by B45 `f7e2556`) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
-| B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | — | OPEN |
-| B44 | Menu UI text overlaps (regression of B1's class) | — | OPEN |
-| B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | — | OPEN |
+| B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | `fba930e` (main `b0ccc28`) | VERIFIED on screen 2026-10-23 (owner) |
+| B44 | Menu UI text overlaps (regression of B1's class) | `267665f` (main `b0ccc28`) | VERIFIED on screen 2026-10-23 (owner) |
+| B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | `f7e2556` (main `b0ccc28`) | VERIFIED on screen 2026-10-23 (owner) |
 
 ## Detailed entries
 
@@ -922,3 +922,92 @@ Found 2026-10-15 by the owner, playing.
   commit `8452630`.
 - **Status**: FIXED (`8452630`). Docs defect only: no code or build impact. The
   same markers exist in the lane worktrees until they re-align to main.
+
+## B43. Dropped loot draws a white box and is too small
+
+Found 2026-10-22 by the owner, playing.
+
+- **Symptom**: dropped loot (health/ammo/speed pickups) shows a white box lying
+  on the ground, and the icons are too small to notice.
+- **Root cause (art, not the blend path)**: `entity_pickup()` in
+  `tools/gen_assets.py` filled most of the sprite with an opaque near-white card
+  — `medkit`/`ammo`/`speed` were the **only** entity textures with opaque
+  corners, `(40,40,44,255)`, while `player`/`zombie`/`bullet`/`grenade`/
+  `rocket`/`sword_blade` already had `(0,0,0,0)`. The blend path was fine
+  (`asset_manager_get()` sets `SDL_BLENDMODE_BLEND`; `sprite_draw()` uses
+  `SDL_RenderTextureRotated`), so the "transparent area rendered white" was
+  really the drawn card.
+- **Fix**: `entity_pickup()` now draws its icon (cross / cartridges / bolt)
+  directly on a transparent background with a 1px dark outline (new `blit()`
+  helper), so the terrain shows through; and `items_spawn()` scale went
+  `0.5 -> 0.75` so a 32px icon covers 24 world units rather than 16. Cosmetic
+  only: the radius-10 collider and 20-unit pickup range are unchanged, and
+  `size_q` follows `scale` (`net_snapshot.c` computes `scale * base_px`), so the
+  client draws 24 units too. Commit `fba930e`.
+- **Recheck of all art**: swept every texture — only these three had opaque
+  backgrounds; tile/terrain art is fully opaque by design. Texture count is
+  unchanged (33), so `gate-baseline.md` needs no edit.
+- **Regression guard (AT13)**: `tools/gen_assets.py --verify` now fails if any
+  entity PNG is not RGBA or has an opaque corner, if an entity's width disagrees
+  with `net_art` `base_px`, or if the emitted texture count differs from the
+  latest `gate-baseline.md` declaration (`knowledge/asset-verify-invariants`).
+- **Status**: FIXED (`fba930e`). Build clean under `-Werror`, `ctest` 3/3,
+  `zombie_tests` 1186/0, `gen_assets --verify` 33 textures, two `--seed=42` SP
+  runs byte-identical at 125938 bytes / 1603 lines. **On-screen result is
+  UNPROVEN until the owner looks** (`i5-unverified-on-screen`).
+
+## B44. Menu UI text overlaps (regression of B1's class)
+
+Found 2026-10-22 by the owner, playing.
+
+- **Symptom**: menu text overlaps again — most visibly on the map-select screen,
+  where the highlighted map's detail line crowds into the next map's name.
+- **Root cause**: B1 fixed the menus by spacing rows from the measured font
+  height, but the map-select list later went back to a `row_h = lh * 2.2f`
+  rhythm while drawing the detail line at `row_y + lh + 6`. Two lines need
+  `2 * lh` plus a gap, so `2.2 * lh` is short by `6 - 0.2 * lh` ≈ 1.8px at the
+  default font (`lh = 21`) — the detail line clipped the next row at every window
+  size, including the default 1280x720. On short windows the main-menu option
+  block and the shop list could also ride up into the notice / points line.
+- **Fix** (`src/ui/menu.c`, commit `267665f`):
+  - map-select rows are now `lh * 2.0f + 12.0f` (two measured lines plus a gap),
+    so the selected entry's detail line can never touch the next entry.
+  - the main-menu option block is clamped to sit at least 12px below the header
+    (which grows by one line when the notice is shown) and above the hint lines.
+  - the shop list is clamped at least 12px below the points line.
+  Verified by re-deriving every screen's line rectangles from the same formulas
+  across window heights: no two text rectangles overlap for any window of 480px
+  height or taller (the default 1280x720 included). Below ~450px the window is
+  too short to hold the content and is out of scope.
+- **Status**: FIXED (`267665f`). Render-only, so the byte-identity gate is
+  unaffected — build clean under `-Werror`, `ctest` 3/3, `zombie_tests` 1186/0,
+  `gen_assets --verify` 34 textures, two `--seed=42` SP runs byte-identical at
+  125938 bytes / 1603 lines. **On-screen result is UNPROVEN until the owner
+  looks** (`i5-unverified-on-screen`).
+
+## B45. Damage vignette looks banded/incomplete
+
+Found 2026-10-22 by the owner, playing (follow-up to B41).
+
+- **Symptom**: the B41 edge vignette read as coarse horizontal/vertical bands
+  rather than a smooth falloff — the live 24-band fill was visible as banding and
+  the corners looked unfinished.
+- **Root cause**: the B41 fix drew the falloff in real time as 24 discrete edge
+  bands (`draw_damage_vignette()` in `src/ui/hud.c`); a fixed number of hard-edged
+  rectangles can only approximate a radial gradient, and the bands are visible.
+- **Fix**: bake the gradient into one texture and draw it stretched. New
+  `ui_vignette()` in `tools/gen_assets.py` writes
+  `assets/textures/ui/vignette.png` (256x256, red, alpha 0 at the centre rising
+  from ~40% of the radius outward to a maximum at the edges/corners via a
+  smoothstep falloff); `draw_damage_vignette()` now blits that texture over the
+  whole screen with `SDL_SetTextureAlphaMod` scaled by the damage timer. Route
+  chosen in `knowledge/ui-damage-vignette`. Commit `f7e2556`.
+- **UI-only art**: the vignette is not an entry in the net art table
+  (`src/net/net_art.h`), so `NET_ASSET_VERSION` is untouched; it is a new texture,
+  so the deliberate `gate-baseline.md` re-baseline moves the count **33 -> 34** in
+  the same commit.
+- **Status**: FIXED (`f7e2556`). Build clean under `-Werror`, `ctest` 3/3,
+  `zombie_tests` 1186/0, `gen_assets --verify` 34 textures, two `--seed=42` SP
+  runs still byte-identical at 125938 bytes / 1603 lines (the overlay touches no
+  simulation or event). **On-screen result is UNPROVEN until the owner looks**
+  (`i5-unverified-on-screen`) — no gate can see banding.
