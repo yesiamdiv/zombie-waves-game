@@ -240,3 +240,16 @@ wire v9), before and after Phase D's trigger table:
 
 **1862 is a LANE figure**, like net's 1235: the assets lane's tests are not in
 it. Do not treat it as the merged number.
+
+## 2026-10-23 - note by audio: the merged main (5997c86) measures 1862/0
+
+Landing audio on the assets+animation+net main does not change any merged
+figure except the C test count, which carries audio's 33 trigger checks:
+
+- `./build/zombie_tests` -> **1862 passed / 0 failed** (was 1808 on the merged
+  main before audio). Unlike the lane note above, **1862 is now the merged
+  count**; the next lane to land should treat it as the baseline.
+- `ctest --test-dir build` -> 3/3; `gen_audio.py --verify` -> 13 sounds;
+  `gen_assets.py --verify` -> **50 textures**, unchanged.
+- Two sequential `--seed=42` SP runs still byte-identical at **125938 bytes /
+  1603 lines**; wave 1 unchanged. Headless opens no audio device.
