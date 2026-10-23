@@ -23,6 +23,7 @@
 #include "items/items.h"
 #include "weapons/weapons.h"
 #include "events/event_bus.h"
+#include "audio/audio.h"
 #include "ai/ai_driver.h"
 #include "game_mode.h"
 #include "players.h"
@@ -61,6 +62,9 @@ typedef struct {
 
     bool headless;
     bool vsync_active;
+    /* --audio-test: queue one 1 kHz cue at startup, so a human can confirm the
+     * device path makes sound before judging a mix (audio-plan §7 Phase E). */
+    bool audio_test;
     GameMode mode;
     float run_seconds;
     double elapsed_sim;
@@ -458,6 +462,10 @@ static bool init(void) {
         event_bus_init(game.event_log_path);
     }
 
+    /* Audio is soft-fail by design: headless, no device or missing files all
+     * mean silence and a running game, never an abort (audio-plan §7). */
+    audio_init(game.headless, game.audio_test);
+
     input_init(&game.input);
     camera_init(&game.camera, WINDOW_W, WINDOW_H);
     menu_init(&game.main_menu);
@@ -474,6 +482,7 @@ static bool init(void) {
 static void shutdown_game(void) {
     LOG_INFO("Shutting down...");
 
+    audio_shutdown();
     event_bus_shutdown(g_events);
 
     world_free(&game.world);
@@ -1509,6 +1518,9 @@ static void step_frame(float dt) {
         }
         /* Relay to remote clients BEFORE the flush drains the ring. */
         relay_net_events();
+        /* Audio reads the same ring for the same reason: after the flush it is
+         * empty, and GE_KILL is emitted from system_cleanup (audio-plan §3). */
+        audio_tick(g_events, game.camera.position.x, game.camera.position.y);
         event_bus_flush(g_events);
     }
 
@@ -1584,6 +1596,8 @@ static void parse_args(int argc, char *argv[]) {
 
         if (strcmp(arg, "--headless") == 0) {
             game.headless = true;
+        } else if (strcmp(arg, "--audio-test") == 0) {
+            game.audio_test = true;
         } else if (strncmp(arg, "--ai=", 5) == 0) {
             const char *mode = arg + 5;
             if (strcmp(mode, "bot") == 0) {
@@ -1680,6 +1694,7 @@ static void parse_args(int argc, char *argv[]) {
         } else if (strcmp(arg, "--help") == 0) {
             printf("%s\n", "Usage: open_world_zombie_waves [options]");
             printf("%s\n", "  --headless            run with no window/renderer (fast, deterministic)");
+            printf("%s\n", "  --audio-test          play one 1 kHz cue at startup (audio device check)");
             printf("%s\n", "  --ai=none|script|bot  AI control mode (default none)");
             printf("%s\n", "  --script <file>       scripted playback (also --script-loop=N)");
             printf("%s\n", "  --events=<file>       gameplay event log path (default game_events.log)");

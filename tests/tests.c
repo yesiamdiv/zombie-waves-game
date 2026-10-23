@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include <sys/stat.h>
 
 #include "core/log.h"
@@ -13,6 +14,7 @@
 #include "systems/systems.h"
 #include "items/items.h"
 #include "events/event_bus.h"
+#include "audio/audio_mixer.h"
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
 #include "ui/hud.h"
@@ -3018,6 +3020,101 @@ static void test_net_events_codec(void) {
 
 /* ---------------------------------------------------------------- Net codec */
 
+
+/* -------------------------------------------------------------------- Audio
+ * The mixer is the part of audio a gate can never hear, so it is the part
+ * with tests: voice start/retire, pan/gain, clamping and the fixed-size
+ * limits that keep the audio thread allocation-free. */
+
+static void test_audio_mixer_silence(void) {
+    AudioMixer m;
+    audio_mixer_init(&m, 48000, 2);
+    float out[8];
+    memset(out, 0x7f, sizeof(out));
+    audio_mixer_render(&m, out, 4);
+    CHECK(out[0] == 0.0f && out[7] == 0.0f);
+    CHECK(audio_mixer_active(&m) == 0);
+}
+
+static void test_audio_mixer_plays_and_retires(void) {
+    AudioMixer m;
+    audio_mixer_init(&m, 48000, 2);
+    float samples[4] = {0.25f, 0.5f, 0.75f, 1.0f};
+    AudioClip clip = {samples, 4};
+    CHECK(audio_mixer_queue(&m, &clip, 1.0f, 0.0f));
+    CHECK(audio_mixer_active(&m) == 0); /* queued, not started yet */
+
+    float out[16] = {0};
+    audio_mixer_render(&m, out, 8);
+    CHECK(out[0] == 0.25f && out[1] == 0.25f); /* centre: both channels */
+    CHECK(out[6] == 1.0f && out[7] == 1.0f);   /* last clip frame */
+    CHECK(out[8] == 0.0f && out[15] == 0.0f);  /* silence after the clip */
+    CHECK(audio_mixer_active(&m) == 0);        /* voice retired */
+}
+
+static void test_audio_mixer_gain_and_pan(void) {
+    AudioMixer m;
+    audio_mixer_init(&m, 48000, 2);
+    float samples[2] = {1.0f, 1.0f};
+    AudioClip clip = {samples, 2};
+    CHECK(audio_mixer_queue(&m, &clip, 0.5f, 1.0f)); /* hard right */
+    float out[4] = {0};
+    audio_mixer_render(&m, out, 2);
+    CHECK(out[0] == 0.0f); /* left silent */
+    CHECK(out[1] == 0.5f); /* right at gain */
+}
+
+static void test_audio_mixer_clamps(void) {
+    AudioMixer m;
+    audio_mixer_init(&m, 48000, 2);
+    float samples[2] = {1.0f, 1.0f};
+    AudioClip clip = {samples, 2};
+    for (int i = 0; i < 8; i++) audio_mixer_queue(&m, &clip, 1.0f, 0.0f);
+    float out[4] = {0};
+    audio_mixer_render(&m, out, 2);
+    CHECK(out[0] == 1.0f && out[1] == 1.0f); /* summed 8x, clamped not wrapped */
+    CHECK(audio_mixer_active(&m) == 0);
+}
+
+static void test_audio_mixer_fixed_limits(void) {
+    AudioMixer m;
+    audio_mixer_init(&m, 48000, 2);
+    static float long_samples[48000];
+    for (int i = 0; i < 48000; i++) long_samples[i] = 0.001f;
+    AudioClip clip = {long_samples, 48000};
+
+    int queued = 0;
+    for (int i = 0; i < AUDIO_MIX_MAX_PENDING + 10; i++) {
+        if (audio_mixer_queue(&m, &clip, 0.5f, 0.0f)) queued++;
+    }
+    CHECK(queued == AUDIO_MIX_MAX_PENDING); /* overflow refused, no growth */
+
+    float out[256];
+    audio_mixer_render(&m, out, 128);
+    /* More requests than voices: the pool steals, it never overflows. */
+    CHECK(audio_mixer_active(&m) == AUDIO_MIX_MAX_VOICES);
+    int queued_after = 0;
+    if (audio_mixer_queue(&m, &clip, 0.5f, 0.0f)) queued_after++;
+    CHECK(queued_after == 1); /* the ring drained during render */
+}
+
+static void test_audio_spatialise(void) {
+    float gain = -1.0f, pan = -1.0f;
+
+    audio_mix_spatialise(10.0f, 10.0f, 10.0f, 10.0f, 24.0f, &gain, &pan);
+    CHECK(gain == 1.0f && pan == 0.0f); /* at the listener: full, centred */
+
+    audio_mix_spatialise(34.0f, 10.0f, 10.0f, 10.0f, 24.0f, &gain, &pan);
+    CHECK(gain == 0.0f && pan == 1.0f); /* at the radius: silent, hard right */
+
+    audio_mix_spatialise(22.0f, 10.0f, 10.0f, 10.0f, 24.0f, &gain, &pan);
+    CHECK(fabsf(gain - 0.5f) < 1e-6f); /* half radius: half gain */
+    CHECK(fabsf(pan - 0.5f) < 1e-6f);
+
+    audio_mix_spatialise(10.0f, 34.0f, 10.0f, 10.0f, 24.0f, &gain, &pan);
+    CHECK(gain == 0.0f && pan == 0.0f); /* directly below: no horizontal pan */
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -3079,6 +3176,12 @@ int tests_run_all(void) {
     test_net_player_state();
     test_net_mirror_interp();
     test_net_events_codec();
+    test_audio_mixer_silence();
+    test_audio_mixer_plays_and_retires();
+    test_audio_mixer_gain_and_pan();
+    test_audio_mixer_clamps();
+    test_audio_mixer_fixed_limits();
+    test_audio_spatialise();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);
