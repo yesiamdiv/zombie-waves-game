@@ -786,3 +786,46 @@ Freeze lifted by animation when AN1 landed (35a8b46).
   `unproven` on the ear test by construction.
 
 **Commits:** `ecf7a2f` (Phase B foundations) and this docs commit.
+
+---
+
+## Session 2026-10-23 — Phase C: audio assets
+
+### PM — planned
+- Phase C: `tools/gen_audio.py`, `assets/audio/**`, wire `SFX_PATHS`. Keep the
+  rule "replacing a WAV 1:1 swaps it, missing is silence". Phase D waits on NT2.
+
+### DEV — done
+- **`tools/gen_audio.py`** — stdlib-only, deterministic (fixed seed via
+  xorshift32). Synthesises 13 slots to 48 kHz mono 16-bit PCM, fades edges,
+  normalises each sound to its own peak. `--verify` re-synthesises and compares
+  bytes to the committed files. No dependencies, regenerating leaves nothing
+  dirty if outputs match.
+- **`assets/audio/*.wav`** — placeholders for every `AudioSfx` slot: bullets,
+  grenade, rocket, zombie/player hits and deaths, explosion, wave start/end,
+  player hurt, pickup, points. Decoded at init and converted to mono float at
+  48 kHz.
+- **`src/audio/audio.c`** — `SFX_PATHS[]` filled; the loader is already in place
+  from Phase B (silent on failure). Adding files is the generator + the table.
+- **Docs** — `docs/EXTENDING.md` documents the "replace 1:1" rule and
+  regeneration, same as textures.
+- **Gate** — build clean, `ctest` 3/3, `zombie_tests` 1207/0, two 25 s `--seed=42`
+  SP runs byte-identical (125938 B / 1603 lines), wave 1 unchanged.
+  `python3 tools/gen_audio.py --verify` and `python3 tools/gen_assets.py --verify`
+  both clean.
+
+### PM — next
+- **Phase D (blocked on NT2):** fill `audio_sfx_for_event()` from the relayed
+  bus. Read from the §6 audit, use the agreed `GE_EXPLOSION` payload when it
+  lands (`x,y,a` radius, `b` spare, `kind`), do **not** edit the relay list or
+  add wire fields. Audio must not invent shooter/attacker ids the wire does
+  not provide.
+- **Phase E:** human listen on host and client; listen-for list is in
+  `PENDING_VERIFICATION.md`. Still `unproven`.
+
+### Blocked
+- D blocked on NT2 in main. E blocked on a human.
+
+**Commits:** `9d4e592` (Phase C). C is committed; the game still has no
+event->sound mapping so it remains silent until D, but the assets and
+generator are in place.
