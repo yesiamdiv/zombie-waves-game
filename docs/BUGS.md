@@ -54,9 +54,9 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
 | B40 | Sword blades are not replicated, so other players' spinning swords are invisible | `99f8db4` (main `6801d7c`) | FIXED in code; on-screen UNPROVEN |
 | B41 | Taking damage fills the whole screen bold red — should be an edge vignette, not a full-screen tint | `e637a5d` | FIXED (refined by B45 `f7e2556`) |
 | B42 | Cherry-pick of `e94eb0e` left conflict markers committed in this file | `8452630` | FIXED |
-| B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | `fba930e` | FIXED (art, not blend) |
-| B44 | Menu UI text overlaps (regression of B1's class) | `267665f` | FIXED |
-| B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | `f7e2556` | FIXED |
+| B43 | Dropped loot sprites draw transparent PNG areas as white, and the items are too small to notice; recheck all other assets | `fba930e` (main `b0ccc28`) | VERIFIED on screen 2026-10-23 (owner) |
+| B44 | Menu UI text overlaps (regression of B1's class) | `267665f` (main `b0ccc28`) | VERIFIED on screen 2026-10-23 (owner) |
+| B45 | Damage vignette looks banded/incomplete; replace the real-time edge bands with a baked radial-alpha texture | `f7e2556` (main `b0ccc28`) | VERIFIED on screen 2026-10-23 (owner) |
 
 ## Detailed entries
 
