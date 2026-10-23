@@ -829,3 +829,60 @@ Freeze lifted by animation when AN1 landed (35a8b46).
 **Commits:** `9d4e592` (Phase C). C is committed; the game still has no
 event->sound mapping so it remains silent until D, but the assets and
 generator are in place.
+
+---
+
+## Session 2026-10-23 — Phase D: the relayed bus drives the mix
+
+### PM standup — planned
+- A9 is unblocked (NT2 + wire v9 are on main). Land Phase D: map events to
+  slots from the relayed bus only, no wire field, no relay-list edit, no
+  version bump. Gate and reply to `[net]` with the SHA so it can re-verify the
+  merged tree.
+
+### DEV — done
+- **`src/audio/audio_triggers.{h,c}`** — the event -> slot table
+  (`audio_sfx_for_event`) and `audio_sfx_is_2d`, pure and unit-tested: 33 new
+  checks cover every mapped row, the rows that must stay silent
+  (`GE_ENTITY_DEATH` for bullets/particles/rocket expiry, host-only events),
+  the 2D set, and hurt-vs-heal.
+- **Hurt vs heal without `ia`**: the relay drops hp-before, so a per-entity
+  last-hp cache decides it; the host uses the same cache on purpose so the two
+  peers cannot diverge (SYSTEM_DESIGN_RULES §3). Cache reset in `audio_init`.
+- **2D slots**: `WAVE_START`/`WAVE_END`/`POINTS` carry `x=y=0`; spatialising
+  them would fade them to silence at the world origin. They play centred.
+- **Radius from the viewport**: `AUDIO_FALLOFF_RADIUS 24.0f` was ~1/50 of the
+  visible world; `audio_tick` now takes the visible world size and uses
+  0.55 x the diagonal (`Camera.zoom` is always 1.0, so this is stable).
+- **Same-slot collapse (30 ms)**: one grenade/rocket damages many zombies in
+  one tick; one voice per slot per 30 ms keeps the sum from clipping. The
+  pistol's cooldown is 0.2 s, so separate shots never collapse.
+- **`GE_ENTITY_DEATH` is not mapped** — `GE_EXPLOSION` is the blast, and the
+  death event also fires for bullets, particles and the rocket's expiry.
+- **Verification beyond the gate** (method in `audio-measurements`, Phase D):
+  captured the product's own output through SDL's disk driver. SP: `wave_start`
+  NCC 1.000 at full gain, `shot_bullet`/`hit_zombie` 1.000, `wave_end` 0.908 at
+  the logged `WAVE_END`, `death_zombie` 0.861. Client of a **headless** host:
+  every sound is relay-derived — `wave_start` 1.000, `shot_bullet` 1.000,
+  `hit_zombie` 1.000, `hit_player` 0.999, `death_zombie` 0.882,
+  `player_hurt` 0.791.
+- **Missing-file soft-fail, at game level**: renaming `points.wav` logs one WARN
+  and the game runs on. That closes an item that had been probe-level only.
+- **`tools/match_audio_capture.py`** — the waveform-NCC matcher used above, so
+  the next agent can re-run it in Phase E (needs numpy; not part of the gate).
+- **Gate**: green, numbers in `gate-baseline` (2026-10-23 audio note). Two
+  sequential same-seed SP runs byte-identical, wave 1 unchanged, headless opens
+  no device, `gen_audio.py --verify` and `gen_assets.py --verify` clean.
+
+### PM — next
+- Phase E: a human listens on host and client. `explosion` and `pickup` have
+  never been observed in a capture (the bot uses only the pistol and never
+  collects items) — throw a grenade and pick something up in the listen run.
+- Landing: audio may merge main now; the assets lane still has to land before
+  the merged figure counts.
+
+### Blocked
+- E blocked on a human. Nothing else.
+
+**Commits:** `b483324` (Phase D), plus the docs/verification commit.
+

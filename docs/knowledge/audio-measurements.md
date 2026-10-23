@@ -294,3 +294,66 @@ Build clean under `-Werror` (no warnings in project sources), `ctest` 3/3,
 unchanged (`8 zombies, interval: 1.90s, difficulty: 1.00`), SP events log
 unchanged (125938 B / 1603 lines).
 
+
+## Phase D — the mapping, measured in a running game (2026-10-23)
+
+The gate cannot hear, so the mapping is proven twice: the trigger table by unit
+tests (`audio_triggers.c`, 33 checks) and real playback by capturing the
+product's own output through SDL's disk driver
+(`SDL_AUDIODRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=...`) during a normal windowed
+run. The analysis is waveform normalised cross-correlation (sliding, local
+energy normalisation), **not** envelope NCC: envelopes conflate sounds with the
+same shape (the tail of the 440 Hz wave horn matches `explosion` at 0.92),
+waveforms separate them (`explosion` in the same SP capture: 0.079).
+`tools/match_audio_capture.py` is that matcher (needs numpy; a verification
+aid, not part of the gate).
+
+Single player, 30 s, `--seed=42 --ai=bot --auto-start`:
+
+- all 13 slots map and load; the capture contains `wave_start` **1.000** (at
+  t=3.03 s, exactly the 0.04 s open offset, RMS equal to the clip to four
+  decimals — the 2D path plays at unity), `shot_bullet` **1.000**,
+  `hit_zombie` **1.000**, `wave_end` **0.908** at the logged `WAVE_END`
+  (t=23.06), `death_zombie` **0.861**.
+- 43 audible onsets in 18 s of play; 51% of 10 ms windows carry sound; panning
+  is in use (max |L-R| 0.209) and centred sounds are bit-identical L/R.
+- levels: peak 0.895 in a 20 s run with **no** clamped sample; the 30 s run
+  clamps **one** sample (t=13.06) where four voices (shot, hit, death, points)
+  land in the same tick. That is the mixer's documented clamp, not wraparound.
+
+Client of a **headless** host, 25 s, `--ai=bot`, disk driver. Nothing in this
+capture can come from local gameplay: the client is a render-only mirror whose
+only gameplay events are the relayed ones. Relayed in that run:
+60 `PLAYER_SHOT`, 57 `DAMAGE`, 20 `PLAYER_HEALTH`, 9 `KILL`, 7 `POINTS`,
+1 `WAVE_START`. The capture contains `wave_start` **1.000** (t=0.94 s, right
+after `NET: wave 1 starting - 10 zombies`), `shot_bullet` **1.000**,
+`hit_zombie` **1.000**, `hit_player` **0.999**, `death_zombie` **0.882**,
+`player_hurt` **0.791**. So the relayed bus alone drives the mix, including
+hurt-vs-heal, which `ia` cannot carry.
+
+Two slots could not be observed this way and are **not** defects:
+
+- `points` is real but quiet (peak 0.35, rms 0.061) and is always awarded in the
+  same tick as the death sound (rms 0.158 at gain 0.68), so its best NCC is 0.54
+  - inside the range where similar-family clips also false-positive. It was
+  proven playing from a temporary mixer trace instead: the clip's samples in
+  memory equal the file's, and the very next callback renders `peak=0.597
+  active=4`. The trace was removed before the commit.
+- `explosion` never fired: the bot only uses the pistol, so NT2's grenade and
+  rocket blasts never detonate in an autonomous run. `pickup` likewise
+  (`ITEM_PICKUP` never appears; the bot does not collect items). Both are
+  mapped and unit-tested, not observed.
+
+Measurement caveat worth remembering: **capture time drifts from sim time.** A
+windowed run is variable-dt while the disk driver is realtime, so the offset
+between a logged event time and the same sound in the capture grows (~10 ms/s:
++43 ms for the wave start at t=3, +243 ms for the wave end at t=23). Align per
+event or match over the whole file; never apply one global offset.
+
+Parallel determinism observation: while comparing gate runs, one of 8
+**parallel** same-seed pairs diverged on a single cosmetic field (one item's
+bob y frozen at `base_pos.y` from t=15.2); 4/4 further pairs on `main` and 7/8
+on this lane were identical, and the documented gate (sequential) is
+byte-identical. Audio is inert when headless (`audio_init` returns before the
+device and `audio_tick` returns immediately), and `src/items` is untouched by
+this lane; recorded as an open observation, not attributed to audio.

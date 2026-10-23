@@ -208,11 +208,13 @@ type on a host and on a client for one 25-second run and record both here.
 |---|---|---|
 | **A. Spike** ✅ | §10 verdicts filled in | SDL3 audio path proven (no vendored header); trigger audit complete; double-fire ruled out; relayed-latency answered; verdict written before implementation. **§4 already decided — do not re-open.** |
 | **B. Foundations** ✅ | `src/audio/` (SDL3 device + our own mixer), init/tick/shutdown in `main.c`, `AUDIO_TICK` in the §3 window | headless path allocation-free and silent; build clean; gate green |
-| **C. Content** | `tools/gen_audio.py`, `assets/audio/**`, the sounds | generator deterministic; regenerating leaves `git status` clean |
-| **D. Multiplayer** | triggers work from the relayed bus; §4 option (a) consumed | client hears kills, damage, pickups, wave start **and gunfire** (relayed by `[net]`); audio adds **no** wire field and edits **no** relay list |
+| **C. Content** ✅ | `tools/gen_audio.py`, `assets/audio/**`, the sounds | generator deterministic; regenerating leaves `git status` clean |
+| **D. Multiplayer** ✅ | triggers work from the relayed bus; §4 option (a) consumed | client hears kills, damage, pickups, wave start **and gunfire** (relayed by `[net]`); audio adds **no** wire field and edits **no** relay list |
 | **E. Verification** | human listens, two windows | `PENDING_VERIFICATION.md` lists what to listen for, on which peer |
 
-**Status (2026-10-23):** A and B are done — A6 at `cce1990`, B at `ecf7a2f`.
+**Status (2026-10-23, written after B; kept as the B-era record — see §7a for
+where the feature stands now):** A and B are done — A6 at `cce1990`, B at
+`ecf7a2f`.
 Nothing is vendored (the Spike A verdict removed miniaudio); B uses the public
 SDL3 device API, which is *not* the `SDL_OpenAudioDeviceStream` the spike
 measured — see the correction in §10. B's device path is measured, not heard:
@@ -221,6 +223,56 @@ designed cue (peak 0.300, 1 kHz, 150 ms, L==R, digital silence elsewhere), and
 `--headless` logs `Audio: headless - device never opened`. **No human has heard
 anything yet**, so the feature is `unproven`, and there is still no sound to
 hear: `SFX_PATHS[]` is all NULL and the event mapping is Phase D.
+
+## 7a. The implemented mapping (Phase D, 2026-10-23)
+
+One table, two helpers, no new event type and no wire change:
+`src/audio/audio_triggers.{h,c}` (`audio_sfx_for_event`, `audio_sfx_is_2d`) maps
+events to slots; `audio_tick` spatialises and queues; the table is unit-tested
+because the relay is what silently changes these payloads.
+
+| Event | Kind | Slot | Positional |
+|---|---|---|---|
+| `GE_PLAYER_SHOT` | BULLET / GRENADE / ROCKET | `SHOT_*` | yes (muzzle `x,y`) |
+| `GE_DAMAGE` | ZOMBIE / PLAYER | `HIT_ZOMBIE` / `HIT_PLAYER` | yes (victim `x,y`) |
+| `GE_KILL` | ZOMBIE / PLAYER | `DEATH_*` | yes (death `x,y`) |
+| `GE_EXPLOSION` | any | `EXPLOSION` | yes (NT2 impact point) |
+| `GE_WAVE_START` | any | `WAVE_START` | **no** — `x=y=0` |
+| `GE_WAVE_END` | any | `WAVE_END` | **no** — `x=y=0` |
+| `GE_ITEM_PICKUP` | ITEM | `PICKUP` | yes (item `x,y`) |
+| `GE_POINTS` | any | `POINTS` | **no** — `x=y=0` |
+| `GE_PLAYER_HEALTH` | PLAYER | `PLAYER_HURT` when hp fell | yes (player `x,y`) |
+| anything else | — | none | — |
+
+`GE_ENTITY_DEATH` is deliberately **not** mapped: it fires for bullets,
+particles and the rocket's expiry, and would double a grenade whose blast is
+already `GE_EXPLOSION`.
+
+Four decisions that the relay forced:
+
+1. **2D set.** `WAVE_START`, `WAVE_END`, `POINTS` carry `x=y=0`; spatialising
+   them would place every one at the world origin (silent whenever the camera
+   is elsewhere). They play centred at full gain.
+2. **Radius comes from the viewport.** Phase B's fixed `24.0f` was ~1/50 of the
+   visible world. `audio_tick` now takes the visible world size and uses
+   `0.55 * diagonal` (~1211 units at 1920x1080; `Camera.zoom` is always 1.0), so
+   anything on screen is audible and a resized window does not change the mix.
+3. **Same-slot collapse, 30 ms.** A grenade or rocket damages many zombies in
+   one tick; play the same sample N times and the mix clips. One voice per slot
+   per 30 ms of `event->time_sec` (the pistol's cooldown is 0.2 s, so separate
+   shots never collapse; relayed batches share the client's frame time, the
+   same rule).
+4. **Hurt vs heal from a cache, not `ia`.** The relay drops `ia` (hp before).
+   Both peers therefore decide from the last hp seen for that entity (8-entry
+   cache, reset in `audio_init`); the host deliberately does not use its own
+   `ia`, so the two peers cannot diverge ([SYSTEM_DESIGN_RULES] §3). First
+   sighting of an entity assumes full health.
+
+**Status (2026-10-23):** A, B, C and D are done — C at `dde193e`/`4413ecb`,
+D at `b483324`. 13 sounds are mapped and audible
+in a real run; the client of a headless host produces them from the relay alone.
+Still `unproven`: no human has heard any of it (Phase E), and two slots have no
+observed capture yet (see [PENDING_VERIFICATION]).
 
 ## 8. Cross-dependencies
 

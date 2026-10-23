@@ -213,15 +213,15 @@ or HUD defects, so none of them is proven by any test in this repo.** Two window
 - [ ] **The host still shows its own name tag** (B32 changed the flag the host
       already passed correctly, so this is a regression check, not a new check).
 
-## Audio — Phase B (device + mixer) landed; nothing is audible yet, so nothing is proven by ear
+## Audio — Phases B/C/D landed; sound is in the mix, but nothing has been heard, so nothing is proven by ear
 
-**Status: PARTLY BUILT, UNPROVEN BY EAR.** Phase B landed at `ecf7a2f`:
-`src/audio/` (SDL3 device path + our own mixer), `audio_tick()` in the
-`relay_net_events()` -> `event_bus_flush()` window, `--audio-test`. There are
-**no assets and no event->sound mapping yet** (`SFX_PATHS[]` is all NULL,
-`audio_sfx_for_event()` returns none), so the game is silent by construction
-and every item below is still pending. **No automated gate in this repo can
-hear anything** ([audio-plan] §1).
+**Status: BUILT AND MEASURED, UNPROVEN BY EAR.** B (device + mixer) landed at
+`36d694e`/`6fd9126`, C (generator + 13 assets + slot wiring) at
+`dde193e`/`4413ecb`, D (event -> slot mapping) at `b483324`. `audio_tick()`
+runs in the `relay_net_events()` -> `event_bus_flush()` window, the mapping
+lives in `src/audio/audio_triggers.c`, and a client's sounds come from the
+relayed bus alone. **No automated gate in this repo can hear anything**
+([audio-plan] §1), so the listen list below still stands.
 
 Already measured, and explicitly not a substitute for a listen:
 
@@ -234,6 +234,15 @@ Already measured, and explicitly not a substitute for a listen:
 - **`--headless` opens no device**: DEBUG `Audio: headless - device never
   opened`; three same-seed SP runs, one with a deliberately broken driver, are
   byte-identical (125938 B / 1603 lines).
+
+Phase D added real playback evidence (detail and method in
+`audio-measurements`, Phase D). Single-player capture: `wave_start` matched at
+NCC 1.000 (full gain, exact RMS), plus `shot_bullet` 1.000, `hit_zombie` 1.000,
+`wave_end` 0.908 at the logged `WAVE_END`, `death_zombie` 0.861. Client of a
+**headless** host: every sound in its capture is relay-derived -
+`wave_start` 1.000, `shot_bullet` 1.000, `hit_zombie` 1.000, `hit_player`
+0.999, `death_zombie` 0.882, `player_hurt` 0.791. That proves the *mapping and
+the relay*, not the mix.
 
 The list below is the acceptance script for the day the sound lands. It is
 written now, while the trigger audit is fresh, so the human knows what to
@@ -258,13 +267,49 @@ listen for and on which peer.
 - [x] **Silence, not a crash, when there is no device.** Measured at game
       level 2026-10-23: `SDL_AUDIODRIVER=nosuchdriver` logs one WARN and the
       windowed game keeps running with no sound.
-- [ ] **Silence, not a crash, when a sound file is missing.** Rename one
-      asset: the game must keep running and log the missing file once. (Cannot
-      be run yet - no slot has a path until Phase C; the loader path is
-      probe-level so far.)
+- [x] **Silence, not a crash, when a sound file is missing.** Measured
+      2026-10-23 at game level: with `points.wav` renamed, one WARN
+      (`'audio/points.wav' not loaded (...) - slot stays silent`), wave 1
+      starts, the device keeps running and shutdown is clean.
 - [x] **`--headless` opens no audio device.** Measured 2026-10-23: DEBUG
       `Audio: headless - device never opened`, no allocation, and a run with a
       broken driver is byte-identical to a normal one.
+
+## Unproven — audio Phase D specifics (2026-10-23)
+
+Mapped, unit-tested and (for most slots) measured in a capture, but not proven
+by ear. Every item needs a human in front of two windows (Phase E).
+
+- [ ] **The mix as a whole.** Nothing has been heard. Levels were designed per
+      clip and one 30 s run clamps a single sample where four voices land in one
+      tick; whether the balance reads as a game and not as a pile of samples is
+      an ear judgement.
+- [ ] **Two slots have no observed playback.** `explosion` (NT2 grenade/rocket
+      blast) and `pickup` never fired in an autonomous run - the bot only fires
+      the pistol and never collects items. Both are mapped and unit-tested.
+      Throw a grenade and pick an item in the listen run.
+- [ ] **`points` sits under the death sound.** It is a quiet chime (peak 0.35,
+      rms 0.061) always awarded in the same tick as a death (rms 0.158 at gain
+      0.68). Proven playing from a mixer trace, not from the capture; judge
+      whether it is audible, and whether it should be.
+- [ ] **The audible radius (0.55 x the viewport diagonal) is guesswork.** It
+      replaces Phase B's 24 units, which was ~1/50 of the visible world. Walk to
+      the edge of the screen: a gunshot should fade out just off screen, not
+      halfway across it.
+- [ ] **The 30 ms same-slot collapse is a judgement call.** A grenade hitting
+      eight zombies plays one hit sound, not eight. If that reads as a missing
+      impact, the window is the knob (per slot, in `audio.c`).
+- [ ] **Hurt vs heal by cache.** The relay drops `ia`, so both peers compare
+      against the last hp seen (8-entry cache). A heal that follows a long gap
+      in health events for that entity could read as a hurt sound (or vice
+      versa). Watch a pickup of health after damage.
+- [ ] **One parallel-run determinism observation.** In one of 8 same-seed
+      **parallel** headless pairs, one item's bob y froze at `base_pos.y` from
+      t=15.2 (counts and every other line identical). Not reproduced in 7
+      further pairs, 4/4 identical on `main`, and the documented gate
+      (sequential) is byte-identical. Audio is inert headless and `src/items`
+      is untouched by this lane, so this is recorded as an open observation,
+      not an audio defect. Re-run pairs if it reappears.
 
 ## Still open by decision
 
