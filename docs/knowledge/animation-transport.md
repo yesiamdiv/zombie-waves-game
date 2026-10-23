@@ -319,3 +319,46 @@ existing `art` id and the walk cycle adds nothing to the snapshot.
 **Unproven:** the client's mirrored sword - angle, width, tint, and the
 no-backwards-flip at 180 - needs a two-window run (`docs/PENDING_VERIFICATION.md`
 M9). v9 draws it; nothing headless can see an angle.
+
+## 2026-10-22 19:30 UTC - note by animation: the pose follows the state, and the bob is display-only (AN5)
+
+**The pose follows the zombie's state.** Before AN5 every animated zombie
+advanced the walk cycle no matter what it was doing, so a zombie hitting you
+looked like it was walking in place. `system_animation()` now reads
+`CZombieTag.state`:
+
+| State | Pose |
+|---|---|
+| `ZOMBIE_CHASE` | the cycle advances (the only walking state) |
+| `ZOMBIE_ATTACK` | holds `ANIM_ATTACK_FRAME` (6): the walk cycle's furthest reach, +3 px on the reaching arm |
+| `ZOMBIE_HURT` | freezes on the current frame (the white flash says "hurt") |
+| `ZOMBIE_IDLE` | holds frame 0, the stationary pose |
+| `ZOMBIE_DEAD` | freezes (the entity is normally destroyed first) |
+
+Entering ATTACK and IDLE resets `frame_timer`, so leaving the state resumes on
+the next frame instead of holding a stale timer.
+
+**No death pose, deliberately.** A zombie is destroyed the instant it dies
+(`system_cleanup`) and the death reads as its particle burst. A corpse/death
+pose would have to delay that destruction - a gameplay change that moves the
+death timestamp in the single-player events log, which is exactly what the
+single-player invariance gate exists to prevent. If a corpse state is wanted,
+it is a gameplay item, not an animation one.
+
+**The pickup bob is display-only.** `items_tick_bob()` moves the entity's
+`CPosition` - what the renderer draws and the snapshot replicates, so host and
+client bob together - while `CItemTag.base_pos` keeps the true position for the
+pickup range and the `GE_ITEM_PICKUP` payload. That split is what makes the bob
+safe: the bob can be 2.5 px and the pickup timing still does not move by a
+single tick (single-player events log unchanged, 125938 bytes / 1603 lines).
+The bob is vertical only, 1.5 Hz, accumulated from `dt` - no `rand()`, so it is
+deterministic and does not touch the seed-RNG order.
+
+**The missing-texture fallback** is now tested rather than assumed: a headless
+build has no textures, and the zombie keeps the flat shape it spawned with
+while the frame index still advances, because the frame index is what the
+snapshot names. A missing PNG becomes the flat shape, never an invisible
+entity and never a crash.
+
+**Unproven:** whether the lunge frame reads as an attack and whether the 2.5 px
+bob reads as hovering (docs/PENDING_VERIFICATION.md).

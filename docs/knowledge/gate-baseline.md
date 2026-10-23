@@ -71,3 +71,18 @@ difficulty: 1.00`.
 
 The 1347 in the 2026-10-22 18:47 UTC entry above is the historical number;
 **1382** is current.
+
+## 2026-10-22 19:30 UTC - note by animation: the test count moves 1382 -> 1654 (AN5)
+
+AN5 added `test_animation_states` (the pose follows `CZombieTag.state`),
+`test_animation_missing_texture` (the flat-shape fallback, the frame index
+still advancing) and `test_item_bob` (the bob moves only the displayed
+position; the pickup range and payload read `CItemTag.base_pos`). The bob test
+samples 240 ticks, which is why the suite jumps by 272 checks:
+`./build/zombie_tests` now reports **1654 passed, 0 failed**.
+
+Everything else is unchanged and was re-verified in the same commit: ctest 3/3,
+`gen_assets.py --verify` 41 textures, the release build clean, and the two
+`--seed=42` single-player runs still byte-identical at **125938 bytes / 1603
+lines** - which is the point of the base_pos split; the bob does not move the
+sim by a tick. Wave 1 still `WAVE_START a=1.00 b=8.00`.

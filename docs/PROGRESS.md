@@ -471,3 +471,24 @@ B35's colour on the *client* is still unproven.
   blocker.
 - Added `docs/PENDING_VERIFICATION.md` M9 for the client's mirrored sword
   (angle/width/tint/wrap) — v9 draws it, but headless cannot see it.
+
+### AN5 — the pose follows the state; the pickup bob; the missing-art fallback
+- `src/systems/animation.c`: the pose now follows `CZombieTag.state` — CHASE
+  walks, ATTACK holds `ANIM_ATTACK_FRAME` (frame 6, the cycle's furthest
+  reach, so it reads as a lunge instead of walking in place), HURT/DEAD
+  freeze, IDLE holds frame 0. Entering ATTACK/IDLE resets the frame timer.
+- `src/items/items.c` + `ecs.h`: the pickup bob. `items_tick_bob()` moves the
+  entity's `CPosition` (drawn and replicated) while `CItemTag.base_pos` keeps
+  the true position for the pickup range and the `GE_ITEM_PICKUP` payload.
+  Display-only by construction: the single-player events log is unchanged
+  byte-for-byte, which is why the split exists. Vertical, 1.5 Hz, 2.5 px,
+  accumulated from `dt` (no `rand()`, so the seed-RNG order is untouched).
+- Missing-art fallback tested: headless (no asset manager) the zombie keeps
+  its flat shape and the frame index still advances.
+- No death pose, deliberately: a zombie is destroyed the instant it dies and
+  the death is its particle burst; a corpse state would delay destruction and
+  move the death timestamp in the events log (single-player invariance).
+  Flagged to pm as a gameplay item if wanted.
+- Gate: build clean, ctest 3/3, `zombie_tests` 1382 → 1654 / 0 (declared in
+  `docs/knowledge/gate-baseline.md` same commit), `gen_assets.py --verify` 41,
+  SP runs byte-identical (125938 bytes / 1603 lines), wave 1 unchanged.

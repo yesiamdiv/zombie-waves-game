@@ -41,6 +41,44 @@ void system_animation(World *ecs, float dt) {
         if (!(ecs->component_masks[i] & (1u << COMP_ANIMATION))) continue;
 
         CAnimation *anim = &ecs->animations[i];
+
+        /* The pose follows the state (AN5). A zombie hitting you should not
+         * look like it is walking in place:
+         *   CHASE  - the cycle advances (the only state that walks);
+         *   ATTACK - hold the lunge frame, timer reset so leaving the state
+         *            resumes from the next frame;
+         *   HURT   - freeze whatever frame it was on (the white flash already
+         *            says "hurt");
+         *   IDLE   - hold frame 0, the stationary pose;
+         *   DEAD   - freeze (the entity is destroyed by system_cleanup, so
+         *            this only matters if it lingers for a frame).
+         * An animated entity without a zombie tag just advances the cycle. */
+        const CZombieTag *ztag = NULL;
+        if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
+            ztag = &ecs->zombie_tags[i];
+        }
+
+        if (ztag && ztag->state == ZOMBIE_ATTACK) {
+            if (anim->current_frame != ANIM_ATTACK_FRAME) {
+                anim->current_frame = ANIM_ATTACK_FRAME;
+                anim->frame_timer = 0.0f;
+            }
+            anim_show_frame(ecs, i);
+            continue;
+        }
+        if (ztag && (ztag->state == ZOMBIE_HURT || ztag->state == ZOMBIE_DEAD)) {
+            anim_show_frame(ecs, i);   /* freeze on the current frame */
+            continue;
+        }
+        if (ztag && ztag->state == ZOMBIE_IDLE) {
+            if (anim->current_frame != 0) {
+                anim->current_frame = 0;
+                anim->frame_timer = 0.0f;
+            }
+            anim_show_frame(ecs, i);
+            continue;
+        }
+
         anim->frame_timer += dt;
         if (anim->frame_duration > 0.0f && anim->frame_timer >= anim->frame_duration) {
             anim->frame_timer -= anim->frame_duration;

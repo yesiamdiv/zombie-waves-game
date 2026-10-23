@@ -38,6 +38,12 @@
 #define ANIM_MAX_FPS 15
 #define ANIM_FRAME_PERIOD_MIN (1.0f / (float)ANIM_MAX_FPS)
 
+/* The frame a zombie HOLDS while it attacks (AN5). Frame 6 is the walk
+ * cycle's furthest reach: in _zombie_walk_grid() the reaching arm's tip sits
+ * at x = 20 + round(3*sin(phase+pi)), which peaks at +3 on frame 6, so holding
+ * it reads as a lunge rather than "walking in place while hitting you". */
+#define ANIM_ATTACK_FRAME 6
+
 /* The art id of frame `frame` of the zombie walk cycle. Wraps around. */
 uint8_t anim_walk_art_id(int frame);
 

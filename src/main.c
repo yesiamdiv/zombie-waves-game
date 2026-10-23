@@ -815,6 +815,7 @@ static void update(float dt) {
             system_collision(&game.ecs, &game.world);
             system_bullets(&game.ecs, &game.world, dt);
             system_animation(&game.ecs, dt);
+            items_tick_bob(&game.ecs, dt);
             system_particles(&game.ecs, dt);
 
             /* R13/D3: scale with the REAL occupied slot count, never MAX_PLAYERS,

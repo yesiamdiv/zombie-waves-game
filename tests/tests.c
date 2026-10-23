@@ -2088,6 +2088,142 @@ static void test_animation_frame_advance(void) {
     CHECK(ecs_is_alive(&ecs, plain));
 }
 
+/* AN5: the pose follows the zombie's state. CHASE walks, ATTACK holds the
+ * lunge frame, HURT/DEAD freeze, IDLE holds the stationary pose. */
+static void test_animation_states(void) {
+    LOG_INFO("--- Test: the zombie pose follows its state ---");
+
+    World ecs;
+    ecs_init(&ecs);
+    Entity z = waves_spawn_zombie(&ecs, vec2(100, 200), THEME_GRASSLAND);
+    CHECK(z != ECS_NULL_ENTITY);
+    CZombieTag *ztag = ecs_get_zombie_tag(&ecs, z);
+    CAnimation *anim = ecs_get_animation(&ecs, z);
+    CHECK(ztag->state == ZOMBIE_CHASE);   /* spawn state walks */
+
+    /* CHASE: the cycle advances. */
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == 1);
+
+    /* ATTACK: hold the lunge frame, with the timer reset so leaving the state
+     * resumes from the next frame. */
+    ztag->state = ZOMBIE_ATTACK;
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame == ANIM_ATTACK_FRAME);
+    CHECK(anim->frame_timer == 0.0f);
+    system_animation(&ecs, ANIM_FRAME_PERIOD * 4.0f);
+    CHECK(anim->current_frame == ANIM_ATTACK_FRAME);
+    CHECK(anim->frame_timer == 0.0f);
+
+    /* HURT: frozen on whatever frame it was on. */
+    ztag->state = ZOMBIE_HURT;
+    system_animation(&ecs, ANIM_FRAME_PERIOD * 5.0f);
+    CHECK(anim->current_frame == ANIM_ATTACK_FRAME);
+    CHECK(anim->frame_timer == 0.0f);
+
+    /* DEAD: also frozen (the entity is normally destroyed). */
+    ztag->state = ZOMBIE_DEAD;
+    system_animation(&ecs, ANIM_FRAME_PERIOD * 5.0f);
+    CHECK(anim->current_frame == ANIM_ATTACK_FRAME);
+
+    /* Back to CHASE: the cycle resumes on the next frame. */
+    ztag->state = ZOMBIE_CHASE;
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    CHECK(anim->current_frame ==
+          (ANIM_ATTACK_FRAME + 1) % ANIM_WALK_FRAMES);
+
+    /* IDLE: the stationary pose, whatever frame it was on. */
+    ztag->state = ZOMBIE_IDLE;
+    system_animation(&ecs, ANIM_FRAME_PERIOD * 5.0f);
+    CHECK(anim->current_frame == 0);
+    CHECK(anim->frame_timer == 0.0f);
+}
+
+/* AN5: a build without the art must not break the animation. The test binary
+ * is headless (no asset manager), so every texture lookup is NULL: the zombie
+ * keeps the flat shape it spawned with, the frame index still advances (the
+ * frame is what the snapshot names), and nothing crashes.
+ *
+ * This is the fallback the client depends on: a missing PNG becomes the flat
+ * shape, not an invisible entity and not a crash. */
+static void test_animation_missing_texture(void) {
+    LOG_INFO("--- Test: missing art falls back, the frame still advances ---");
+
+    World ecs;
+    ecs_init(&ecs);
+    Entity z = waves_spawn_zombie(&ecs, vec2(0, 0), THEME_GRASSLAND);
+    CHECK(z != ECS_NULL_ENTITY);
+
+    CSprite *spr = ecs_get_sprite(&ecs, z);
+    CAnimation *anim = ecs_get_animation(&ecs, z);
+    CHECK(spr->sprite.shape != SPRITE_SHAPE_TEXTURE);   /* flat fallback */
+    CHECK(spr->sprite.texture == NULL);
+
+    for (int i = 0; i < ANIM_WALK_FRAMES * 3; i++) {
+        system_animation(&ecs, ANIM_FRAME_PERIOD);
+    }
+    CHECK(ecs_is_alive(&ecs, z));
+    CHECK(spr->sprite.shape != SPRITE_SHAPE_TEXTURE);   /* still flat */
+    CHECK(spr->sprite.texture == NULL);
+    CHECK(anim->current_frame == 0);   /* 3 full cycles */
+}
+
+/* AN5: the pickup bob is DISPLAY only.
+ *
+ * The bob writes CPosition (the renderer and the snapshot read it) but the
+ * pickup math reads CItemTag.base_pos, so the pickup window does not move -
+ * that is what keeps single-player pickup timing unchanged. */
+static void test_item_bob(void) {
+    LOG_INFO("--- Test: the pickup bob is cosmetic ---");
+
+    World ecs;
+    ecs_init(&ecs);
+    Entity item = items_spawn(&ecs, vec2(100, 200), ITEM_HEALTH);
+    CHECK(item != ECS_NULL_ENTITY);
+    CHECK(ecs_is_alive(&ecs, item));
+
+    CItemTag *it = ecs_get_item_tag(&ecs, item);
+    CPosition *pos = ecs_get_position(&ecs, item);
+    CHECK(it->base_pos.x == 100.0f && it->base_pos.y == 200.0f);
+    CHECK(pos->pos.x == it->base_pos.x && pos->pos.y == it->base_pos.y);
+
+    /* The DISPLAYED position bobs, vertically only, and stays small. */
+    float max_off = 0.0f;
+    for (int i = 0; i < 240; i++) {
+        items_tick_bob(&ecs, 1.0f / 60.0f);
+        float off = fabsf(pos->pos.y - it->base_pos.y);
+        if (off > max_off) max_off = off;
+        CHECK(pos->pos.x == it->base_pos.x);
+    }
+    CHECK(max_off > 0.5f);                 /* it actually moves */
+    CHECK(max_off <= ITEM_BOB_PX + 0.01f); /* and never leaves the band */
+    CHECK(it->bob_timer > 0.0f);
+
+    /* The SIM position never moved. */
+    CHECK(it->base_pos.x == 100.0f && it->base_pos.y == 200.0f);
+
+    /* The bob must not widen or narrow the pickup window: put the item's
+     * DISPLAY up (bob at its peak) and a player 20 units from the BASE - the
+     * old radius exactly - so only the base distance decides. */
+    it->bob_timer = 1.0f / (4.0f * ITEM_BOB_HZ);   /* sin() == 1, peak */
+    items_tick_bob(&ecs, 0.0f);
+    CHECK(fabsf((pos->pos.y - it->base_pos.y) - ITEM_BOB_PX) < 0.01f);
+
+    Entity player = ecs_create_entity(&ecs);
+    ecs_add_component(&ecs, player, COMP_POSITION);
+    ecs_add_component(&ecs, player, COMP_HEALTH);
+    *ecs_get_position(&ecs, player) = (CPosition){{100, 220}};  /* 20 from base */
+    *ecs_get_health(&ecs, player) = (CHealth){50, 100};
+    items_check_pickup(&ecs, player, NULL);
+    CHECK(ecs_is_alive(&ecs, item));       /* out of range on the base */
+
+    /* One step inside the base radius picks it up, bob or no bob. */
+    ecs_get_position(&ecs, player)->pos.y = 218.0f;
+    items_check_pickup(&ecs, player, NULL);
+    CHECK(!ecs_is_alive(&ecs, item));
+    CHECK(ecs_get_health(&ecs, player)->current == 80.0f);
+}
+
 /* Snapshot builder maps a live world into the 20 Hz wire format. */
 static void test_net_snapshot_build(void) {
     LOG_INFO("--- Test: net_snapshot_build maps the live world ---");
@@ -2564,6 +2700,9 @@ int tests_run_all(void) {
     test_net_art_table();
     test_animation_frames();
     test_animation_frame_advance();
+    test_animation_states();
+    test_animation_missing_texture();
+    test_item_bob();
     test_animation_rate_rule();
     test_net_snapshot_build();
     test_net_player_state();

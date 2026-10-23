@@ -2,6 +2,7 @@
 #include "events/event_bus.h"
 #include "graphics/sprite.h"
 #include "core/log.h"
+#include <math.h>
 #include <stdlib.h>
 
 Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
@@ -58,7 +59,9 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
         is.color = COLOR_WHITE;
     }
 
-    *ecs_get_item_tag(ecs, e) = (CItemTag){.type = type, .value = value, .bob_timer = 0};
+    *ecs_get_item_tag(ecs, e) = (CItemTag){
+        .type = type, .value = value, .bob_timer = 0,
+        .base_pos = pos};
     *ecs_get_sprite(ecs, e) = (CSprite){
         .sprite = is,
         .scale = 0.5f,   /* 32px art -> 16 world units, same footprint as player */
@@ -95,11 +98,13 @@ void items_check_pickup(World *ecs, Entity player, PlayerInventory *inv) {
         if (!(ecs->component_masks[i] & (1u << COMP_ITEM_TAG))) continue;
         if (!(ecs->component_masks[i] & (1u << COMP_POSITION))) continue;
 
-        Vec2 item_pos = ecs_get_position(ecs, i)->pos;
+        CItemTag *item = ecs_get_item_tag(ecs, i);
+        /* The SIM position, not the displayed one: the bob is cosmetic and
+         * must not move the pickup window (see CItemTag.base_pos). */
+        Vec2 item_pos = item->base_pos;
         float dist = vec2_distance(player_pos, item_pos);
 
         if (dist < pickup_range) {
-            CItemTag *item = ecs_get_item_tag(ecs, i);
 
             switch (item->type) {
                 case ITEM_HEALTH:
@@ -142,5 +147,30 @@ void items_check_pickup(World *ecs, Entity player, PlayerInventory *inv) {
                        item_pos.x, item_pos.y, (float)item->type, item->value, 0, 0);
             ecs_destroy_entity(ecs, i);
         }
+    }
+}
+
+/* Pickup bob: the item hovers so it reads as a pickup rather than scenery.
+ *
+ * It writes the entity's CPosition - the DISPLAYED position, which the
+ * renderer draws and the snapshot replicates, so host and client show the same
+ * bob - while CItemTag.base_pos keeps the true position for the sim. That is
+ * what makes this safe: the pickup range and the GE_ITEM_PICKUP payload use
+ * base_pos, so single-player pickup timing is unchanged (docs/PROGRESS.md,
+ * AN5). The bob is vertical only and deterministic (accumulated dt, no rand). */
+void items_tick_bob(World *ecs, float dt) {
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs->alive[i]) continue;
+        if (!(ecs->component_masks[i] & (1u << COMP_ITEM_TAG))) continue;
+        if (!(ecs->component_masks[i] & (1u << COMP_POSITION))) continue;
+
+        CItemTag *item = ecs_get_item_tag(ecs, i);
+        item->bob_timer += dt;
+
+        CPosition *pos = ecs_get_position(ecs, i);
+        pos->pos.x = item->base_pos.x;
+        pos->pos.y = item->base_pos.y +
+                     ITEM_BOB_PX * sinf(item->bob_timer *
+                                        (2.0f * 3.14159265f * ITEM_BOB_HZ));
     }
 }

@@ -132,7 +132,14 @@ typedef enum {
 typedef struct {
     ItemType type;
     float value;
-    float bob_timer;
+    float bob_timer;   /* advances every tick; drives the pickup bob */
+    /* The item's TRUE position: the sim reads this (pickup range, the
+     * GE_ITEM_PICKUP payload). The entity's CPosition is the DISPLAYED
+     * position, which the bob offsets, and is what the renderer draws and the
+     * snapshot replicates - so both screens bob together. Two positions
+     * because the bob must not move the pickup window: single-player pickup
+     * timing stays bit-identical (docs/knowledge/animation-transport.md). */
+    Vec2 base_pos;
 } CItemTag;
 
 typedef struct {
