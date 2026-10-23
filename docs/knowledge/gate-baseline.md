@@ -161,3 +161,25 @@ Measured on `feature/net-protocol` after the single 8 -> 9 bump:
 This lane does not contain AN1 yet (animation's branch is 35a8b46, its own
 `zombie_tests` count is 1253); the integrated count after the animation merge
 will be the combined figure, not 1235. Do not treat 1235 as the merged number.
+
+## 2026-10-23 11:52 UTC - note by net: the merged main tree measures 1808/0 (animation + net); SP reference unchanged
+
+Measured on `main` at `6801d7c` (merge of `feature/net-protocol` into animation's
+`3648856`), on the **merged** tree rather than either lane:
+
+- `./build/zombie_tests` -> `Tests passed: 1808  Failed: 0`. That is animation's
+  1759 plus net's 49 net-only checks (the 1235 lane figure predates
+  AN1/AN4/AN5/AN8; 1759 is animation's lane-only figure).
+- `ctest --test-dir build` -> 3/3: `net_spike`, `net_loopback`, `core_tests`.
+- `python3 tools/gen_assets.py --verify` -> 49 textures.
+- Two `--seed=42` single-player runs (25s, `--ai=bot`) -> byte-identical,
+  **125938 bytes / 1603 lines — UNCHANGED**; wave 1 still `8 zombies,
+  interval: 1.90s, difficulty: 1.00`.
+- Headless two-instance: host spawned the remote slot and started wave 1
+  (10 zombies, 1.85s for 2 players); the client mirror reached `wave=1 ents=2`;
+  no rejects and no errors.
+
+**1808 is the merged number.** The 1235 above is net's lane figure before
+animation's tests and 1759 is animation's lane-only figure; neither is the gate
+number for this tree. Version registry here: `NET_WIRE_VERSION` **9**,
+`NET_ASSET_VERSION` **3**, `NET_ART_COUNT` **26**, `NET_SNAP_ENTRY_BYTES` **35**.

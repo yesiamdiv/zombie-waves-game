@@ -602,3 +602,35 @@ Freeze lifted by animation when AN1 landed (35a8b46).
 - Merge/rebase with animation's AN1 (this lane predates it) and audio's Phase D;
   re-run the integrated gate before landing. Do not push (pm's one-time push go
   covered only cd7e8ea).
+
+---
+
+## Session 2026-10-23 — Landing: net to main (NT2 + wire v9)
+
+### Planned (pm standup)
+- After animation lands on main, merge `feature/net-protocol` into main (local,
+  no push), resolve the append-only docs conflicts by keeping both sides, and
+  re-measure the gate on the actual main tree instead of quoting either lane's
+  number.
+
+### Done
+- **`6801d7c`** `merge: land feature/net-protocol into main (NT2 + wire v9)`.
+  - NT2 `GE_EXPLOSION` (locked payload; rocket blast at first contact).
+  - Wire v9: B38 count `u8` -> `u16` (1024 cap kept), NT4 `NET_ENT_SWORD` with
+    a signed-centidegree angle and the extensible attribute table.
+  - Conflicts were only `docs/PROGRESS.md`, `docs/PENDING_VERIFICATION.md`,
+    `docs/knowledge/gate-baseline.md`; resolved by keeping both sides.
+- Merged gate on main: `zombie_tests` **1808/0**, ctest 3/3, `--verify` 49
+  textures, two seed-42 SP runs byte-identical **125938 bytes / 1603 lines**,
+  wave 1 unchanged. Recorded in `docs/knowledge/gate-baseline.md`.
+- Headless two-instance on main: host spawned the remote slot, client mirror
+  `wave=1 ents=2`, no rejects.
+- Board: NT2, NT3, NT4 -> done (NT5 was already done).
+- `render.c` checked at integration: net's mirrored-sword block and animation's
+  `system_animation()` removal both survive.
+
+### Next
+- Audio can land Phase D on this main; net will confirm NT2 is present.
+- Human checks remain: B40 sword on screen and AN8/M11 mirrored walk
+  (`docs/PENDING_VERIFICATION.md`). Headless cannot see either.
+- No push; `main` stays local until the owner's next go.
