@@ -157,7 +157,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | A6 | Commit spike verdicts into `audio-plan` §10 + measurements topic; gate first. | A2–A5 | **DONE `8f3e4c3`** — `audio-plan` §10, `knowledge/audio-measurements` (on lane), listen-for list, PROGRESS; no product code |
 | A7 | **Phase B** — audio foundations on the SDL3 backend: `src/audio/`, init/update/shutdown in `main.c`, `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`. | A1 | **DONE `ecf7a2f`/`e5c9c54`** — SDL public API path, pure mixer, trigger ring, unit tests (1207/0); headless silent, allocation-free, unproven by ear |
 | A8 | **Phase C** — `tools/gen_audio.py` + `assets/audio/**` + the sounds; deterministic regeneration. | A7 | **DONE `9d4e592`/`a98b0bc`** — stdlib 48 kHz WAV generator, 13 slots; mapping still a stub; unproven by ear |
-| A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | **UNBLOCKED** — NT2 now in main `6801d7c`; in progress; lands after assets |
+| A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | **DONE / LANDED on main `5997c86`** — gate 1862/0, SP identical; unproven by ear |
 | A10 | **Phase E** — human listens, two windows; judge whether the client's own gunshot feels late. | A9 | audio · blocked (human) |
 | AT7 | NT2 (`GE_EXPLOSION`) landing window, re-verified jointly with `net`. Measured correction: NT2 does not move the seed-42 SP reference (bot never detonates); only test count 1186→1194. | A6, D3 | **DONE** — NT2 landed `6801d7c`; SP ref unchanged; merged gate 1808/0 |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
@@ -190,12 +190,12 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 > semantically by net, should merge cleanly — still verify at integration.
 >
 > **Landing sequence — progress:** animation **LANDED** (`3648856`), net v9+NT2
-> **LANDED** (`6801d7c`), assets **LANDED** (`b0ccc28`; merged gate 1808/0,
-> **50 textures**, SP identical) → audio merges `main` and lands Phase D. Main
-> not pushed. Owner verified B43/B44/B45/AT9 on `b0ccc28` (`0da6e3f`).
-> Assets' parallel lane merge `b88a99d` was **discarded** — it committed conflict
-> markers into BUGS/PROGRESS and truncated gate-baseline; the lane is reset to
-> `main`.
+> **LANDED** (`6801d7c`), assets **LANDED** (`b0ccc28`), **audio** merged `main` and
+> landed Phase D (`5997c86`/`6a9fee1`; merged gate **1862/0**, **50 textures**,
+> SP identical 125938/1603). Main not pushed. Owner verified B43/B44/B45/AT9
+> on `b0ccc28` (`0da6e3f`). Audio still unproven by ear (Phase E/A10
+> owner-blocked). Assets' parallel lane merge `b88a99d` was **discarded** (conflict
+> markers) and the lane reset to `main`.
 >
 > **Playtest provenance (`knowledge/playtest-provenance`):** the 2026-10-23
 > playtest ran `main` before assets landed, so the owner saw none of
