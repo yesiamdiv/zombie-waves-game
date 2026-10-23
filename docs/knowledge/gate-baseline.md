@@ -50,7 +50,7 @@ scenario that uses explosives.
 
 Measured on `feature/net-protocol` after the single 8 -> 9 bump:
 
-- `./build/zombie_tests` -> `Tests passed: 1231  Failed: 0` (was 1194; +37
+- `./build/zombie_tests` -> `Tests passed: 1235  Failed: 0` (was 1194; +41
   checks across the u16-count, sword-attribute, sword-builder and wrap-safe-angle tests).
 - `ctest --test-dir build` -> 3/3: `net_spike`, `net_loopback`, `core_tests`.
 - Two `--seed=42` single-player runs (25s, `--ai=bot`) -> byte-identical,
@@ -63,4 +63,4 @@ Measured on `feature/net-protocol` after the single 8 -> 9 bump:
 
 This lane does not contain AN1 yet (animation's branch is 35a8b46, its own
 `zombie_tests` count is 1253); the integrated count after the animation merge
-will be the combined figure, not 1231. Do not treat 1231 as the merged number.
+will be the combined figure, not 1235. Do not treat 1235 as the merged number.

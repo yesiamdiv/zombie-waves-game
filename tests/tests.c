@@ -2209,6 +2209,18 @@ static void test_net_snapshot_sword_build(void) {
     while (diff > 180.0f) diff -= 360.0f;
     while (diff < -180.0f) diff += 360.0f;
     CHECK(diff > -0.01f && diff < 0.01f);
+
+    /* The host accumulates angle without wrapping, so a long session reaches
+     * thousands of radians. The encode must still land in (-180, 180]. */
+    ecs_get_sword_tag(&ecs, sword)->angle = 5000.0f;
+    CHECK(net_snapshot_build(&ecs, NULL, 0, 2.1f, NULL, &snap) >= 0);
+    CHECK(snap.attr_count == 1);
+    int16_t huge = net_attr_angle_cdeg(&snap.attrs[0]);
+    CHECK(huge > -18000 && huge <= 18000);
+    float expect = fmodf(5000.0f * (180.0f / 3.14159265358979323846f), 360.0f);
+    if (expect > 180.0f) expect -= 360.0f;
+    else if (expect <= -180.0f) expect += 360.0f;
+    CHECK(fabsf((float)huge * 0.01f - expect) < 0.01f);
 }
 
 /* NT4: the client mirrors the sword angle and blends it the short way around

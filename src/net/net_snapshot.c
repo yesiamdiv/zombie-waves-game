@@ -2,6 +2,7 @@
 #include "ecs/ecs.h"
 #include "assets/asset_manager.h"
 #include "weapons/weapons.h"
+#include <math.h>
 
 /* Float colour component -> byte. Clamps in FLOAT space: casting first would
  * make an out-of-range or negative component undefined, and comparing the
@@ -34,8 +35,12 @@ static uint16_t net_clamp_u16(int v) {
  * half of the spin backwards. */
 static int16_t net_sword_angle_cdeg(float rad) {
     float deg = rad * (180.0f / 3.14159265358979323846f);
-    while (deg > 180.0f) deg -= 360.0f;
-    while (deg <= -180.0f) deg += 360.0f;
+    /* The sword's tag angle grows without bound (`angle += spin_speed*dt`), so
+     * this must be O(1): a subtract-in-a-loop would cost more every second the
+     * host plays. fmodf then folds the remainder into (-180, 180]. */
+    deg = fmodf(deg, 360.0f);
+    if (deg > 180.0f) deg -= 360.0f;
+    else if (deg <= -180.0f) deg += 360.0f;
     float c = deg * 100.0f;
     if (c > 18000.0f) c = 18000.0f;
     if (c < -18000.0f) c = -18000.0f;
