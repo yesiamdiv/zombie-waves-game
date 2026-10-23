@@ -717,3 +717,72 @@ Freeze lifted by animation when AN1 landed (35a8b46).
 
 **Commits:** `cce1990` (the spike verdicts + the trigger audit + the new
 `audio-measurements` topic) and `f23ecdc` (the listen-for list + this log).
+
+---
+
+## Session 2026-10-23 — Phase B: the audio system
+
+### PM — planned
+- A7 (Phase B): `src/audio/` on SDL3, init/tick/shutdown in `main.c`, no
+  per-frame allocation, headless silent, gate green.
+- Keep §4 at option (a); do not build (c) (A6 follow-up, `9c89126`).
+- No branch pushes; audio rebases onto animation and merges after it.
+
+### DEV — done
+- **`src/audio/audio.{h,c}`** — `audio_init(headless, test_cue)` /
+  `audio_shutdown()` / `audio_tick(bus, listener_x, listener_y)`. One device,
+  one 48 kHz mono-float format, WAVs decoded and resampled at init so the audio
+  thread only copies. A mutex-guarded trigger ring means a game hitch cannot
+  underrun: the voices keep reading on the audio thread. Soft-fail everywhere —
+  no device, no file and headless all mean silence and a running game.
+- **`src/audio/audio_mixer.{h,c}`** — fixed 32-voice pool, 64-entry pending
+  ring, linear pan, distance falloff at 24 world units, output clamp. Pure (no
+  SDL), which is why it is the unit-tested part.
+- **`src/main.c`** — four small insertions: `audio_init()` after the event
+  bus, `audio_shutdown()` before `event_bus_shutdown()`, `audio_tick()` between
+  `relay_net_events()` and `event_bus_flush()` (the only window where `GE_KILL`
+  still exists), and `--audio-test`.
+- **Stubs by design:** `SFX_PATHS[]` all NULL and `audio_sfx_for_event()`
+  returns `AUDIO_SFX_NONE` — Phase C owns the files, Phase D the mapping. The
+  enum already has the 13 slots from the §6 audit, and deliberately none for
+  reload / out-of-ammo / shop.
+- **API correction found while implementing:** the SDL3 the project fetches
+  (`SDL.git` `main` @ `9bb6a861`, 3.5.0) no longer *declares*
+  `SDL_OpenAudioDeviceStream`; the symbol is exported but an implicit
+  declaration fails `-Werror`. Phase B uses `SDL_OpenAudioDevice` +
+  `SDL_CreateAudioStream` + `SDL_SetAudioStreamGetCallback` + bind + resume.
+  Recorded in `audio-measurements`, together with the capture-level drift
+  (-34.0 dBFS on the saved A1 capture, -42.1 dBFS from the same probe today on
+  the same sink - only same-session comparisons mean anything).
+- **Device path proven without an ear:** SDL's disk driver
+  (`SDL_AUDIODRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=...`) captured what the
+  device was handed during `--audio-test`: peak **0.3000** on both channels,
+  1 kHz, the designed 150 ms, L == R, and 184,290 of 191,488 frames exact
+  zeros. That is the whole chain - queue -> audio-thread callback -> mixer ->
+  stream -> device - measured, not assumed.
+- **Gate:** build clean under `-Werror` (no warnings), `ctest` 3/3,
+  `zombie_tests` 1207/0 (was 1186; +21 audio checks), three 25 s `--seed=42`
+  SP runs byte-identical (125938 B / 1603 lines) - one of them with
+  `SDL_AUDIODRIVER=nosuchdriver`, which cannot change a headless run because the
+  device path is never entered. Wave 1 unchanged.
+- **Docs:** audio-plan §7 (phases A/B done, nothing vendored) and §10 (the API
+  correction), `audio-measurements` (new Phase B section), this log, and
+  `PENDING_VERIFICATION.md` (status: Phase B landed, still silent by
+  construction; no-device and headless checks ticked, missing-file still open
+  until Phase C).
+
+### PM — next
+- Phase C: `tools/gen_audio.py` + `assets/audio/**`, deterministic, verified
+  with `python3 tools/gen_assets.py --verify`.
+- Phase D once net's NT2 (`eadc98e`) reaches the branch audio merges onto:
+  fill `audio_sfx_for_event()` and the slot paths; consume `GE_EXPLOSION` as
+  net ships it.
+- Phase E: a human listens - the listen-for list is in
+  `PENDING_VERIFICATION.md`.
+
+### Blocked
+- Nothing blocks B or C. D waits for NT2 on the merge target; E waits for a
+  human. **No sound has been heard**, so nothing audio is `done` - Phase B is
+  `unproven` on the ear test by construction.
+
+**Commits:** `ecf7a2f` (Phase B foundations) and this docs commit.

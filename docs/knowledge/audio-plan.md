@@ -206,11 +206,21 @@ type on a host and on a client for one 25-second run and record both here.
 
 | Phase | Deliverable | Acceptance |
 |---|---|---|
-| **A. Spike** | §10 verdicts filled in | miniaudio linked; trigger audit complete; double-fire ruled out; relayed-latency answered; verdict written before implementation. **§4 already decided — do not re-open.** |
-| **B. Foundations** | `src/audio/`, vendor header, init/update/shutdown in `main.c`, `AUDIO_TICK` in the §3 window | headless path allocation-free and silent; build clean; gate green |
+| **A. Spike** ✅ | §10 verdicts filled in | SDL3 audio path proven (no vendored header); trigger audit complete; double-fire ruled out; relayed-latency answered; verdict written before implementation. **§4 already decided — do not re-open.** |
+| **B. Foundations** ✅ | `src/audio/` (SDL3 device + our own mixer), init/tick/shutdown in `main.c`, `AUDIO_TICK` in the §3 window | headless path allocation-free and silent; build clean; gate green |
 | **C. Content** | `tools/gen_audio.py`, `assets/audio/**`, the sounds | generator deterministic; regenerating leaves `git status` clean |
 | **D. Multiplayer** | triggers work from the relayed bus; §4 option (a) consumed | client hears kills, damage, pickups, wave start **and gunfire** (relayed by `[net]`); audio adds **no** wire field and edits **no** relay list |
 | **E. Verification** | human listens, two windows | `PENDING_VERIFICATION.md` lists what to listen for, on which peer |
+
+**Status (2026-10-23):** A and B are done — A6 at `cce1990`, B at `ecf7a2f`.
+Nothing is vendored (the Spike A verdict removed miniaudio); B uses the public
+SDL3 device API, which is *not* the `SDL_OpenAudioDeviceStream` the spike
+measured — see the correction in §10. B's device path is measured, not heard:
+the product's own output captured through SDL's disk driver is exactly the
+designed cue (peak 0.300, 1 kHz, 150 ms, L==R, digital silence elsewhere), and
+`--headless` logs `Audio: headless - device never opened`. **No human has heard
+anything yet**, so the feature is `unproven`, and there is still no sound to
+hear: `SFX_PATHS[]` is all NULL and the event mapping is Phase D.
 
 ## 8. Cross-dependencies
 
@@ -279,6 +289,16 @@ plays nothing, and only one of those is a defect ([versioning-decisions]).
   *Consequence for the plan:* §6 Spike A named miniaudio; this verdict replaces
   it. `vendor/` is not created, nothing is vendored, and `tools/` gains no
   audio dependency.
+  **Correction 2026-10-23 (found during implementation):** the SDL3 the project
+  fetches (`SDL.git` `main` @ `9bb6a861`, version 3.5.0, cached under
+  `~/.cache/cmake-deps/sdl3-src`) no longer **declares**
+  `SDL_OpenAudioDeviceStream`. The symbol is still exported by
+  `libSDL3.so.0.5.0`, but compiling against it is an implicit declaration and
+  fails `-Werror`. Phase B therefore opens the device the public way:
+  `SDL_OpenAudioDevice` + `SDL_GetAudioDeviceFormat` + `SDL_CreateAudioStream`
+  + `SDL_SetAudioStreamGetCallback` + `SDL_BindAudioStream` +
+  `SDL_ResumeAudioStreamDevice`. The verdict stands (still SDL3, 0 B, no
+  vendored file); only the call names changed. Detail in [audio-measurements].
 - **Soft-fail (no device / missing file): PASS, at probe level.** SDL3 with
   `SDL_AUDIODRIVER=nosuchdriver` → `sdl_init_failed`, exit 0; SDL3 and
   miniaudio with a missing file → `soft_fail_missing_file=1`, exit 0; no

@@ -213,15 +213,27 @@ or HUD defects, so none of them is proven by any test in this repo.** Two window
 - [ ] **The host still shows its own name tag** (B32 changed the flag the host
       already passed correctly, so this is a regression check, not a new check).
 
-## Audio — nothing is implemented yet, so nothing is proven
+## Audio — Phase B (device + mixer) landed; nothing is audible yet, so nothing is proven by ear
 
-**Status: PLANNED. There is no audio code in the tree** (no `src/audio/`, no
-`assets/audio/`, no `SDL_Audio` call anywhere). The spike that chose the
-backend and audited the triggers is done and recorded in
-`docs/knowledge/audio-plan.md` §10 and `docs/knowledge/audio-measurements.md`;
-the phases that implement it are not. **No automated gate in this repo can
-hear anything** — the sound work ships `unproven` until a human has listened
-([audio-plan] §1).
+**Status: PARTLY BUILT, UNPROVEN BY EAR.** Phase B landed at `ecf7a2f`:
+`src/audio/` (SDL3 device path + our own mixer), `audio_tick()` in the
+`relay_net_events()` -> `event_bus_flush()` window, `--audio-test`. There are
+**no assets and no event->sound mapping yet** (`SFX_PATHS[]` is all NULL,
+`audio_sfx_for_event()` returns none), so the game is silent by construction
+and every item below is still pending. **No automated gate in this repo can
+hear anything** ([audio-plan] §1).
+
+Already measured, and explicitly not a substitute for a listen:
+
+- **Device path**: SDL's disk driver captured the product's own output during
+  `--audio-test` - peak 0.3000, 1 kHz, the designed 150 ms, L == R, exact
+  digital silence elsewhere (whole chain: queue -> audio-thread callback ->
+  mixer -> stream -> device). Detail in `audio-measurements`, Phase B.
+- **No device is soft-fail, not a crash**: `SDL_AUDIODRIVER=nosuchdriver` with a
+  real window logs one WARN and the game keeps running silently.
+- **`--headless` opens no device**: DEBUG `Audio: headless - device never
+  opened`; three same-seed SP runs, one with a deliberately broken driver, are
+  byte-identical (125938 B / 1603 lines).
 
 The list below is the acceptance script for the day the sound lands. It is
 written now, while the trigger audit is fresh, so the human knows what to
@@ -243,13 +255,16 @@ listen for and on which peer.
       frame + ~1 ms network). If the client hears its own shot noticeably
       late, that is the open question in [audio-plan] §10, and it is a PM
       decision, not a bug to be silently patched.
-- [ ] **Silence, not a crash, when there is no device.** Run with
-      `SDL_AUDIODRIVER=nosuchdriver`: the game must run to completion with no
-      sound, no assert, no error spam.
+- [x] **Silence, not a crash, when there is no device.** Measured at game
+      level 2026-10-23: `SDL_AUDIODRIVER=nosuchdriver` logs one WARN and the
+      windowed game keeps running with no sound.
 - [ ] **Silence, not a crash, when a sound file is missing.** Rename one
-      asset: the game must keep running and log the missing file once.
-- [ ] **`--headless` opens no audio device.** The gate runs headless
-      thousands of times; it must stay silent and allocation-free.
+      asset: the game must keep running and log the missing file once. (Cannot
+      be run yet - no slot has a path until Phase C; the loader path is
+      probe-level so far.)
+- [x] **`--headless` opens no audio device.** Measured 2026-10-23: DEBUG
+      `Audio: headless - device never opened`, no allocation, and a run with a
+      broken driver is byte-identical to a normal one.
 
 ## Still open by decision
 

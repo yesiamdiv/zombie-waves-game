@@ -209,3 +209,88 @@ the measured ~90 ms median. On a machine that holds 60 FPS the same path costs
 - **Every other sound is unaffected.** Kills, damage, pickups, wave starts and
   explosions are events *about* the world, not about the player's own hands, so
   one relay frame of delay is invisible to the listener.
+
+## 2026-10-23 16:55 UTC - note by audio: Phase B device path, and two corrections
+
+**Status: MEASURED (device path). Still unproven by ear.** Phase B landed at
+`ecf7a2f`; this is how the real device path was verified without a human, plus
+two things the spike got wrong or that drifted.
+
+### Correction 1 - the API the project actually has
+
+The SDL3 the project builds is fetched from `SDL.git` `main` (commit
+`9bb6a861`, version 3.5.0) into `~/.cache/cmake-deps/sdl3-src`. That header no
+longer **declares** `SDL_OpenAudioDeviceStream`; the symbol is still exported by
+`libSDL3.so.0.5.0`, but compiling against it is an implicit declaration and
+fails the project's `-Werror`. The product uses the public path instead:
+
+`SDL_OpenAudioDevice` -> `SDL_GetAudioDeviceFormat` -> `SDL_CreateAudioStream`
+-> `SDL_SetAudioStreamGetCallback` -> `SDL_BindAudioStream` ->
+`SDL_ResumeAudioStreamDevice`; on shutdown `SDL_DestroyAudioStream` ->
+`SDL_CloseAudioDevice` -> `SDL_QuitSubSystem(SDL_INIT_AUDIO)`.
+
+The Spike A verdict does not change: the cost argument was 0 B / 0 s / no
+vendored file, and this is still SDL3 already in the tree.
+
+### Correction 2 - absolute capture levels drift between sessions
+
+The saved Spike A captures still measure 12 kHz at **-34.0 / -29.3 / -46.6
+dBFS** (SDL3 / miniaudio / silence). Re-running the *same probe binary* today
+measured **-42.1 dBFS** on the same sink. The desktop's own audio load changes
+the sink's gain staging, so a dBFS number from one session cannot be compared
+with one from another. **Phase E must be a human listen, not a dBFS
+threshold.**
+
+### How the device path was proven (no human needed)
+
+SDL3's **disk** audio driver writes exactly what the device was handed, with no
+ambient noise and no other app in the mix:
+
+```sh
+SDL_AUDIODRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=/tmp/product.wav \
+  ./build/open_world_zombie_waves --audio-test
+```
+
+`--audio-test` queues one 1 kHz, 150 ms, 5 ms-faded, 0.30-amplitude sine at
+init. The 3.99 s capture (`/tmp/opencode/audiophaseb/product.wav`, raw F32LE
+stereo 48 kHz) measured:
+
+- peak **0.3000** on both channels, **L and R bit-identical** (centre pan),
+- the burst is the designed **150 ms**, starting at t=0 - the trigger ring is
+  drained on the first device pull,
+- **184,290 of 191,488 frames are exact zeros** - no DC, no stuck voice, no
+  leak outside the cue,
+- the device log line: `driver=disk, SDL_AUDIO_F32LE 2 ch 48000 Hz`, then
+  `Audio: shut down` with no error.
+
+That exercises the whole chain (game-thread queue -> audio-thread get-callback
+-> mixer -> stream -> device), which is precisely what an ear test would
+otherwise be asked to prove.
+
+### Real device, and headless
+
+Real device: `driver=pulseaudio`, `SDL_AUDIO_F32LE`, 2 ch, 48 kHz (~72k frames
+produced in 1.5 s in the probe). The SDL3 build has ALSA + PulseAudio backends
+(dlopen `libasound` / `libpulse`) and dummy; **no PipeWire backend** is
+compiled in (`SDL_PIPEWIRE` off, no pipewire headers), so PipeWire is reached
+through PulseAudio or through ALSA's `default` -> PipeWire routing. That is
+what the fetched build has, not a defect.
+
+Headless: DEBUG `Audio: headless - device never opened`, no `SDL_INIT_AUDIO`,
+no allocation. Three 25 s `--seed=42` SP runs produced **byte-identical** event
+logs (125938 B / 1603 lines), one of them with
+`SDL_AUDIODRIVER=nosuchdriver` - a broken driver cannot change a headless run
+because the device path is never entered.
+
+Game level soft-fail with a real window: `SDL_AUDIODRIVER=nosuchdriver` gives
+one WARN (`Audio: disabled (Audio target 'nosuchdriver' not available) - the
+game continues silently`), the game stays up and runs. The missing-file path
+is still probe-level only: no slot has a path yet (Phase C).
+
+### Phase B gate
+
+Build clean under `-Werror` (no warnings in project sources), `ctest` 3/3,
+`zombie_tests` **1207 passed / 0 failed** (was 1186; +21 audio checks), wave 1
+unchanged (`8 zombies, interval: 1.90s, difficulty: 1.00`), SP events log
+unchanged (125938 B / 1603 lines).
+
