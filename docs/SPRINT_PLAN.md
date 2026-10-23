@@ -144,7 +144,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **DONE `18c95af`** — `zombie_walk0..7.png`, frame 0 == idle, 8 pairwise distinct; **textures 33→41** re-baselined in `gate-baseline` on the animation lane |
 | AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **DONE `e45304c`** — `src/graphics/anim.*` + `src/systems/animation.c`; frame texture on the sprite so host/client share one answer; wire untouched; tests 1253→1347; walk cycle on-screen unproven |
 | AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | **DONE `bbf4805`** — `ANIM_MAX_FPS`/`ANIM_FRAME_PERIOD_MIN`, `test_animation_rate_rule` simulates the 20 Hz snapshot client; teeth proven by breaking it; tests 1347→1382 |
-| AN5 | Content: walk/attack/death states + pickup bob, no wire change (player walk split out to AN8). | AN2, AN3 | **animation · IN PROGRESS** |
+| AN5 | Content: walk/attack/death states + pickup bob, no wire change (player walk split out to AN8). **No death pose** — a corpse would delay destruction and move the death timestamp, breaking SP invariance (gameplay item). | AN2, AN3 | **DONE `e5d3f8a`** — 1382→1654 tests; M10 unproven; commits local |
 | AN6 | Phase D client path — same selection function; **blocked on human two-window I5 check**. | human | animation · blocked (human) |
 | AN7 | NT4 animation-side support: sword art ids + angle contract (procedural blade, int16 centidegrees) for net. | AN1 | **DONE `275a9af`** — v9 had already consumed the art (id 9/base 40), so only the contract + geometry check; no code, no `NET_ASSET_VERSION` bump |
 | AN8 | **Player walk** (future piece): needs new art ids + a `NET_ASSET_VERSION` bump, so it is a separate commit after AN5 and a net freeze window. | AN5, net freeze | animation · later (split out of AN5) |
@@ -165,7 +165,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AT10 | **B45** damage-vignette refinement: replace the banded real-time fill with a baked radial-alpha texture (alpha 0 centre → max at edges from ~40% radius), drawn full-screen, fading on the existing timer, reset on hit. Decision: `knowledge/ui-damage-vignette`. Board: `task_01a16382656225660a3f39fe`. | assets | **DONE `f7e2556`** (+docs `7eed6da`) — `ui/vignette.png`, 33→34 lane-local; on-screen unproven |
 | AT11 | **B43** dropped-loot sprites: transparent PNG areas render white + items too small; fix alpha/blend, enlarge, and recheck all other assets. Board: `task_01a16382322209bde0f58c00`. | assets | **DONE `fba930e`** (+docs `8899446`) — art, not blend; 33 textures; on-screen unproven |
 | AT12 | **B44** menu UI text overlap: measure text bounding boxes, detect collisions, add padding/spacing (no magic-number nudging). Board: `task_01a1638246425086b78d8add`. | assets | **DONE `267665f`** (+docs `a5eeb74`) — map-select row spacing `lh*2+12`, menu/shop clamped ≥12px; zero overlaps ≥480px tall; on-screen unproven |
-| AT13 | Harden `gen_assets.py --verify`: every entity texture RGBA + transparent corners, size vs declared/`base_px`, texture count vs `gate-baseline` (lane-local; explicit message). Prevents the B2/B43 class failing silently. | assets | **assets · IN PROGRESS** — headless, no wire impact |
+| AT13 | Harden `gen_assets.py --verify`: every entity texture RGBA + transparent corners, size vs declared/`base_px`, texture count vs `gate-baseline` (lane-local; explicit message). Prevents the B2/B43 class failing silently. | assets | **DONE `56154f0`/`cc5d5b9`** — negative-tested, no wire impact |
 
 > **Lane-local gate baselines (PM, 2026-10-22).** Several lanes re-baseline the
 > same `knowledge/gate-baseline` numbers independently; those numbers are
@@ -182,8 +182,12 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 >
 > **One code file both lanes touched:** `src/systems/render.c` — net's v9 added
 > the mirrored-sword block in `system_render_mirror()`, animation's AN3 removed
-> `system_animation()` from the same file. Different functions; check that file
-> specifically at integration.
+> `system_animation()` from the same file. Different functions; checked
+> semantically by net, should merge cleanly — still verify at integration.
+>
+> **Landing sequence now:** animation lands first (prep + merged gate) → net
+> merges v9 + NT2 → assets merges (rebases to texture 42) → audio rebases and
+> lands Phase D. Main not pushed.
 
 ### shared
 
