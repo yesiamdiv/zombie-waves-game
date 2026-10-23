@@ -261,10 +261,6 @@ gate in this repo can clear any of it.
       **Implemented 2026-10-22 (AN3):** the frame is put on the entity's
       sprite, so the host draws the walk frame and the snapshot carries its
       art id. Still unproven - a gate cannot see a picture.
-- [ ] **The sword (NT4) still needs its own check** when it lands: the blade
-      angle is interpolated client-side between two host frames with
-      wrap-safe maths, and a wrap across 180 deg is exactly the case that
-      looks wrong and never shows up in a headless run.
 ## Unproven on screen — NT4 sword replication (`99f8db4`, wire v9)
 
 Headless tests prove the wire, the builder and the mirror maths; none of them can
