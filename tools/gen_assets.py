@@ -11,6 +11,7 @@ Usage:  python3 tools/gen_assets.py [--scale N] [--verify]
 import argparse
 import os
 import random
+import re
 import sys
 
 from PIL import Image
@@ -20,6 +21,9 @@ DEFAULT_SCALE = 4
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "tiles")
 ENT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "entities")
 UI_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "textures", "ui")
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+NET_ART_C = os.path.join(ROOT, "src", "net", "net_art.c")
+GATE_BASELINE = os.path.join(ROOT, "docs", "knowledge", "gate-baseline.md")
 
 
 def render(grid, palette, scale):
@@ -321,6 +325,88 @@ def ui_vignette(size=256, max_alpha=170, color=(220, 30, 30)):
     return img
 
 
+def _asset_fail(msg):
+    print("ASSET VERIFY FAILED:", msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def verify_entity_art(paths):
+    """Every entity PNG must be RGBA with fully transparent corners.
+
+    An opaque corner is exactly the B2/B43 bug: the transparent background was
+    baked in as an opaque card, so the sprite drew as a box on the ground. The
+    render path already blends correctly, so this is the only place the class
+    can hide."""
+    ent_dir = os.path.abspath(ENT_DIR)
+    entities = [p for p in paths
+                if os.path.dirname(os.path.abspath(p)) == ent_dir]
+    if not entities:
+        _asset_fail(f"no entity textures were generated into {ENT_DIR}")
+    for p in entities:
+        name = os.path.basename(p)
+        with Image.open(p) as im:
+            im.load()
+            if im.mode != "RGBA":
+                _asset_fail(f"{name} is {im.mode}, expected RGBA")
+            w, h = im.size
+            for (cx, cy) in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+                if im.getpixel((cx, cy))[3] != 0:
+                    _asset_fail(
+                        f"{name} has a non-transparent corner "
+                        f"({cx},{cy})={im.getpixel((cx, cy))}; entity art must "
+                        f"have a transparent background (B2/B43)")
+
+
+def verify_entity_sizes_vs_net_art(paths):
+    """net_art's `base_px` must equal the real PNG width.
+
+    base_px converts a replicated diameter into a draw scale, so a mismatch
+    makes the client draw the wrong size (B43). Parse the C table instead of
+    duplicating its numbers here, so the two cannot drift apart."""
+    with open(NET_ART_C, encoding="utf-8") as f:
+        text = f.read()
+    rows = re.findall(r'"([^"]+\.png)"\s*,\s*(\d+)\s*\}', text)
+    if not rows:
+        _asset_fail(f"could not parse any art rows from {NET_ART_C}")
+    by_name = {os.path.basename(p): p for p in paths}
+    for rel, base_px in rows:
+        name = os.path.basename(rel)
+        if name not in by_name:
+            _asset_fail(f"net_art references {rel}, which this generator "
+                        f"does not emit")
+        with Image.open(by_name[name]) as im:
+            if im.width != int(base_px):
+                _asset_fail(
+                    f"{rel}: PNG width {im.width} != net_art base_px {base_px} "
+                    f"in src/net/net_art.c (they must match)")
+
+
+def declared_texture_count():
+    """Read the CURRENT texture count from gate-baseline.md.
+
+    The file is a chronological log, so the last `N textures` declaration in
+    the tree is the current one. This stays lane-local: animation's lane
+    declares its own number and the merged tree declares the combined one, so
+    never hard-code a count here."""
+    last = None
+    with open(GATE_BASELINE, encoding="utf-8") as f:
+        for line_no, line in enumerate(f, 1):
+            for m in re.finditer(r"(\d+)\s+textures\b", line):
+                last = (int(m.group(1)), line_no)
+    if last is None:
+        _asset_fail(f"no 'N textures' declaration found in {GATE_BASELINE}")
+    return last
+
+
+def verify_texture_count(paths):
+    declared, line_no = declared_texture_count()
+    if len(paths) != declared:
+        _asset_fail(
+            f"generator emits {len(paths)} textures but {GATE_BASELINE} "
+            f"(line {line_no}) declares {declared}. Textures change only via a "
+            f"deliberate re-baseline: update gate-baseline.md in the same commit.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scale", type=int, default=DEFAULT_SCALE)
@@ -404,6 +490,9 @@ def main():
         for p in paths:
             with Image.open(p) as im:
                 im.verify()
+        verify_entity_art(paths)
+        verify_entity_sizes_vs_net_art(paths)
+        verify_texture_count(paths)
         print(f"verified {len(paths)} textures")
 
 
