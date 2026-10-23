@@ -275,3 +275,47 @@ reverse, because it only ever holds the last id it was given.
 **Still unproven:** the rate is arithmetic, not perception. Whether 10 fps
 reads as a walk or as a slideshow is a question for human eyes
 (`docs/PENDING_VERIFICATION.md`).
+
+## 2026-10-22 19:05 UTC - note by animation: the sword angle contract (AN7)
+
+AN7 was "sword art ids + angle contract for net". Net's v9 landed first
+(`99f8db4`) and consumed what already existed, so AN7 turned out to need **no
+new animation code** - but it did need the contract written down, because
+"unsigned vs signed" is the kind of detail that is silently wrong.
+
+**What the animation lane guarantees (unchanged by AN7):**
+
+- The blade art id is `NET_ART_SWORD = 9` in the shared table
+  (`src/net/net_art.h`), path `textures/entities/sword_blade.png`,
+  `base_px 40`.
+- The file is 40x16 RGBA and `entity_blade()` in `tools/gen_assets.py` draws
+  the handle at x=0..6 and the tip at x=39 - so the texture's **left edge is
+  the handle**. `sprite_draw_blade()` maps tex x=0 to the handle and x=1 to the
+  tip, which matches the art; no mirroring is needed.
+- The host spawns the sword's sprite with that texture
+  (`src/systems/sword.c`), so the snapshot's `art` resolves to 9 through
+  `net_art_from_path`.
+- The sword carries no `COMP_ANIMATION`, so the frame selectors cannot clobber
+  the blade.
+
+**What the wire carries (net v9) - the one detail that had to be pinned:**
+
+- The angle is a **signed int16 in centidegrees, in (-18000, +18000]**;
+  18000 = 180 degrees. It is *signed* because the blade is drawn from a pivot:
+  an unsigned half-turn (0..18000) would draw one half of the spin backwards.
+  -172.5 degrees must survive encode/decode.
+- Interpolation is **wrap-safe**: +170 -> -170 goes through 180, not through 0
+  (`net_mirror_sample_attr`).
+- `size_q` for a sword is its **blade length** in half units; width is a
+  separate attribute byte (the host's `SWORD_WIDTH`), also half units.
+- None of this moved `NET_SNAP_ENTRY_BYTES` (still 35): the attributes ride a
+  trailing self-describing table, so any future attribute can be added without
+  moving an existing offset.
+
+**Not done, deliberately:** no `NET_ART_*` row was added or changed, no
+`NET_ASSET_VERSION` bump, no `net.h` edit. The frame still travels as the
+existing `art` id and the walk cycle adds nothing to the snapshot.
+
+**Unproven:** the client's mirrored sword - angle, width, tint, and the
+no-backwards-flip at 180 - needs a two-window run (`docs/PENDING_VERIFICATION.md`
+M9). v9 draws it; nothing headless can see an angle.

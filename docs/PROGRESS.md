@@ -452,3 +452,22 @@ B35's colour on the *client* is still unproven.
   `docs/knowledge/gate-baseline.md` in the same commit), `gen_assets.py
   --verify` 41 textures, two `--seed=42` SP runs byte-identical (125938 bytes /
   1603 lines).
+
+### AN7 — the sword angle contract (no new code; the contract recorded)
+- Net's v9 (`99f8db4`) landed first and consumed what the animation lane
+  already had: `NET_ART_SWORD = 9`, `textures/entities/sword_blade.png`,
+  `base_px 40`, and the host spawn already gives the blade that texture. AN7
+  therefore needed **no animation code change** — no new art row, no
+  `NET_ASSET_VERSION` bump, no `net.h` edit.
+- Verified against the art: the PNG is 40x16 and the generator draws the
+  handle on the left, tip on the right, so `sprite_draw_blade`'s handle->tip
+  texture mapping is the right way round.
+- Recorded the contract in `docs/knowledge/animation-transport.md`: signed
+  int16 **centidegrees** in (-18000, +18000], wrap-safe interpolation through
+  180, `size_q` = blade length, width = separate attr byte. Net confirmed the
+  "signed, not unsigned" point independently — an unsigned half-turn would
+  draw half the spin backwards.
+- Replied to net: AN7 does not change the id/size/pivot, so it is not a v9
+  blocker.
+- Added `docs/PENDING_VERIFICATION.md` M9 for the client's mirrored sword
+  (angle/width/tint/wrap) — v9 draws it, but headless cannot see it.

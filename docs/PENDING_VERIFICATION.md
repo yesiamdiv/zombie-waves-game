@@ -106,6 +106,7 @@ Each needs a real on-device two-instance run with a human looking at the screen.
 | M5-GUI | R13-N1 — the client bot acts on the snapshot mirror rather than a local ECS. The headless mirror clock is proven; the *behaviour* is not. | Guest runs `--ai=bot`; its bot must aim and shoot at zombies the host spawned. |
 | M6 | R13-I2a/I2b — the remote player is visible on the client and its beacon sits *under* the sprite, not over it. | Guest window: host's avatar readable as a character, marker beneath it. |
 | M7 | R13-I3 — dropped-item bullets render and clear on pickup. | Host or guest window: bullet visible on drop, gone after pickup. |
+| M9 | **NT4 — the client's mirrored sweeping sword.** v9 draws it from the handle pivot with the host's blade length (`size_q`), width (attr byte) and tint, and interpolates the angle wrap-safe as a *signed* int16 in centidegrees. Headless cannot see an angle or a width. | Two windows, host holding the sword: the guest's blade must sit on the same pivot, point the same way at the same moment, and must not flip when the spin crosses 180°. |
 
 ## Known harness gaps worth fixing later
 
