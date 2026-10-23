@@ -360,6 +360,13 @@ Freeze lifted by animation when AN1 landed (35a8b46).
   the host's length/width/angle, and wrap-safe mirror interpolation. Suite
   **1231/0**.
 - Docs: VERSIONING registry/worked note, BUGS B38 resolution, gate baseline.
+- Review follow-up (33c4663): `net_mirror_push_removing()` compacted entities
+  but not the new attribute table, so a dead sword's angle survived in the
+  older/newer snapshots and a recycled id would blend through it. Attributes are
+  now stripped by the same dead-id test; test asserts both snapshots and the
+  sampler forget the id.
+- B40: added its missing bug-table row and wrote the two-instance sword checks
+  into `PENDING_VERIFICATION.md` as UNPROVEN (headless cannot see the blade).
 
 ### Measured gate
 - build `-Werror` clean; `zombie_tests` **1231 passed / 0 failed**; `ctest` 3/3.
