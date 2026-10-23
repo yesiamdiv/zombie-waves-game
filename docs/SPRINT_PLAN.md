@@ -212,7 +212,9 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 |---|---|---|---|
 | HU1 | **Ideation proposal only (no code):** 6–10 concrete HUD/effects ideas, each with player-visible result, files touched, cost S/M/L, risk, on-screen verification; ranked with top 3 named; menu backdrop included; wire/sim changes flagged separately. Board: `task_01a168c19b7d139fadc3c13b`. | assets | **in progress** (lane synced to `0da6e3f`) |
 | HU2 | Approved HUD/effect slices — one commit each, full gate, **unproven until the owner looks**. | assets | pending owner ranking |
-| AP1 | **Ideation only:** animation polish (staggered horde bob/phase, item bob phase, relayed-event muzzle flash, player damage feedback, sword trail). No sim changes, rand-free, SP-byte-identical. | animation | **review** (`task_01a168cde42e6f4418f66391`) |
+| AP1 | **Ideation only:** animation polish (staggered horde phase P1, per-item bob P2, relayed-event muzzle flash P3, player damage feedback P4, sword trail P5). No sim, rand-free; P3 needs confirmation re "cosmetic deterministic from relayed stream". | animation | **review** (`task_01a168cde42e6f4418f66391`) |
+| NR1 | **Ideation only:** net robustness/docs (co-op check tool, hostile decoder sweep + ASan, relay overflow visibility, reject-message fixes, snapshot size assert). No wire/sim changes. | net | **review** (`task_01a168cf05e23e005591399a`) |
+| QI1 | **Ideation only:** QA guardrails (tree/path banner, gate manifest, safer two-instance launch, untracked policy, GUI-only tagging). Recommends 1+3 first. | qa | **done** (`task_01a168cf460224e48e532d31`) |
 
 Constraints: HUD readability beats decoration; cosmetics must be client-safe
 (host is truth; a client computes only deterministic cosmetics); anything
