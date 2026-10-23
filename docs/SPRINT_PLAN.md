@@ -144,9 +144,10 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AN2 | Generator support for one walk cycle (8 individual PNGs; +24 LOC; `--verify` checks them). Can start now. | AT3 | **DONE `18c95af`** — `zombie_walk0..7.png`, frame 0 == idle, 8 pairwise distinct; **textures 33→41** re-baselined in `gate-baseline` on the animation lane |
 | AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **DONE `e45304c`** — `src/graphics/anim.*` + `src/systems/animation.c`; frame texture on the sprite so host/client share one answer; wire untouched; tests 1253→1347; walk cycle on-screen unproven |
 | AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | **DONE `bbf4805`** — `ANIM_MAX_FPS`/`ANIM_FRAME_PERIOD_MIN`, `test_animation_rate_rule` simulates the 20 Hz snapshot client; teeth proven by breaking it; tests 1347→1382 |
-| AN5 | Content: walk/attack/death states + pickup bob, no wire change (player walk split out to AN8). **No death pose** — a corpse would delay destruction and move the death timestamp, breaking SP invariance (gameplay item). | AN2, AN3 | **DONE `e5d3f8a`** — 1382→1654 tests; M10 unproven; commits local |
+| AN5 | Content: walk/attack/death states + pickup bob, no wire change (player walk split out to AN8). **No death pose** — a corpse would delay destruction and move the death timestamp, breaking SP invariance (gameplay item). | AN2, AN3 | **DONE `e5d3f8a`** — added to AN8 rollup |
 | AN6 | Phase D client path — same selection function; **blocked on human two-window I5 check**. | human | animation · blocked (human) |
 | AN7 | NT4 animation-side support: sword art ids + angle contract (procedural blade, int16 centidegrees) for net. | AN1 | **DONE `275a9af`** — v9 had already consumed the art (id 9/base 40), so only the contract + geometry check; no code, no `NET_ASSET_VERSION` bump |
+| AN8 | **Player walk** (future piece): needs new art ids + a `NET_ASSET_VERSION` bump, so it is a separate commit after AN5 and a net freeze window. | AN5, net freeze | **DONE `13621b8`/`e4f730f`/`629d4ad`** — player_walk0..7 (18–25), ASSET 3, COMP_ANIMATION on spawn; frame 0 == idle; tests 1721→1759 on lane; M11 unproven; committed under net freeze |
 | AN8 | **Player walk** (future piece): needs new art ids + a `NET_ASSET_VERSION` bump, so it is a separate commit after AN5 and a net freeze window. | AN5, net freeze | animation · later (split out of AN5) |
 | AT6 | ~~Audio Phase-0 spike~~ — **superseded** by audio's own proposed breakdown A1–A6 (owner rule: build tasks from the agent's proposal). | AT2 | cancelled → A1–A6 |
 | A1 | Audio backend decision, measured: vendored miniaudio vs **SDL3's own audio API** (already linked); compile/binary/device cost, sound proven on the speakers (pw-record). Verdict may change the plan of record. | AT2 | **DONE `8f3e4c3`** — verdict **SDL3 audio API**: 0 B binary / 0 s build / no new dep vs miniaudio 4.1 MB header + 19 s compile + 646–884 KB + `-ldl -lpthread`; both reach the speakers (tone captured). Cost decision: we own ~150–250 lines of mixing. |
@@ -155,7 +156,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | A4 | Double-fire audit: emission counts per event type, host vs client, 25 s co-op. | A1 | **DONE `8f3e4c3`** — ruled out by counting: every relayed type at ratio 1.00 in two co-op runs (25 s headless, 18 s windowed), ids one-for-one |
 | A5 | Gunfire latency (audible?) + reload-on-wire evidence. | A1 | **DONE `8f3e4c3`** — relay ~1 ms; delay is frame-bound (one host + one client frame): ~90 ms median at ~25 FPS, ~33 ms at 60 FPS; no reload exists |
 | A6 | Commit spike verdicts into `audio-plan` §10 + measurements topic; gate first. | A2–A5 | **DONE `8f3e4c3`** — `audio-plan` §10, `knowledge/audio-measurements` (on lane), listen-for list, PROGRESS; no product code |
-| A7 | **Phase B** — audio foundations on the SDL3 backend: `src/audio/`, init/update/shutdown in `main.c`, `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`. | A1 | **audio · next** — headless silent + allocation-free |
+| A7 | **Phase B** — audio foundations on the SDL3 backend: `src/audio/`, init/update/shutdown in `main.c`, `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`. | A1 | **DONE `ecf7a2f`/`e5c9c54`** — SDL public API path, pure mixer, trigger ring, unit tests (1207/0); headless silent, allocation-free, unproven by ear |
 | A8 | **Phase C** — `tools/gen_audio.py` + `assets/audio/**` + the sounds; deterministic regeneration. | A7 | audio · next |
 | A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | audio · next (after NT2 in main; rebase per merge order) |
 | A10 | **Phase E** — human listens, two windows; judge whether the client's own gunshot feels late. | A9 | audio · blocked (human) |
@@ -172,8 +173,10 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 > **lane-local, not merged**:
 > - **Textures:** animation AN2 → **41** (8 walk PNGs), assets B45 → **34**
 >   (vignette). Merged = **42** (33 + 8 + 1).
-> - **Tests:** animation AN1 → **1253**, AN3 → **1347**, AN4 → **1382**; net NT2 →
->   **1194** (GE_EXPLOSION), and NT3/NT4 plus audio's mixer tests will add more.
+> - **Tests:** animation AN1 → **1253**, AN3 → **1347**, AN4 → **1382**,
+>   AN5+AN8 → **1759** on lane; net NT2+NT3+NT4 → **1235**, tip **1808** in the
+>   net+animation provisional merge; audio A7 → **1207**. The merged baseline will be
+>   re-measured at landing.
 >
 > Do **not** resolve a merge by picking one lane's number. On the merged tree,
 > run the suite and `gen_assets --verify` and set the measured numbers
