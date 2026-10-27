@@ -2359,6 +2359,48 @@ static void test_item_bob(void) {
     CHECK(ecs_get_health(&ecs, player)->current == 80.0f);
 }
 
+/* AN/P2: drops must not bob in lockstep. The phase comes from the item's own
+ * data (type + spawn position) and is offset from zero, so a wave's pickups
+ * hover out of step instead of pumping together. */
+static void test_item_bob_phase(void) {
+    LOG_INFO("--- Test: pickups bob out of phase ---");
+
+    World ecs;
+    ecs_init(&ecs);
+    Entity a = items_spawn(&ecs, vec2(100, 200), ITEM_HEALTH);
+    Entity b = items_spawn(&ecs, vec2(140, 200), ITEM_HEALTH);
+    Entity c = items_spawn(&ecs, vec2(140, 200), ITEM_AMMO);
+    CHECK(a != ECS_NULL_ENTITY && b != ECS_NULL_ENTITY && c != ECS_NULL_ENTITY);
+
+    CItemTag *ta = ecs_get_item_tag(&ecs, a);
+    CItemTag *tb = ecs_get_item_tag(&ecs, b);
+    CItemTag *tc = ecs_get_item_tag(&ecs, c);
+
+    const float period = 1.0f / ITEM_BOB_HZ;
+    CHECK(ta->bob_timer >= 0.0f && ta->bob_timer < period);
+    CHECK(tb->bob_timer >= 0.0f && tb->bob_timer < period);
+    /* Different position, same type: different phase. */
+    CHECK(ta->bob_timer != tb->bob_timer);
+    /* Same position, different type: different phase. */
+    CHECK(tb->bob_timer != tc->bob_timer);
+
+    /* Deterministic: the same spawn is the same phase, so a host and a client
+     * that both spawn it agree without any wire field. */
+    Entity again = items_spawn(&ecs, vec2(100, 200), ITEM_HEALTH);
+    CHECK(ecs_get_item_tag(&ecs, again)->bob_timer == ta->bob_timer);
+
+    /* De-synced displays, not de-synced simulation: the base (sim) position is
+     * exactly where it was asked to spawn. */
+    CHECK(ta->base_pos.x == 100.0f && ta->base_pos.y == 200.0f);
+    CHECK(tb->base_pos.x == 140.0f && tb->base_pos.y == 200.0f);
+
+    /* And they are actually at different heights in the same frame. */
+    items_tick_bob(&ecs, 0.37f);
+    float ya = ecs_get_position(&ecs, a)->pos.y;
+    float yb = ecs_get_position(&ecs, b)->pos.y;
+    CHECK(ya != yb);
+}
+
 /* Snapshot builder maps a live world into the 20 Hz wire format. */
 static void test_net_snapshot_build(void) {
     LOG_INFO("--- Test: net_snapshot_build maps the live world ---");
@@ -3271,6 +3313,7 @@ int tests_run_all(void) {
     test_animation_states();
     test_animation_missing_texture();
     test_item_bob();
+    test_item_bob_phase();
     test_animation_rate_rule();
     test_animation_player_walk();
     test_net_snapshot_build();

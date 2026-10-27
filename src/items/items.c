@@ -5,6 +5,27 @@
 #include <math.h>
 #include <stdlib.h>
 
+/* Deterministic bob phase for one pickup (AN/P2).
+ *
+ * Every item used to start its bob at t = 0, so all the drops of a wave bobbed
+ * in perfect unison - the same tell as a whole wave marching in step. The
+ * offset is taken from the item's own data (type and spawn position), NOT from
+ * rand(): rand() order is load-bearing for single-player determinism (the
+ * death burst already draws from it), and a display offset must be
+ * reproducible rather than random. Same type at the same spot gives the same
+ * phase, which also means host and client agree for free - the offset is baked
+ * into the position that replicates. */
+static float item_bob_phase(ItemType type, Vec2 pos) {
+    uint32_t h = (uint32_t)type * 3266489917u;
+    h ^= (uint32_t)(int32_t)lrintf(pos.x * 16.0f) * 2654435761u;
+    h ^= (uint32_t)(int32_t)lrintf(pos.y * 16.0f) * 2246822519u;
+    h ^= h >> 15;
+    h *= 0x85ebca6bu;
+    h ^= h >> 13;
+    /* Uniform over one full bob period. */
+    return (float)(h % 1000u) / 1000.0f / ITEM_BOB_HZ;
+}
+
 Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
     Entity e = ecs_create_entity(ecs);
     if (e == ECS_NULL_ENTITY) return e;
@@ -60,7 +81,8 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
     }
 
     *ecs_get_item_tag(ecs, e) = (CItemTag){
-        .type = type, .value = value, .bob_timer = 0,
+        .type = type, .value = value,
+        .bob_timer = item_bob_phase(type, pos),
         .base_pos = pos};
     *ecs_get_sprite(ecs, e) = (CSprite){
         .sprite = is,
