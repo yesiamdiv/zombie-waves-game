@@ -3292,8 +3292,6 @@ int tests_run_all(void) {
     LOG_INFO("========================================");
 
     return tests_failed > 0 ? 1 : 0;
-    RUN_TEST(net_codec_hostile_decoder_sweep);
-    RUN_TEST(net_snapshot_size_budget);
 }
 
 int main(void) {
