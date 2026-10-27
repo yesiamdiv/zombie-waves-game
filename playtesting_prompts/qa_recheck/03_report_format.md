@@ -61,3 +61,17 @@ PASS | PASS-WITH-CAVEATS | FAIL   (one)
 4. Assumptions you made (skipped S8, shortened S2-equivalent, used `timeout` bounds).
 5. Replay pack: every copy-paste command/script from the report in one block so an
    engineer can reproduce everything deterministically.
+## Q4: Untracked Findings Policy
+- Playtest findings under `playtesting_prompts/qa_recheck/findings/` are **kept untracked** unless the owner explicitly asks otherwise (AGENTS.md §6).
+- Only **actual bugs with repro** go into tracked docs: `docs/BUGS.md` (general) and `docs/R13_BUGFIX_TRACKER.md` (R13 net series).
+- Don't commit findings files.
+
+## Q5: GUI-Only Tagging
+Tag findings as `gui-only` if headless cannot prove/disprove:
+- Map select / map loading / themes
+- Sprites vs dots (I5/B32-B35)
+- Beacons, HUD layout/overlap
+- Vignette/visual effects
+- Menus/shop visuals
+
+For `gui-only` items, mark **unproven** until human observes them on-screen. Never mark `PASS` based on headless only.
