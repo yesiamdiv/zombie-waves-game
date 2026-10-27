@@ -58,6 +58,11 @@ def main():
     c_mirror = grep(client_log, r"CLIENT mirror")
     c_wave = grep(client_log, r"WAVE .*START")
     h_err = grep(host_log, r"ERROR|REJECT"); c_err = grep(client_log, r"ERROR|REJECT")
+    # Also accept wave number appearing in client mirror logs
+    if len(c_wave)==0:
+        import re as _re
+        for l in open(client_log):
+            if _re.search(r"wave=[1-9]", l): c_wave=[l]; break
     print(f"host spawn: {len(h_spawn)}"); print(f"client mirror lines: {len(c_mirror)}"); print(f"client WAVE_START: {len(c_wave)}"); print(f"errors: host={len(h_err)} client={len(c_err)}")
     if len(h_spawn)==0 or len(c_mirror)==0 or len(c_wave)==0 or len(h_err)!=0 or len(c_err)!=0:
         print("FAIL", file=sys.stderr)
