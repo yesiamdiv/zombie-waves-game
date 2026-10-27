@@ -43,6 +43,7 @@ topic rather than copying its contents into another doc.
 | `knowledge/build-shared-dep-cache.md` | the shared dep cache, and why a feature branch re-downloads 1.5G |
 | `knowledge/open-decisions-awaiting-pm.md` | **what is blocked, and on whom** |
 | `knowledge/agent-rules.md` | how two agents build in parallel — file ownership, shared files, version contention, frame windows, merge order |
+| `knowledge/animation-polish.md` | what anim polish was approved, in what shape (P1 display-only), and where effects live |
 | `knowledge/animation-plan.md` | the sprite-animation plan — spike-first; the A-vs-B transport question lives in `animation-transport` |
 | `knowledge/audio-plan.md` | the sound plan — vendored miniaudio, event-driven triggers, the gunfire gap closed as B37 |
 | `knowledge/animation-agent.md` | **start-here for the animations agent** — branch, worktree, owned files, first task |
