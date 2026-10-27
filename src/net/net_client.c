@@ -274,6 +274,8 @@ void net_client_update(NetClient *c) {
                          * refuse the session instead. */
                         c->flags = NET_FLAG_WORLD_MISMATCH;
                         c->reject_reason = NET_REJECT_WORLD;
+                        c->reject_theirs = (uint32_t)map_index;
+                        c->reject_ours = (uint32_t)map_registry_count();
                         c->state = NET_CLIENT_REJECTED;
                         LOG_ERROR("NET: host selected unknown map %u (%d available)",
                                   (unsigned)map_index, map_registry_count());
