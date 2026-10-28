@@ -75,3 +75,6 @@ Tag findings as `gui-only` if headless cannot prove/disprove:
 - Menus/shop visuals
 
 For `gui-only` items, mark **unproven** until human observes them on-screen. Never mark `PASS` based on headless only.
+
+## Cleanup Notes
+Always record PIDs used and that processes were cleaned up (by explicit kill) in findings if instances were launched.

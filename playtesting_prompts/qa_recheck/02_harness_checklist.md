@@ -15,3 +15,10 @@ When launching host+join:
 - Never use `pkill -f open_world_zombie_waves` (matches shell); use PIDs or `pgrep` carefully
 - Print IP/ports/PIDs before joining
 - Host must be ready before join (sleep 1-2s minimum)
+
+## Process & /tmp Cleanup Checks (required)
+After any run that captures audio or launches game instances:
+- [ ] Check for leftover processes: `pgrep -af "open_world_zombie_waves|pw-record|paplay|parec"` (review output)
+- [ ] Check /tmp size/growth: `du -sh /tmp` before/after or note new large files in `/tmp/opencode/`
+- [ ] Kill only by explicit PID (never `pkill -f open_world_zombie_waves` — it matches the calling shell)
+- [ ] Clean up test artifacts if requested (do not delete unrelated files)
