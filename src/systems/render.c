@@ -1,8 +1,27 @@
+#include <SDL3/SDL.h>
 #include "systems/systems.h"
 #include "net/net_mirror.h"
 #include "events/event_bus.h"
 #include "items/items.h"
 #include <stdlib.h>
+#include <math.h>
+/* P1b: spawn-in timing (display only). */
+static float g_spawn_first_t[ECS_MAX_ENTITIES];
+static uint8_t g_spawn_first_t_set[ECS_MAX_ENTITIES];
+#define SPAWN_IN_DURATION 0.15f
+static float now_seconds(void) {
+    return (float)(SDL_GetTicks()) / 1000.0f;
+}
+__attribute__((unused)) static float entity_spawn_age_host(uint32_t idx) {
+    if (idx >= ECS_MAX_ENTITIES) return 1e9f;
+    if (!g_spawn_first_t_set[idx]) {
+        g_spawn_first_t[idx] = now_seconds();
+        g_spawn_first_t_set[idx] = 1;
+    }
+    float age = now_seconds() - g_spawn_first_t[idx];
+    if (age < 0.0f) age = 0.0f;
+    return age;
+}
 
 void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -33,6 +52,20 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         float draw_alpha = spr->base_alpha;
         float draw_scale = spr->scale;
         float draw_rot = 0.0f;
+
+        /* P1b: spawn fade/scale-in (~0.15 s), display-only. */
+        if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
+            float age = entity_spawn_age_host(i);
+            if (age < SPAWN_IN_DURATION) {
+                float t = age / SPAWN_IN_DURATION;
+                if (t < 0.0f) t = 0.0f;
+                if (t > 1.0f) t = 1.0f;
+                /* ease in */
+                t = t * t;
+                draw_scale *= (0.6f + 0.4f * t);
+                draw_alpha *= t;
+            }
+        }
 
         /* Flash white when zombie is hurt */
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {

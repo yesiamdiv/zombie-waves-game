@@ -14,6 +14,24 @@ void net_mirror_push(NetMirror *m, const NetSnapshot *snap) {
     }
     m->newer = *snap;
     m->has_newer = true;
+    m->now_sim_time = snap->sim_time;
+    /* Record first appearance for spawn-in (host and client). */
+    for (int i = 0; i < snap->count; i++) {
+        uint16_t id = snap->entities[i].id;
+        bool seen = false;
+        for (int s2 = 0; s2 < NET_MIRROR_SPAWN_MAX; s2++) {
+            if (m->spawn[s2].in_use && m->spawn[s2].id == id) { seen = true; break; }
+        }
+        if (seen) continue;
+        for (int s2 = 0; s2 < NET_MIRROR_SPAWN_MAX; s2++) {
+            if (!m->spawn[s2].in_use) {
+                m->spawn[s2].in_use = true;
+                m->spawn[s2].id = id;
+                m->spawn[s2].first_sim_time = snap->sim_time;
+                break;
+            }
+        }
+    }
 }
 
 void net_mirror_push_removing(NetMirror *m, const NetSnapshot *snap,
@@ -160,4 +178,18 @@ float net_mirror_newer_time(const NetMirror *m) {
 
 float net_mirror_older_time(const NetMirror *m) {
     return m && m->has_older ? m->older.sim_time : 0.0f;
+}
+float net_mirror_spawn_age(const NetMirror *m, uint16_t id, float now_sim_time) {
+    if (!m) return 1e9f;
+    float t = now_sim_time >= 0.0f ? now_sim_time : m->now_sim_time;
+    for (int i = 0; i < NET_MIRROR_SPAWN_MAX; i++) {
+        if (m->spawn[i].in_use && m->spawn[i].id == id) {
+            float a = t - m->spawn[i].first_sim_time;
+            if (a < 0.0f) a = 0.0f;
+            return a;
+        }
+    }
+    /* First time seeing this entity id through this query: treat as just born. */
+    /* Caller should prefer recording on push; this is a fallback. */
+    return 0.0f;
 }
