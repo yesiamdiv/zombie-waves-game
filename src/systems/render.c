@@ -10,6 +10,10 @@ static float g_spawn_first_t[ECS_MAX_ENTITIES];
 static uint8_t g_spawn_first_t_set[ECS_MAX_ENTITIES];
 #define SPAWN_IN_DURATION 0.15f
 
+/* P3: muzzle flash from relayed/shoot events (procedural, no PNG). */
+#define MUZZLE_MAX 32
+__attribute__((unused)) static struct { float x,y,ang,life,ttl; } g_muzzle[MUZZLE_MAX];
+
 /* P5: sword trail history (render-only). */
 #define SWORD_TRAIL_LEN 8
 __attribute__((unused)) static struct { Entity sword; float ang[SWORD_TRAIL_LEN]; int count; int idx; float len[SWORD_TRAIL_LEN]; float w[SWORD_TRAIL_LEN]; float ox[SWORD_TRAIL_LEN]; float oy[SWORD_TRAIL_LEN]; } g_trail[SWORD_TRAIL_LEN];
