@@ -6,7 +6,7 @@ Usage:
 
 Capture through the game's own device path first:
 
-    SDL_AUDIODRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=/tmp/game.f32 \\
+    SDL_AUDIODRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=build/logs/game.f32 \\
         ./build/open_world_zombie_waves --ai=bot --auto-start --run-seconds=20
 
 The capture is the mixer's output (2 ch F32LE 48 kHz for the disk driver). Each

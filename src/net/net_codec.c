@@ -636,7 +636,7 @@ void net_version_conflict_message(char *buf, int cap, int reason,
                      "Both players need the same build.", theirs, ours);
             break;
         case NET_REJECT_FULL:
-            snprintf(buf, (size_t)cap, "Host lobby is full.");
+            snprintf(buf, (size_t)cap, "Host lobby is full (%u/%u).", theirs, ours);
             break;
         default:
             snprintf(buf, (size_t)cap, "Host refused the connection: %s.",
