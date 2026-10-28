@@ -56,6 +56,7 @@ typedef struct {
      * back to a flat colored shape. */
     AssetManager assets;
     TTF_Font *font;
+    TTF_Font *font_medium;
     TTF_Font *font_large;
     bool running;
 
@@ -448,10 +449,12 @@ static bool init(void) {
         }
 
         game.font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18);
+        game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22);
         game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36);
         if (!game.font) {
             LOG_WARN("Failed to load DejaVu font, trying fallback...");
             game.font = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 18);
+            game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 22);
             game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 36);
         }
         if (!game.font) {
@@ -485,6 +488,7 @@ static void shutdown_game(void) {
     map_select_free(&game.map_select);
 
     if (game.font) TTF_CloseFont(game.font);
+    if (game.font_medium) TTF_CloseFont(game.font_medium);
     if (game.font_large) TTF_CloseFont(game.font_large);
     /* R13 merge fix (B14): destroy cached textures before the renderer. */
     if (!game.headless) asset_manager_shutdown(&game.assets);

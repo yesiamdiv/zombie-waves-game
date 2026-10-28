@@ -13,6 +13,8 @@ struct Player; /* forward decl; hud.c includes players.h */
 
 typedef struct {
     float damage_flash;
+    float low_hp_glow;      /* low HP pulse/glow, distinct from damage vignette */
+    float low_hp_pulse_time;
     float message_timer;
     char message[128];
     float last_player_hp;   /* previous frame's player HP, for hurt-flash */
