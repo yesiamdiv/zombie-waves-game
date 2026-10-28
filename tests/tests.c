@@ -2359,6 +2359,60 @@ static void test_item_bob(void) {
     CHECK(ecs_get_health(&ecs, player)->current == 80.0f);
 }
 
+/* P1a: a wave must not march in step. Each zombie's starting frame is hashed
+ * from its entity slot, so a horde is a crowd rather than a chorus line. The
+ * frame PERIOD is untouched, so the offset is permanent - and because the frame
+ * travels as the art id, a client inherits it with no wire field. */
+static void test_zombie_walk_stagger(void) {
+    LOG_INFO("--- Test: the horde walk is staggered ---");
+
+    enum { N = 12 };
+    World ecs;
+    ecs_init(&ecs);
+    Entity z[N];
+    int seen[ANIM_WALK_FRAMES] = {0};
+    int distinct = 0;
+
+    for (int i = 0; i < N; i++) {
+        z[i] = waves_spawn_zombie(&ecs, vec2(100.0f + 20.0f * i, 200), THEME_GRASSLAND);
+        CHECK(z[i] != ECS_NULL_ENTITY);
+        CAnimation *a = ecs_get_animation(&ecs, z[i]);
+        CHECK(a->current_frame >= 0 && a->current_frame < ANIM_WALK_FRAMES);
+        /* The pose is offset, the timing is not. */
+        CHECK(a->frame_timer == 0.0f);
+        CHECK(a->frame_duration == ANIM_FRAME_PERIOD);
+        CHECK(a->total_frames == ANIM_WALK_FRAMES);
+        if (!seen[a->current_frame]) {
+            seen[a->current_frame] = 1;
+            distinct++;
+        }
+    }
+    /* A dozen zombies landing on four different frames would already be
+     * suspicious luck; landing on ONE (the old behaviour) is what this test
+     * exists to catch. */
+    CHECK(distinct >= 3);
+
+    /* Deterministic: the same slot hash gives the same starting frame. */
+    uint32_t phase = z[0] * 2654435761u;
+    phase ^= phase >> 15;
+    phase *= 0x85ebca6bu;
+    phase ^= phase >> 13;
+    CHECK(ecs_get_animation(&ecs, z[0])->current_frame
+          == (int)(phase % (uint32_t)ANIM_WALK_FRAMES));
+
+    /* Advancing keeps everyone's relative offset: the cycle wraps, it does not
+     * resynchronise the wave. */
+    int before[N];
+    for (int i = 0; i < N; i++) {
+        before[i] = ecs_get_animation(&ecs, z[i])->current_frame;
+    }
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    for (int i = 0; i < N; i++) {
+        int expect = (before[i] + 1) % ANIM_WALK_FRAMES;
+        CHECK(ecs_get_animation(&ecs, z[i])->current_frame == expect);
+    }
+}
+
 /* AN/P2: drops must not bob in lockstep. The phase comes from the item's own
  * data (type + spawn position) and is offset from zero, so a wave's pickups
  * hover out of step instead of pumping together. */
@@ -3314,6 +3368,7 @@ int tests_run_all(void) {
     test_animation_missing_texture();
     test_item_bob();
     test_item_bob_phase();
+    test_zombie_walk_stagger();
     test_animation_rate_rule();
     test_animation_player_walk();
     test_net_snapshot_build();
