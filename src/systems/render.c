@@ -9,6 +9,10 @@
 static float g_spawn_first_t[ECS_MAX_ENTITIES];
 static uint8_t g_spawn_first_t_set[ECS_MAX_ENTITIES];
 #define SPAWN_IN_DURATION 0.15f
+
+/* P5: sword trail history (render-only). */
+#define SWORD_TRAIL_LEN 8
+__attribute__((unused)) static struct { Entity sword; float ang[SWORD_TRAIL_LEN]; int count; int idx; float len[SWORD_TRAIL_LEN]; float w[SWORD_TRAIL_LEN]; float ox[SWORD_TRAIL_LEN]; float oy[SWORD_TRAIL_LEN]; } g_trail[SWORD_TRAIL_LEN];
 static float now_seconds(void) {
     return (float)(SDL_GetTicks()) / 1000.0f;
 }
@@ -42,6 +46,38 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
             const CSwordTag *sword = &ecs->sword_tags[i];
             float length = sword->outer_radius - sword->radius;
             float width = spr->sprite.as.rect.w > 0.0f ? spr->sprite.as.rect.w : 8.0f;
+            /* P5: procedural blade trail from recent angles (render-only). */
+            {
+                int slot = -1;
+                for (int t = 0; t < SWORD_TRAIL_LEN; t++) {
+                    if (g_trail[t].count == 0 || g_trail[t].sword == i) { slot = t; break; }
+                }
+                if (slot < 0) slot = 0;
+                if (g_trail[slot].sword != i) {
+                    g_trail[slot].sword = i;
+                    g_trail[slot].count = 0;
+                    g_trail[slot].idx = 0;
+                }
+                int ti = g_trail[slot].idx;
+                g_trail[slot].ang[ti] = sword->angle;
+                g_trail[slot].len[ti] = length;
+                g_trail[slot].w[ti] = width;
+                g_trail[slot].ox[ti] = screen.x;
+                g_trail[slot].oy[ti] = screen.y;
+                g_trail[slot].idx = (ti + 1) % SWORD_TRAIL_LEN;
+                if (g_trail[slot].count < SWORD_TRAIL_LEN) g_trail[slot].count++;
+                /* draw faint trail behind */
+                for (int j = 1; j < g_trail[slot].count; j++) {
+                    int k = (g_trail[slot].idx - j + SWORD_TRAIL_LEN) % SWORD_TRAIL_LEN;
+                    float fade = 1.0f - (float)j / (float)g_trail[slot].count;
+                    float tw = g_trail[slot].w[k] * (0.4f + 0.6f * fade);
+                    float talpha = spr->base_alpha * 0.25f * fade;
+                    sprite_draw_blade(renderer, spr->sprite.texture,
+                                      g_trail[slot].ox[k], g_trail[slot].oy[k], g_trail[slot].ang[k],
+                                      g_trail[slot].len[k], tw, cam->zoom,
+                                      spr->sprite.color, talpha);
+                }
+            }
             sprite_draw_blade(renderer, spr->sprite.texture,
                               screen.x, screen.y, sword->angle,
                               length, width, cam->zoom,
