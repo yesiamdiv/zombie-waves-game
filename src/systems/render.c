@@ -1,3 +1,4 @@
+#include <SDL3/SDL_blendmode.h>
 #include <SDL3/SDL.h>
 #include "systems/systems.h"
 #include "net/net_mirror.h"
@@ -118,6 +119,27 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         sprite_draw(renderer, &spr->sprite, screen.x, screen.y,
                      draw_scale * cam->zoom, draw_rot, draw_alpha);
 
+        /* P3: procedural muzzle flashes driven by relayed/shoot events (render-only). */
+        if (g_events) {
+            int c = g_events->count;
+            for (int ei = 0; ei < c && ei < 1024; ei++) {
+                const GameEvent *ev = &g_events->ring[(g_events->head + ei) % EV_MAX_EVENTS];
+                if (ev->type != GE_PLAYER_SHOT) continue;
+                Vec2 es = camera_world_to_screen(cam, vec2(ev->x, ev->y));
+                float mz = cam->zoom;
+                /* Procedural, additive, no PNG, no rand affecting sim. */
+                SDL_BlendMode oldb = SDL_BLENDMODE_BLEND;
+                SDL_GetRenderDrawBlendMode(renderer, &oldb);
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_ADD);
+                SDL_SetRenderDrawColorFloat(renderer, 1.0f, 0.95f, 0.7f, 0.9f);
+                SDL_FRect fr = {es.x - 8.0f*mz, es.y - 3.0f*mz, 16.0f*mz, 6.0f*mz};
+                SDL_RenderFillRect(renderer, &fr);
+                SDL_SetRenderDrawColorFloat(renderer, 1.0f, 1.0f, 0.9f, 0.6f);
+                SDL_FRect fr2 = {es.x - 4.0f*mz, es.y - 2.0f*mz, 8.0f*mz, 4.0f*mz};
+                SDL_RenderFillRect(renderer, &fr2);
+                SDL_SetRenderDrawBlendMode(renderer, oldb);
+            }
+        }
         /* Draw health bar for damaged entities */
         if ((ecs->component_masks[i] & (1u << COMP_HEALTH)) &&
             (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG))) {
