@@ -1011,3 +1011,4 @@ Found 2026-10-22 by the owner, playing (follow-up to B41).
   runs still byte-identical at 125938 bytes / 1603 lines (the overlay touches no
   simulation or event). **On-screen result is UNPROVEN until the owner looks**
   (`i5-unverified-on-screen`) — no gate can see banding.
+| B46 | Weapon keys 1-4 do nothing in single-player (input routed to net-client queue) | `3ac2528` (main) | FIXED; UNPROVEN on screen until owner confirms |

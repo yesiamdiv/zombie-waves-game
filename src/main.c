@@ -789,7 +789,7 @@ static void update(float dt) {
                 if (input_key_pressed(&game.input, SDL_SCANCODE_3)) { w = WEAPON_GRENADE;  key = SDL_SCANCODE_3; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_4)) { w = WEAPON_LAUNCHER; key = SDL_SCANCODE_4; }
                 if (key != SDL_SCANCODE_UNKNOWN) {
-                    if (game.net_host_mode) {
+                    if (!render_only_client()) {
                         if (w != local_inv->current) {
                             if (!weapons_select(local_inv, w)) {
                                 hud_show_message(&game.hud, "Weapon locked - buy it in the shop (B)", 2.0f);
