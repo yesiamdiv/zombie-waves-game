@@ -6,6 +6,7 @@ void weapons_inventory_init(PlayerInventory *inv) {
     inv->current = WEAPON_PISTOL;
     for (int i = 0; i < WEAPON_COUNT; i++) inv->unlocked[i] = false;
     inv->unlocked[WEAPON_PISTOL] = true;
+    inv->unlocked[WEAPON_KNIFE] = true;   /* starter kit: knife + gun */
     inv->grenades = 0;
     inv->launcher_ammo = 0;
     inv->points = 0;
@@ -86,6 +87,7 @@ const char *weapons_name(WeaponType w) {
         case WEAPON_SWORD:    return "Sword";
         case WEAPON_GRENADE:  return "Grenade";
         case WEAPON_LAUNCHER: return "Launcher";
+        case WEAPON_KNIFE:    return "Knife";
         default:              return "?";
     }
 }

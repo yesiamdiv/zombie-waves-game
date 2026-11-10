@@ -307,7 +307,7 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
                  weapons_name((WeaponType)(use_auth ? auth->weapon
                                                      : (int)inv->current)),
                  (use_auth ? auth->weapon : (int)inv->current) != WEAPON_PISTOL
-                     ? " [1-4 to switch]" : " [1-4 weapons]");
+                     ? " [1-5 to switch]" : " [1-5 weapons]");
         SDL_FColor wcol = {0.9f, 0.9f, 0.95f, 0.95f};
         draw_text_right(renderer, font, wbuf, (float)screen_w - 20.0f, 95.0f, wcol);
 
@@ -341,6 +341,6 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
 
     /* Pause / shop hints */
     SDL_FColor pause_hint = {0.3f, 0.3f, 0.35f, 0.5f};
-    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-4: Weapon | F11: Fullscreen",
+    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-5: Weapon | F11: Fullscreen",
               20.0f, (float)screen_h - 30.0f, pause_hint);
 }

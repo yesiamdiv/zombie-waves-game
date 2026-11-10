@@ -781,7 +781,7 @@ static void update(float dt) {
                 break;
             }
 
-            /* Weapon switching (1-4). Locked weapons are rejected with a hint. A
+            /* Weapon switching (1-5). Locked weapons are rejected with a hint. A
              * render-only client has no inventory - it just queues the
              * selection so the host applies it. */
             {
@@ -792,6 +792,7 @@ static void update(float dt) {
                 if (input_key_pressed(&game.input, SDL_SCANCODE_2)) { w = WEAPON_SWORD;    key = SDL_SCANCODE_2; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_3)) { w = WEAPON_GRENADE;  key = SDL_SCANCODE_3; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_4)) { w = WEAPON_LAUNCHER; key = SDL_SCANCODE_4; }
+                if (input_key_pressed(&game.input, SDL_SCANCODE_5)) { w = WEAPON_KNIFE;    key = SDL_SCANCODE_5; }
                 if (key != SDL_SCANCODE_UNKNOWN) {
                     if (!render_only_client()) {
                         if (w != local_inv->current) {
@@ -1313,7 +1314,7 @@ static void apply_net_inputs(void) {
         p->input.world_aim = true;
         if (in.buttons & NET_INPUT_BTN_SHOOT) p->input.mouse_buttons[0] = true;
 
-        if ((int)in.weapon <= WEAPON_LAUNCHER &&
+        if ((int)in.weapon < WEAPON_COUNT &&
             p->inventory.current != (WeaponType)in.weapon) {
             weapons_select(&p->inventory, (WeaponType)in.weapon);
         }
