@@ -2791,6 +2791,17 @@ static void test_net_player_state(void) {
      * spawned, so it must read as not-in-use. */
     CHECK((snap.player_states[3].flags & NET_PST_IN_USE) == 0);
 
+    /* v10 wire-size assertion: deliberate literal, not the macro. A layout
+     * change must force someone to read this test next to the version bump. */
+    CHECK(NET_PLAYER_STATE_BYTES == 25);
+    /* v10: pistol_ammo is host-authoritative and must cross the wire intact,
+     * including the saturating maximum. */
+    snap.player_states[0].pistol_ammo = 123;
+    snap.player_states[1].pistol_ammo = 65535;
+    /* v10: weapon 4 is WEAPON_KNIFE (enum lands in weapons.h with the assets
+     * work); the wire carries it as the same u8 as every other weapon. */
+    snap.player_states[1].weapon = 4;
+
     /* ---- round trip ---- */
     uint8_t buf[NET_SNAP_MAX_BYTES];
     NetHeader hdr = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 7, 0, 0};
@@ -2802,6 +2813,8 @@ static void test_net_player_state(void) {
         CHECK(got.player_states[i].grenades == snap.player_states[i].grenades);
         CHECK(got.player_states[i].launcher_ammo ==
               snap.player_states[i].launcher_ammo);
+        CHECK(got.player_states[i].pistol_ammo ==
+              snap.player_states[i].pistol_ammo);
         CHECK(got.player_states[i].hp_centis == snap.player_states[i].hp_centis);
         CHECK(got.player_states[i].hp_max_centis ==
               snap.player_states[i].hp_max_centis);
@@ -2821,6 +2834,7 @@ static void test_net_player_state(void) {
     net_mirror_push(&m, &snap);
     CHECK(net_mirror_player_state(&m, 0, &hs));
     CHECK(hs.points == 1234 && hs.grenades == 7 && hs.launcher_ammo == 3);
+    CHECK(hs.pistol_ammo == 123);   /* v10: the HUD reads this via the mirror */
     CHECK(hs.weapon == WEAPON_LAUNCHER);
     CHECK(net_mirror_player_state(&m, 2, &hs));  /* dead, but still in use */
     CHECK((hs.flags & NET_PST_ALIVE) == 0);

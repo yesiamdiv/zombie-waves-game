@@ -425,6 +425,8 @@ int net_encode_snapshot(uint8_t *buf, int cap, const NetHeader *h,
         if (put_u16(buf, cap, &off, ps->points) != 0) return -1;
         if (put_u16(buf, cap, &off, ps->grenades) != 0) return -1;
         if (put_u16(buf, cap, &off, ps->launcher_ammo) != 0) return -1;
+        /* v10: host-authoritative pistol rounds for the client HUD. */
+        if (put_u16(buf, cap, &off, ps->pistol_ammo) != 0) return -1;
         if (put_u16(buf, cap, &off, ps->hp_centis) != 0) return -1;
         if (put_u16(buf, cap, &off, ps->hp_max_centis) != 0) return -1;
         if (put_u16(buf, cap, &off, ps->respawn_centis) != 0) return -1;
@@ -496,6 +498,8 @@ int net_decode_snapshot(const uint8_t *buf, int len, NetHeader *h,
         if (get_u16(buf, len, &off, &ps->points) != 0) return -1;
         if (get_u16(buf, len, &off, &ps->grenades) != 0) return -1;
         if (get_u16(buf, len, &off, &ps->launcher_ammo) != 0) return -1;
+        /* v10: host-authoritative pistol rounds for the client HUD. */
+        if (get_u16(buf, len, &off, &ps->pistol_ammo) != 0) return -1;
         if (get_u16(buf, len, &off, &ps->hp_centis) != 0) return -1;
         if (get_u16(buf, len, &off, &ps->hp_max_centis) != 0) return -1;
         if (get_u16(buf, len, &off, &ps->respawn_centis) != 0) return -1;
