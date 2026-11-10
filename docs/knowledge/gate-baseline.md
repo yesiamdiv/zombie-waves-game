@@ -183,6 +183,7 @@ Measured on `main` at `6801d7c` (merge of `feature/net-protocol` into animation'
 animation's tests and 1759 is animation's lane-only figure; neither is the gate
 number for this tree. Version registry here: `NET_WIRE_VERSION` **9**,
 `NET_ASSET_VERSION` **3**, `NET_ART_COUNT` **26**, `NET_SNAP_ENTRY_BYTES` **35**.
+
 ## 2026-10-22 - note by assets: B45 adds the baked vignette texture
 
 B45 replaces the banded damage vignette with one baked texture,
@@ -217,3 +218,38 @@ tip (`6801d7c`), on the **merged** tree:
 **50 is the merged texture count.** Version registry here: `NET_WIRE_VERSION`
 **9**, `NET_ASSET_VERSION` **3**, `NET_ART_COUNT` **26**,
 `NET_SNAP_ENTRY_BYTES` **35**.
+
+## 2026-10-23 - note by audio: the test count moves (lane figure); texture count and SP reference unchanged
+
+Measured on `feature/audio` rebased onto `38ee6e8` (main with animation + NT2 +
+wire v9), before and after Phase D's trigger table:
+
+- `./build/zombie_tests` -> **1829 passed / 0 failed** on the rebased lane, then
+  **1862** with Phase D (+33: the event -> slot table, the 2D predicate and
+  hurt-vs-heal through the hp cache).
+- `ctest --test-dir build` -> 3/3: `net_spike`, `net_loopback`, `core_tests`.
+- `python3 tools/gen_assets.py --verify` -> **50 textures**, the merged count
+  declared in the note above. Audio ships WAVs, not textures, so this count does
+  not move (`tools/gen_audio.py --verify` reports 13 sounds separately).
+- Two **sequential** `--seed=42` single-player runs (25 s, `--ai=bot`) ->
+  byte-identical, **125938 bytes / 1603 lines - UNCHANGED**; wave 1 still
+  `8 zombies, interval: 1.90s, difficulty: 1.00`. Audio is inert headless
+  (`Audio: headless - device never opened`), so it cannot perturb the sim.
+- No wire field, no relay-list edit, no event type, no version bump:
+  `NET_WIRE_VERSION` 9, `NET_ASSET_VERSION` 3 untouched.
+
+**1862 is a LANE figure**, like net's 1235: the assets lane's tests are not in
+it. Do not treat it as the merged number.
+
+## 2026-10-23 - note by audio: the merged main (5997c86) measures 1862/0
+
+Landing audio on the assets+animation+net main does not change any merged
+figure except the C test count, which carries audio's 33 trigger checks:
+
+- `./build/zombie_tests` -> **1862 passed / 0 failed** (was 1808 on the merged
+  main before audio). Unlike the lane note above, **1862 is now the merged
+  count**; the next lane to land should treat it as the baseline.
+- `ctest --test-dir build` -> 3/3; `gen_audio.py --verify` -> 13 sounds;
+  `gen_assets.py --verify` -> **50 textures**, unchanged.
+- Two sequential `--seed=42` SP runs still byte-identical at **125938 bytes /
+  1603 lines**; wave 1 unchanged. Headless opens no audio device.

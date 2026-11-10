@@ -79,7 +79,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
      "src/core/*.c" "src/ecs/*.c" "src/graphics/*.c"
      "src/world/*.c" "src/systems/*.c" "src/ui/*.c" "src/items/*.c"
      "src/events/*.c" "src/ai/*.c" "src/weapons/*.c" "src/net/*.c"
-     "src/players.c" "src/assets/*.c")
+     "src/audio/*.c" "src/players.c" "src/assets/*.c")
 add_library(zombie_core STATIC ${CORE_SOURCES})
 target_compile_options(zombie_core PRIVATE ${PROJECT_WARNINGS})
 target_include_directories(zombie_core PUBLIC src "${enet_SOURCE_DIR}/include")
@@ -134,3 +134,14 @@ endif()
 enable_testing()
 add_test(NAME core_tests COMMAND zombie_tests)
 set_tests_properties(core_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+# N2: sanitizer targets for hostile decoder testing (opt-in)
+option(BUILD_ASAN "Build with AddressSanitizer" OFF)
+option(BUILD_UBSAN "Build with UndefinedBehaviorSanitizer" OFF)
+if(BUILD_ASAN)
+  add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address)
+endif()
+if(BUILD_UBSAN)
+  add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=undefined)
+endif()

@@ -54,3 +54,11 @@ Then execute every scenario in `qa_recheck/02_scenarios_exact.md`, in order.
 Write one findings file per scenario under `playtesting_prompts/qa_recheck/findings/`
 named `R<N>_<scenario>.md`. Keep a `SUMMARY.md` there too. Your last chat message is
 a short summary: VERDICT, top findings, and the exact replay commands.
+## Q1: Tree/Path Guard Banner
+Before running any build/test/playtest, print:
+- Resolved binary path (`readlink -f build/open_world_zombie_waves` or equivalent)
+- Worktree root (`git rev-parse --show-toplevel`)
+- Current HEAD (`git rev-parse --short HEAD`)
+- Branch (`git branch --show-current`)
+
+This prevents launching from the wrong tree/worktree.

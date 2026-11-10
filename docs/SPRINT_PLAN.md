@@ -157,7 +157,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | A6 | Commit spike verdicts into `audio-plan` §10 + measurements topic; gate first. | A2–A5 | **DONE `8f3e4c3`** — `audio-plan` §10, `knowledge/audio-measurements` (on lane), listen-for list, PROGRESS; no product code |
 | A7 | **Phase B** — audio foundations on the SDL3 backend: `src/audio/`, init/update/shutdown in `main.c`, `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`. | A1 | **DONE `ecf7a2f`/`e5c9c54`** — SDL public API path, pure mixer, trigger ring, unit tests (1207/0); headless silent, allocation-free, unproven by ear |
 | A8 | **Phase C** — `tools/gen_audio.py` + `assets/audio/**` + the sounds; deterministic regeneration. | A7 | **DONE `9d4e592`/`a98b0bc`** — stdlib 48 kHz WAV generator, 13 slots; mapping still a stub; unproven by ear |
-| A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | **UNBLOCKED** — NT2 now in main `6801d7c`; in progress; lands after assets |
+| A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | **DONE / LANDED on main `5997c86`** — gate 1862/0, SP identical; unproven by ear |
 | A10 | **Phase E** — human listens, two windows; judge whether the client's own gunshot feels late. | A9 | audio · blocked (human) |
 | AT7 | NT2 (`GE_EXPLOSION`) landing window, re-verified jointly with `net`. Measured correction: NT2 does not move the seed-42 SP reference (bot never detonates); only test count 1186→1194. | A6, D3 | **DONE** — NT2 landed `6801d7c`; SP ref unchanged; merged gate 1808/0 |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
@@ -190,13 +190,36 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 > semantically by net, should merge cleanly — still verify at integration.
 >
 > **Landing sequence — progress:** animation **LANDED** (`3648856`), net v9+NT2
-> **LANDED** (`6801d7c`, merged gate 1808/0, 49 textures) → assets merging `main`
-> and landing (texture **50**) → audio rebases and lands Phase D. Main not pushed.
+> **LANDED** (`6801d7c`), assets **LANDED** (`b0ccc28`), **audio** merged `main` and
+> landed Phase D (`5997c86`/`6a9fee1`; merged gate **1862/0**, **50 textures**,
+> SP identical 125938/1603). Main not pushed. Owner verified B43/B44/B45/AT9
+> on `b0ccc28` (`0da6e3f`). Audio still unproven by ear (Phase E/A10
+> owner-blocked). Assets' parallel lane merge `b88a99d` was **discarded** (conflict
+> markers) and the lane reset to `main`.
 >
 > **Playtest provenance (`knowledge/playtest-provenance`):** the 2026-10-23
 > playtest ran `main` before assets landed, so the owner saw none of
 > B43/B45/B44/AT9 although the fixes were on `feature/assets-maps`. Always launch
 > the tree that contains the fix, or land first and run one merged build.
+
+### HUD + effects (owner request 2026-10-23)
+
+> Owner: "a very plain HUD interface and mediocre effects." Wants assets to
+> **ideate first**, owner reviews/ranks, then build. Process mirrors the B45
+> vignette win. Nothing here is approved until the owner ranks the proposal.
+
+| ID | Task | Owner | Status |
+|---|---|---|---|
+| HU1 | **Ideation proposal only (no code):** 6–10 concrete HUD/effects ideas, each with player-visible result, files touched, cost S/M/L, risk, on-screen verification; ranked with top 3 named; menu backdrop included; wire/sim changes flagged separately. Board: `task_01a168c19b7d139fadc3c13b`. | assets | **in progress** (lane synced to `0da6e3f`) |
+| HU2 | Approved HUD/effect slices — one commit each, full gate, **unproven until the owner looks**. | assets | pending owner ranking |
+| AP1 | **Ideation only:** animation polish (staggered horde phase P1, per-item bob P2, relayed-event muzzle flash P3, player damage feedback P4, sword trail P5). No sim, rand-free; P3 needs confirmation re "cosmetic deterministic from relayed stream". | animation | **review** (`task_01a168cde42e6f4418f66391`) |
+| NR1 | **Ideation only:** net robustness/docs (co-op check tool, hostile decoder sweep + ASan, relay overflow visibility, reject-message fixes, snapshot size assert). No wire/sim changes. | net | **review** (`task_01a168cf05e23e005591399a`) |
+| QI1 | **Ideation only:** QA guardrails (tree/path banner, gate manifest, safer two-instance launch, untracked policy, GUI-only tagging). Recommends 1+3 first. | qa | **done** (`task_01a168cf460224e48e532d31`) |
+
+Constraints: HUD readability beats decoration; cosmetics must be client-safe
+(host is truth; a client computes only deterministic cosmetics); anything
+touching the sim or wire needs its own decision and cannot move the SP
+byte-identity baseline silently.
 
 ### shared
 
