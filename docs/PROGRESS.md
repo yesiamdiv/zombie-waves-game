@@ -1002,3 +1002,23 @@ value.
 ### Blocked / unproven
 - Owner on-screen check of the knife swing and the ammo HUD (headless cannot
   see either). Client ammo readout waits on the net fill.
+
+## 2026-11-11 — net: v10 pistol_ammo fill + sanitizer dependency cache isolation
+
+- Landed the NT8 follow-up: `net_snapshot.c` now copies the host's
+  `inventory.pistol_ammo` into `NetPlayerState.pistol_ammo` (wire v10 field
+  already existed; no version/layout change). `1ba8fcd`; merged main `2cbaf05`;
+  gate note `4001c06`. Merged baseline **1896/0**, ctest 3/3, SP unlimited
+  125938/1603 and limited 129504/1648 both byte-identical, headless two-instance
+  net check PASS.
+- N-ASAN-CACHE: `BUILD_ASAN`/`BUILD_UBSAN` now get a private
+  `FETCHCONTENT_BASE_DIR` (`<build>/_deps`) so sanitizer dep builds can never
+  flag-flip `~/.cache/cmake-deps` for other worktrees (`ae19836`).
+- While verifying that, found the sanitizer flags were dead: the
+  `add_compile_options`/`add_link_options` block sat **after** every target, and
+  those commands only affect targets created later — `BUILD_ASAN=ON` configured
+  an uninstrumented build. Moved before the project targets and after the
+  FetchContent deps (project code instrumented, deps not). `1e09543`.
+  Verified by configure: private base dir in the cache, `-fsanitize=address` on
+  project compile lines and absent from the SDL3 dep line. A full sanitizer
+  rebuild was not run (1.6 GB dep tree; earlier parallel ASan compile ICE'd).
