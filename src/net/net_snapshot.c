@@ -99,6 +99,8 @@ int net_snapshot_build(const World *ecs, const Player *players, int player_count
         ps->points = net_clamp_u16(p->inventory.points);
         ps->grenades = net_clamp_u16(p->inventory.grenades);
         ps->launcher_ammo = net_clamp_u16(p->inventory.launcher_ammo);
+        /* v10: the host owns the ammo count; the client HUD only displays it. */
+        ps->pistol_ammo = net_clamp_u16(p->inventory.pistol_ammo);
         ps->respawn_centis = net_centis(p->respawn_timer);
         ps->hp_centis = 0;
         ps->hp_max_centis = 0;
