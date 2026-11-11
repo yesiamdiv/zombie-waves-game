@@ -39,8 +39,12 @@
  * truncated at 255 entities while the encoder still believed it had sent the
  * rest), and snapshots gained the NT4 extension-attribute table that carries
  * the local sword's angle (and, from here, any future per-entity attributes)
- * without changing the 35-byte entry stride. */
-#define NET_WIRE_VERSION 9
+ * without changing the 35-byte entry stride. 9 -> 10, NetPlayerState gained
+ * `pistol_ammo` (host-authoritative pistol rounds for the client HUD) and its
+ * `weapon` byte may now carry WEAPON_KNIFE (4). A v9 peer reads the new u16 as
+ * the high half of `hp_centis` and then desyncs every following field, so the
+ * handshake rejects it. */
+#define NET_WIRE_VERSION 10
 /* Maximum name length carried on the wire; buffers should be NET_NAME_CAP
  * (NET_NAME_MAX chars + NUL) to avoid silent truncation. */
 #define NET_NAME_MAX 32
@@ -243,6 +247,9 @@ typedef struct {
     uint16_t points;          /* inventory currency */
     uint16_t grenades;        /* consumable stock */
     uint16_t launcher_ammo;   /* rockets */
+    /* v10. Pistol rounds remaining (0 = empty). Host-authoritative: the
+     * client HUD displays this count, it never simulates ammo locally. */
+    uint16_t pistol_ammo;
     uint16_t hp_centis;       /* current HP * 100 */
     uint16_t hp_max_centis;   /* max HP * 100 */
     uint16_t respawn_centis;  /* seconds until respawn * 100, while dead */
@@ -258,7 +265,7 @@ typedef struct {
     float beacon_y;
 } NetPlayerState;
 
-#define NET_PLAYER_STATE_BYTES 23   /* bytes on the wire, one slot */
+#define NET_PLAYER_STATE_BYTES 25   /* bytes on the wire, one slot (v10) */
 
 /* 20 Hz host->client snapshot (channel 1). `slot_entities` maps each roster
  * slot to its live player entity id (0 when the slot has no entity), so a

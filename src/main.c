@@ -1317,6 +1317,10 @@ static void apply_net_inputs(void) {
         p->input.world_aim = true;
         if (in.buttons & NET_INPUT_BTN_SHOOT) p->input.mouse_buttons[0] = true;
 
+        /* Validate against the enum range, not against a named weapon: the
+         * upper bound moved when WEAPON_KNIFE (wire v10) was appended, and a
+         * hard-coded `<= WEAPON_LAUNCHER` silently dropped the new value.
+         * weapons_select() still rejects anything the slot has not unlocked. */
         if ((int)in.weapon < WEAPON_COUNT &&
             p->inventory.current != (WeaponType)in.weapon) {
             weapons_select(&p->inventory, (WeaponType)in.weapon);

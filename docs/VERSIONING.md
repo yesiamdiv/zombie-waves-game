@@ -37,7 +37,7 @@ find out why it was duplicated.
 
 | Version | Declared in | Current | Guards | Bump when |
 |---|---|---|---|---|
-| `NET_WIRE_VERSION` | `src/net/net.h` | **9** | Byte layout of every net packet body | Any field is added/removed/resized/ reordered in any packet body |
+| `NET_WIRE_VERSION` | `src/net/net.h` | **10** | Byte layout of every net packet body | Any field is added/removed/resized/ reordered in any packet body |
 | `NET_WORLD_GEN_VERSION` | `src/net/net.h` | **2** | Two peers derive the *same world* | Map format, world generation, theme selection, or spawn rules change |
 | `NET_ASSET_VERSION` | `src/net/net.h` | **3** | Two peers ship the *same art* | Any file in `assets/` is added, removed, resized, or replaced, **including `src/net/net_art.c`** (ids resolve to pixel sizes the wire divides by) |
 | `MAP_FORMAT_VERSION` | map loader | *(planned)* | A `.map` file means the same thing | The map grammar changes at all |
@@ -138,6 +138,15 @@ the sword's angle/width). `NET_SNAP_ENTRY_BYTES` is still **35** — the count i
 in the header and attributes ride after the array, so the fixed stride and every
 existing field offset are untouched. A v8 peer that reads a v9 count as its
 first entity byte would decode garbage, so the handshake rejects it.
+
+**v9 → v10 (2026-11-10)** adds one field to every `NetPlayerState`:
+`pistol_ammo` (u16, host-authoritative pistol rounds for the client HUD), and
+allows `weapon` to carry `WEAPON_KNIFE` (4). `NET_PLAYER_STATE_BYTES` moves
+**23 → 25**, so the snapshot header grows by `2 * NET_MAX_PLAYERS = 8` bytes.
+`NET_SNAP_ENTRY_BYTES` is untouched (still **35**) and `NET_ASSET_VERSION` is
+untouched (the knife reuses the sword-blade texture, no new art). A v9 peer
+reads the new u16 as the high half of `hp_centis` and desyncs every following
+field, so the handshake refuses it with `NET_REJECT_VERSION`.
 
 ## 7. Before you open the pull request
 
