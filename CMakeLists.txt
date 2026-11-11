@@ -87,6 +87,20 @@ FetchContent_MakeAvailable(SDL_image)
 # has its own (many) unused parameters and sign-compare warnings.
 set(PROJECT_WARNINGS -Wall -Wextra -Werror)
 
+# N2: sanitizer flags. They must be added BEFORE the project targets are
+# created - add_compile_options/add_link_options only affect targets created
+# afterwards - and AFTER the FetchContent deps, so only project code is
+# instrumented. (Declared at the end of this file they applied to no target at
+# all: BUILD_ASAN configured a build with no -fsanitize anywhere.)
+if(BUILD_ASAN)
+  add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address)
+endif()
+if(BUILD_UBSAN)
+  add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=undefined)
+endif()
+
 # Core game logic library (everything except the entry point)
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
      "src/core/*.c" "src/ecs/*.c" "src/graphics/*.c"
@@ -147,13 +161,3 @@ endif()
 enable_testing()
 add_test(NAME core_tests COMMAND zombie_tests)
 set_tests_properties(core_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-# N2: sanitizer flags for hostile decoder testing (opt-in switches are declared
-# above, before FetchContent, so the dep cache can be isolated first).
-if(BUILD_ASAN)
-  add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-  add_link_options(-fsanitize=address)
-endif()
-if(BUILD_UBSAN)
-  add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
-  add_link_options(-fsanitize=undefined)
-endif()
