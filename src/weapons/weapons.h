@@ -3,13 +3,17 @@
 
 #include <stdbool.h>
 
-/* Player weapons. The pistol is the default and is always unlocked; the rest
- * are purchased in the shop with kill points. */
+/* Player weapons. The pistol and knife are the starter kit and are always
+ * unlocked; the rest are purchased in the shop with kill points.
+ *
+ * WEAPON_KNIFE is appended last on purpose: the existing weapon ids are on the
+ * wire (`NetPlayerState.weapon`) and must not shift. */
 typedef enum {
     WEAPON_PISTOL = 0,
     WEAPON_SWORD,
     WEAPON_GRENADE,
     WEAPON_LAUNCHER,
+    WEAPON_KNIFE,   /* starter melee, always unlocked */
     WEAPON_COUNT
 } WeaponType;
 
@@ -25,11 +29,21 @@ typedef enum {
 /* The launcher comes with a starter clip so a fresh purchase is usable. */
 #define LAUNCHER_STARTER_ROCKETS 5
 
+/* Pistol ammo is one simple counter (no magazine/reserve/reload). The default
+ * is limited; `--unlimited-ammo` / the in-game U toggle disables the drain. */
+#define PISTOL_AMMO_START  60
+#define PISTOL_AMMO_PICKUP 20
+
+/* Debug/playtest rule, owned by weapons.c: when true the pistol never drains
+ * ammo. Defaults to false (limited), so the feature is visible. */
+extern bool g_unlimited_ammo;
+
 typedef struct {
-    WeaponType current;          /* selected weapon (1-4) */
+    WeaponType current;          /* selected weapon (1-5) */
     bool unlocked[WEAPON_COUNT]; /* sword / launcher owned */
     int grenades;                /* consumable stock (drains per throw) */
     int launcher_ammo;           /* consumable rockets (drain per shot) */
+    int pistol_ammo;             /* remaining pistol shots (limited mode) */
     int points;                  /* currency earned from kills */
 } PlayerInventory;
 

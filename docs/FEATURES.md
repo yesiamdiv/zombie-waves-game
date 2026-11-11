@@ -20,6 +20,8 @@ into `main` this sheet is merged with whatever `main` carries.
 | F10 | HUD damage flash on player hurt | `81f3bd3` | SHIPPED |
 | F11 | Ammo pickup refills owned consumables | `da515eb` | SHIPPED |
 | F12 | Camera clamped to world bounds | `8967a99` | SHIPPED |
+| F13 | Starter kit: always-unlocked knife + pistol | `e8696c6` | SHIPPED |
+| F14 | Limited pistol ammo + ammo pickups + unlimited toggle | `4fa1e4e` | SHIPPED |
 
 ## Detailed entries
 
@@ -135,8 +137,27 @@ into `main` this sheet is merged with whatever `main` carries.
 - **Status**: SHIPPED (commit `da515eb`)
 - `items_check_pickup()` takes a `PlayerInventory*`; `ITEM_AMMO` grants +1
   grenade when grenades are unlocked and +2 rockets when the launcher is
-  unlocked; pistol-only fresh runs stay a safe no-op.
+  unlocked, and (since F14) refills the pistol counter.
 - Covered by `test_item_ammo_pickup`.
+
+## F13. Starter kit: knife + gun
+
+- **Status**: SHIPPED (commit `e8696c6`)
+- `WEAPON_KNIFE` (id 4) is always unlocked at spawn; key 5 selects it. It
+  reuses the sword's orbit with shorter/faster/weaker tuning and the
+  `sword_blade.png` art scaled down, so no new texture ships. The purchased
+  Sword remains the upgrade.
+- Covered by `test_knife_starter`.
+
+## F14. Limited pistol ammo + unlimited toggle
+
+- **Status**: SHIPPED (commit `4fa1e4e`)
+- One counter (`PISTOL_AMMO_START` 60), no magazine/reload; each shot drains
+  one, ammo pickups add `PISTOL_AMMO_PICKUP` (20), an empty gun is silent.
+  `--unlimited-ammo` or the in-game `U` key disables the drain (host/SP only).
+- Deliberate gate re-baseline recorded in `docs/knowledge/gate-baseline.md`:
+  canonical unlimited run unchanged; default limited run is the new reference.
+- Covered by `test_pistol_ammo_and_toggle`.
 
 ## F12. Camera clamped to world bounds
 

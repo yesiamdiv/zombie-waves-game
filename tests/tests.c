@@ -532,13 +532,15 @@ static void test_item_ammo_pickup(void) {
     PlayerInventory inv;
     weapons_inventory_init(&inv);
 
-    /* Fresh run: only pistol unlocked → pickup grants nothing but is safe. */
+    /* Fresh run: only the starter kit (pistol + knife) is unlocked → no
+     * consumable stock to feed, but the pickup is still safe. */
     Entity ammo0 = items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
     CHECK(ammo0 != ECS_NULL_ENTITY);
     items_check_pickup(&ecs, player, &inv);
     CHECK(!ecs_is_alive(&ecs, ammo0));
     CHECK(inv.grenades == 0);
     CHECK(inv.launcher_ammo == 0);
+    CHECK(inv.pistol_ammo == PISTOL_AMMO_START + PISTOL_AMMO_PICKUP);
 
     /* After unlocking grenades + launcher, pickups feed both stocks. */
     inv.unlocked[WEAPON_GRENADE] = true;
@@ -554,6 +556,122 @@ static void test_item_ammo_pickup(void) {
     items_check_pickup(&ecs, player, &inv);
     CHECK(inv.grenades == 2);
     CHECK(inv.launcher_ammo == 4);
+}
+
+static void test_knife_starter(void) {
+    LOG_INFO("--- Test: Starter knife melee (always unlocked) ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    CHECK(p.inventory.unlocked[WEAPON_KNIFE]);
+    CHECK(weapons_select(&p.inventory, WEAPON_KNIFE));
+
+    p.input.mouse_buttons[0] = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+
+    Entity blade = ECS_NULL_ENTITY;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs.alive[i]) continue;
+        if (ecs.component_masks[i] & (1u << COMP_SWORD_TAG)) { blade = i; break; }
+    }
+    CHECK(blade != ECS_NULL_ENTITY);
+    CSwordTag *knife = ecs_get_sword_tag(&ecs, blade);
+    CHECK(knife->damage == 22.0f);
+    CHECK(knife->radius == 10.0f);
+    CHECK(knife->outer_radius == 30.0f);
+
+    /* Equipping the purchased sword mid-swing respawns a longer blade. */
+    p.inventory.points = SWORD_COST;
+    CHECK(weapons_buy_sword(&p.inventory));
+    CHECK(weapons_select(&p.inventory, WEAPON_SWORD));
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+
+    blade = ECS_NULL_ENTITY;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs.alive[i]) continue;
+        if (ecs.component_masks[i] & (1u << COMP_SWORD_TAG)) { blade = i; break; }
+    }
+    CHECK(blade != ECS_NULL_ENTITY);
+    CSwordTag *sword = ecs_get_sword_tag(&ecs, blade);
+    CHECK(sword->radius == 26.0f);
+    CHECK(sword->outer_radius == 58.0f);
+
+    /* Release destroys the blade. */
+    p.input.mouse_buttons[0] = false;
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+    bool alive = false;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs.alive[i]) continue;
+        if (ecs.component_masks[i] & (1u << COMP_SWORD_TAG)) alive = true;
+    }
+    CHECK(!alive);
+}
+
+static void test_pistol_ammo_and_toggle(void) {
+    LOG_INFO("--- Test: Pistol ammo limit + unlimited toggle ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    Camera cam;
+    camera_init(&cam, 800, 600);
+    CHECK(p.inventory.pistol_ammo == PISTOL_AMMO_START);
+
+    p.input.mouse_buttons[0] = true;
+    p.input.world_aim = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+
+    /* Limited by default: the last shot fires, then the empty gun is silent. */
+    g_unlimited_ammo = false;
+    p.inventory.pistol_ammo = 1;
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+
+    int bullets = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets++;
+    }
+    CHECK(bullets == 1);
+
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+    int bullets_after = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets_after++;
+    }
+    CHECK(bullets_after == 1);
+
+    /* Unlimited mode fires without draining the counter. */
+    g_unlimited_ammo = true;
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+    int bullets_unlimited = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets_unlimited++;
+    }
+    CHECK(bullets_unlimited == 2);
+    g_unlimited_ammo = false;
 }
 
 static void test_camera_clamp_world(void) {
@@ -886,6 +1004,13 @@ static void test_weapons_inventory(void) {
     CHECK(!inv.unlocked[WEAPON_SWORD]);
     CHECK(inv.points == 0);
     CHECK(inv.grenades == 0);
+
+    /* Starter kit: the knife comes with the gun and needs no purchase. */
+    CHECK(inv.unlocked[WEAPON_KNIFE]);
+    CHECK(weapons_select(&inv, WEAPON_KNIFE));
+    CHECK(inv.current == WEAPON_KNIFE);
+    CHECK(strcmp(weapons_name(WEAPON_KNIFE), "Knife") == 0);
+    CHECK(weapons_select(&inv, WEAPON_PISTOL));
 
     /* Cannot select a locked weapon. */
     CHECK(!weapons_select(&inv, WEAPON_SWORD));
@@ -2850,6 +2975,7 @@ static void test_net_player_state(void) {
     players[0].inventory.points = 1234;
     players[0].inventory.grenades = 7;
     players[0].inventory.launcher_ammo = 3;
+    players[0].inventory.pistol_ammo = 42;
     players[0].inventory.current = WEAPON_LAUNCHER;
     players[0].inventory.unlocked[WEAPON_SWORD] = true;
     players[0].inventory.unlocked[WEAPON_LAUNCHER] = true;
@@ -2870,6 +2996,7 @@ static void test_net_player_state(void) {
     CHECK(h0->points == 1234);
     CHECK(h0->grenades == 7);
     CHECK(h0->launcher_ammo == 3);
+    CHECK(h0->pistol_ammo == 42);   /* v10: host copies its authoritative count */
     CHECK(h0->weapon == (uint8_t)WEAPON_LAUNCHER);
     CHECK((h0->unlocked_mask & (1u << WEAPON_SWORD)) != 0);
     CHECK((h0->unlocked_mask & (1u << WEAPON_LAUNCHER)) != 0);
@@ -2887,6 +3014,17 @@ static void test_net_player_state(void) {
      * spawned, so it must read as not-in-use. */
     CHECK((snap.player_states[3].flags & NET_PST_IN_USE) == 0);
 
+    /* v10 wire-size assertion: deliberate literal, not the macro. A layout
+     * change must force someone to read this test next to the version bump. */
+    CHECK(NET_PLAYER_STATE_BYTES == 25);
+    /* v10: pistol_ammo is host-authoritative and must cross the wire intact,
+     * including the saturating maximum. */
+    snap.player_states[0].pistol_ammo = 123;
+    snap.player_states[1].pistol_ammo = 65535;
+    /* v10: weapon 4 is WEAPON_KNIFE (enum lands in weapons.h with the assets
+     * work); the wire carries it as the same u8 as every other weapon. */
+    snap.player_states[1].weapon = 4;
+
     /* ---- round trip ---- */
     uint8_t buf[NET_SNAP_MAX_BYTES];
     NetHeader hdr = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 7, 0, 0};
@@ -2898,6 +3036,8 @@ static void test_net_player_state(void) {
         CHECK(got.player_states[i].grenades == snap.player_states[i].grenades);
         CHECK(got.player_states[i].launcher_ammo ==
               snap.player_states[i].launcher_ammo);
+        CHECK(got.player_states[i].pistol_ammo ==
+              snap.player_states[i].pistol_ammo);
         CHECK(got.player_states[i].hp_centis == snap.player_states[i].hp_centis);
         CHECK(got.player_states[i].hp_max_centis ==
               snap.player_states[i].hp_max_centis);
@@ -2917,6 +3057,7 @@ static void test_net_player_state(void) {
     net_mirror_push(&m, &snap);
     CHECK(net_mirror_player_state(&m, 0, &hs));
     CHECK(hs.points == 1234 && hs.grenades == 7 && hs.launcher_ammo == 3);
+    CHECK(hs.pistol_ammo == 123);   /* v10: the HUD reads this via the mirror */
     CHECK(hs.weapon == WEAPON_LAUNCHER);
     CHECK(net_mirror_player_state(&m, 2, &hs));  /* dead, but still in use */
     CHECK((hs.flags & NET_PST_ALIVE) == 0);
@@ -3341,6 +3482,8 @@ int tests_run_all(void) {
     test_wave_timeout();
     test_weapons_inventory();
     test_sword_spin();
+    test_knife_starter();
+    test_pistol_ammo_and_toggle();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
     /* R13 merge: both engines' suites run. The assets tests (map parser,
