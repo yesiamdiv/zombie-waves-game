@@ -1022,3 +1022,10 @@ value.
   Verified by configure: private base dir in the cache, `-fsanitize=address` on
   project compile lines and absent from the SDL3 dep line. A full sanitizer
   rebuild was not run (1.6 GB dep tree; earlier parallel ASan compile ICE'd).
+### DEV — follow-up (same session)
+- Merged main `4001c06` (net's `pistol_ammo` fill) and switched the client HUD
+  from the temporary "Ammo: --" to the replicated `NetPlayerState.pistol_ammo`;
+  the client never invents a local value. Merged main `27188e2` clean after one
+  AGENTS.md conflict (kept the absolute `$R/build/logs` snippet); folded the
+  scratch-path note into the existing `knowledge/tmp-scratch-rule.md` rather
+  than keeping a duplicate topic (`2527efd`).

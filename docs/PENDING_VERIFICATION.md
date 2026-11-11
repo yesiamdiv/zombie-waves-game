@@ -395,3 +395,25 @@ see the blade. Two instances, one player holding the sword:
 The client mirror is render-only: the host remains the sole source of the angle.
 If any of these fail, the fix is on the net side — do not "correct" it by having
 the client derive an angle from the owner's input.
+
+## Unproven on screen — starter knife + pistol ammo HUD (2026-11-11, `67e6329`)
+
+Headless tests prove the tuning, the counter and the wire; none can see the
+picture. Real run, `./build/open_world_zombie_waves`:
+
+- [ ] **Knife swing** — press `5` (starter kit; no purchase) and hold fire: a
+      short blade (length 20, width 6 world units) orbits the player using
+      `sword_blade.png`, faster than the sword. Sword (key `2`) still looks and
+      reaches as before; swapping 2<->5 mid-hold changes the blade size with no
+      stale blade left behind.
+- [ ] **Ammo HUD (single-player/host)** — the right panel shows `Ammo: 60`
+      initially, drops by one per shot, turns red at 0 and the gun goes silent;
+      an ammo pickup adds 20. `U` toggles "Ammo: unlimited" and firing no longer
+      drains. The extra line fits inside the right panel (panel was 110 -> 140).
+- [ ] **Ammo HUD (client)** — with two instances, the client's `Ammo:` number
+      matches the host's and falls as the **host** fires that slot. It must never
+      change from local input on the client.
+- [ ] **Key hints** — the HUD reads `1-5` and the bottom hint includes `U: Ammo`.
+
+If the client number disagrees, the defect is on the net side
+(`NetPlayerState.pistol_ammo`); do not make the client count locally.
