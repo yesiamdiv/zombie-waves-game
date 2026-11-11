@@ -1002,3 +1002,11 @@ value.
 ### Blocked / unproven
 - Owner on-screen check of the knife swing and the ammo HUD (headless cannot
   see either). Client ammo readout waits on the net fill.
+
+### DEV — follow-up (same session)
+- Merged main `4001c06` (net's `pistol_ammo` fill) and switched the client HUD
+  from the temporary "Ammo: --" to the replicated `NetPlayerState.pistol_ammo`;
+  the client never invents a local value. Merged main `27188e2` clean after one
+  AGENTS.md conflict (kept the absolute `$R/build/logs` snippet); folded the
+  scratch-path note into the existing `knowledge/tmp-scratch-rule.md` rather
+  than keeping a duplicate topic (`2527efd`).
