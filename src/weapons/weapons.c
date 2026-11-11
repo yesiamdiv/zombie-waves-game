@@ -1,6 +1,8 @@
 #include "weapons/weapons.h"
 #include "events/event_bus.h"
 
+bool g_unlimited_ammo = false;
+
 void weapons_inventory_init(PlayerInventory *inv) {
     if (!inv) return;
     inv->current = WEAPON_PISTOL;
@@ -9,6 +11,7 @@ void weapons_inventory_init(PlayerInventory *inv) {
     inv->unlocked[WEAPON_KNIFE] = true;   /* starter kit: knife + gun */
     inv->grenades = 0;
     inv->launcher_ammo = 0;
+    inv->pistol_ammo = PISTOL_AMMO_START;
     inv->points = 0;
 }
 

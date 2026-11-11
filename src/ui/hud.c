@@ -195,7 +195,7 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     /* Panels behind clusters (H3) */
     SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.0f, 0.35f);
     SDL_RenderFillRect(renderer, &(SDL_FRect){10, 15, 220, 130});
-    SDL_RenderFillRect(renderer, &(SDL_FRect){(float)screen_w - 230, 15, 215, 110});
+    SDL_RenderFillRect(renderer, &(SDL_FRect){(float)screen_w - 230, 15, 215, 140});
 
     /* Health bar */
     float bar_x = 20.0f;
@@ -315,6 +315,21 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
                  use_auth ? auth->grenades : inv->grenades,
                  use_auth ? auth->launcher_ammo : inv->launcher_ammo);
         draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 120.0f, wcol);
+
+        /* Pistol ammo. A client displays the host's count (authority rule);
+         * until NET_WIRE_VERSION 10 replicates it, `-1` means "not known". */
+        int pistol_ammo = use_auth ? auth->pistol_ammo : inv->pistol_ammo;
+        SDL_FColor ammo_col = wcol;
+        if (pistol_ammo < 0) {
+            snprintf(buf, sizeof(buf), "Ammo: --");
+            ammo_col = (SDL_FColor){0.6f, 0.6f, 0.65f, 0.9f};
+        } else if (!use_auth && g_unlimited_ammo) {
+            snprintf(buf, sizeof(buf), "Ammo: unlimited");
+        } else {
+            snprintf(buf, sizeof(buf), "Ammo: %d", pistol_ammo);
+            if (pistol_ammo == 0) ammo_col = (SDL_FColor){1.0f, 0.35f, 0.3f, 0.95f};
+        }
+        draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 145.0f, ammo_col);
     }
 
     /* Crosshair at the actual mouse position (tracks the cursor exactly). */
@@ -341,6 +356,6 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
 
     /* Pause / shop hints */
     SDL_FColor pause_hint = {0.3f, 0.3f, 0.35f, 0.5f};
-    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-5: Weapon | F11: Fullscreen",
+    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-5: Weapon | U: Ammo | F11: Fullscreen",
               20.0f, (float)screen_h - 30.0f, pause_hint);
 }

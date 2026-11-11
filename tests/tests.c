@@ -540,6 +540,7 @@ static void test_item_ammo_pickup(void) {
     CHECK(!ecs_is_alive(&ecs, ammo0));
     CHECK(inv.grenades == 0);
     CHECK(inv.launcher_ammo == 0);
+    CHECK(inv.pistol_ammo == PISTOL_AMMO_START + PISTOL_AMMO_PICKUP);
 
     /* After unlocking grenades + launcher, pickups feed both stocks. */
     inv.unlocked[WEAPON_GRENADE] = true;
@@ -614,6 +615,63 @@ static void test_knife_starter(void) {
         if (ecs.component_masks[i] & (1u << COMP_SWORD_TAG)) alive = true;
     }
     CHECK(!alive);
+}
+
+static void test_pistol_ammo_and_toggle(void) {
+    LOG_INFO("--- Test: Pistol ammo limit + unlimited toggle ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    Camera cam;
+    camera_init(&cam, 800, 600);
+    CHECK(p.inventory.pistol_ammo == PISTOL_AMMO_START);
+
+    p.input.mouse_buttons[0] = true;
+    p.input.world_aim = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+
+    /* Limited by default: the last shot fires, then the empty gun is silent. */
+    g_unlimited_ammo = false;
+    p.inventory.pistol_ammo = 1;
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+
+    int bullets = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets++;
+    }
+    CHECK(bullets == 1);
+
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+    int bullets_after = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets_after++;
+    }
+    CHECK(bullets_after == 1);
+
+    /* Unlimited mode fires without draining the counter. */
+    g_unlimited_ammo = true;
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+    int bullets_unlimited = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets_unlimited++;
+    }
+    CHECK(bullets_unlimited == 2);
+    g_unlimited_ammo = false;
 }
 
 static void test_camera_clamp_world(void) {
@@ -3313,6 +3371,7 @@ int tests_run_all(void) {
     test_weapons_inventory();
     test_sword_spin();
     test_knife_starter();
+    test_pistol_ammo_and_toggle();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
     /* R13 merge: both engines' suites run. The assets tests (map parser,

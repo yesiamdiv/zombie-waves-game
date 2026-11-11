@@ -253,3 +253,27 @@ figure except the C test count, which carries audio's 33 trigger checks:
   `gen_assets.py --verify` -> **50 textures**, unchanged.
 - Two sequential `--seed=42` SP runs still byte-identical at **125938 bytes /
   1603 lines**; wave 1 unchanged. Headless opens no audio device.
+
+## 2026-11-10 - note by assets: deliberate re-baseline for limited pistol ammo (gameplay)
+
+Sprint item "Gameplay: ammo limits + knife starter + toggle" makes **limited
+pistol ammo the default**. This is a deliberate re-baseline, announced by PM to
+the owner in parallel (decision record:
+`docs/knowledge/gameplay-ammo-knife.md`).
+
+- **Canonical invariance reference is UNCHANGED** at **125938 bytes / 1603
+  lines**, measured with `--unlimited-ammo` (two sequential `--seed=42` 25 s bot
+  runs, byte-identical). That is now the command the gate uses: the flag turns
+  the new drain off, so the reference still proves net/effects/HUD did not
+  perturb the sim.
+- **Default (limited) gameplay reference: 129504 bytes / 1648 lines**, two
+  sequential `--seed=42` 25 s bot runs byte-identical. This is the new
+  default-gameplay baseline while `PISTOL_AMMO_START` is 60 and
+  `PISTOL_AMMO_PICKUP` is 20; changing either number re-baselines this figure
+  (not the canonical one).
+- Wave 1 is unchanged in both modes: `8 zombies, interval: 1.90s,
+  difficulty: 1.00`.
+- `zombie_tests` -> **1889 passed / 0 failed** on the assets lane (pre-merge
+  with net's v10); re-measure after merging main. `ctest` 3/3; 
+  `gen_assets.py --verify` -> **50 textures** (knife reuses `sword_blade.png`,
+  no new art; `NET_ASSET_VERSION` stays 3).

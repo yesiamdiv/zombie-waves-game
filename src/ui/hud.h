@@ -50,6 +50,7 @@ typedef struct {
     int   points;
     int   grenades;
     int   launcher_ammo;
+    int   pistol_ammo;       /* remaining pistol shots; -1 = not replicated yet */
     int   weapon;            /* WeaponType */
     /* --- identity (B35) ---
      * The name tag used to read `local->name` / `local->color`. On a render-only

@@ -1150,6 +1150,9 @@ static HudPlayerState client_self_state(void) {
         return hs;
     }
     hs.valid = true;
+    /* NT8 (NET_WIRE_VERSION 10) adds `pistol_ammo`; until it lands, a client
+     * shows "Ammo: --" rather than a locally invented number. */
+    hs.pistol_ammo = -1;
     hs.alive = (ps.flags & NET_PST_ALIVE) != 0;
     hs.eliminated = (ps.flags & NET_PST_ELIMINATED) != 0;
     hs.hp = (float)ps.hp_centis * 0.01f;
@@ -1538,6 +1541,21 @@ static void step_frame(float dt) {
                      (event.key.mod & SDL_KMOD_ALT))) {
                     toggle_fullscreen();
                 }
+                /* Ammo-mode toggle. The host/single-player owns the rule; a
+                 * render-only client must not pretend it can change it. */
+                if (event.key.scancode == SDL_SCANCODE_U) {
+                    if (render_only_client()) {
+                        hud_show_message(&game.hud,
+                                         "Unlimited ammo is host-controlled", 2.0f);
+                    } else if (game.state == GAME_STATE_PLAYING) {
+                        g_unlimited_ammo = !g_unlimited_ammo;
+                        hud_show_message(&game.hud,
+                                         g_unlimited_ammo ? "Ammo: unlimited"
+                                                          : "Ammo: limited", 1.5f);
+                        LOG_INFO("Unlimited ammo %s",
+                                 g_unlimited_ammo ? "enabled" : "disabled");
+                    }
+                }
             }
         }
     }
@@ -1709,6 +1727,10 @@ static void parse_args(int argc, char *argv[]) {
             float m = (float)atof(arg + 20);
             if (m < 0.0f) m = 0.0f;
             g_zombie_speed_mult = m;
+        } else if (strcmp(arg, "--unlimited-ammo") == 0) {
+            /* Default gameplay is limited (visible feature); this keeps the
+             * canonical single-player invariance gate at its fixed reference. */
+            g_unlimited_ammo = true;
         } else if (strcmp(arg, "--host") == 0) {
             game.net_host_mode = true;
         } else if (strcmp(arg, "--auto-start") == 0) {
@@ -1760,6 +1782,7 @@ static void parse_args(int argc, char *argv[]) {
             printf("%s\n", "  --points=<n>          start with n shop points (debug/playtest)");
             printf("%s\n", "  --player-damage-mult=<f>  zombie melee damage multiplier (debug/playtest)");
             printf("%s\n", "  --zombie-speed-mult=<f>   zombie move-speed multiplier (debug/playtest)");
+            printf("%s\n", "  --unlimited-ammo          pistol never runs out (default: limited)");
             printf("%s\n", "  --host                    host a LAN lobby (multiplayer)");
             printf("%s\n", "  --join <ip>[:port]        join a hosted lobby (multiplayer)");
             printf("%s\n", "  --port=<n>                host listen port (default 5123)");
