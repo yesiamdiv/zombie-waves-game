@@ -14,13 +14,14 @@ Run host and client in background (detached) — GUI windows cannot block the to
 R=/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves/worktrees/multiplayer
 cd "$R/build"
 IP=$(hostname -I | awk '{print $1}')
+mkdir -p "$R/build/logs"
 setsid ./open_world_zombie_waves --host --port=5123 --name=Host \
-  >/tmp/opencode/coop_host.log 2>&1 </dev/null &
+  >"$R/build/logs/coop_host.log" 2>&1 </dev/null &
 sleep 2
 setsid ./open_world_zombie_waves --join=$IP:5123 --name=Guest \
-  >/tmp/opencode/coop_join.log 2>&1 </dev/null &
+  >"$R/build/logs/coop_join.log" 2>&1 </dev/null &
 ```
-Note: use explicit PIDs to stop them (do not `pkill -f open_world_zombie_waves` — it matches the calling shell). Logs go to /tmp/opencode/coop_*.log.
+Note: use explicit PIDs to stop them (do not `pkill -f open_world_zombie_waves` — it matches the calling shell). Logs go to `build/logs/coop_*.log`; never `/tmp` (tmpfs quota).
 
 Headless verification signals (both --auto-start or observe after join):
 - Host: "Spawned remote player entity for slot N", "WAVE n STARTED", "WAVE n COMPLETE"

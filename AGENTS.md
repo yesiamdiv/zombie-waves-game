@@ -154,12 +154,17 @@ GUI runs must be detached or the tool call hangs waiting on the window:
 R=/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves/worktrees/multiplayer
 cd "$R/build"
 IP=$(hostname -I | awk '{print $1}')
+mkdir -p "$R/build/logs"
 setsid ./open_world_zombie_waves --host --port=5123 --name=Host \
-  >/tmp/opencode/coop_host.log 2>&1 </dev/null &
+  >"$R/build/logs/coop_host.log" 2>&1 </dev/null &
 sleep 2
 setsid ./open_world_zombie_waves --join=$IP:5123 --name=Guest \
-  >/tmp/opencode/coop_join.log 2>&1 </dev/null &
+  >"$R/build/logs/coop_join.log" 2>&1 </dev/null &
 ```
+
+**Never write scratch or logs to `/tmp` on this machine** (tmpfs quota; builds
+have failed mid-link with `Disk quota exceeded`). Use the worktree's
+`build/logs/`. Standing rule: `docs/knowledge/scratch-paths.md`.
 
 **Do not** use `pkill -f open_world_zombie_waves` — the pattern matches the shell
 running the command and kills the tool call. Use explicit PIDs, or
