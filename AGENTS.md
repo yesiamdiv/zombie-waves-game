@@ -12,6 +12,29 @@ they live here, not in the chat.
 > net handshake code, because it documents four silent breaks that git reports
 > **no** conflict for.
 
+## If you were just compacted, do this before anything else
+
+Compaction erases your working memory but not your obligations. The system
+prompt you still have names only your identity and the seven `intercom_*` tools;
+it does **not** name the task-board tools and does **not** carry your mandate.
+So recover it yourself, in this order:
+
+1. `intercom_whoami` — who you are and which lane is yours.
+2. `intercom_inbox` — read everything waiting; answer each request with
+   `intercom_reply` and the message id.
+3. `corp_overview`, then `corp_tasks` — **the board is not in your context.**
+   It lives in these tools: `corp_tasks`, `corp_task_create`,
+   `corp_task_assign`, `corp_task_update`, `corp_integrate`. Never rebuild the
+   board, your task list or your status from memory.
+4. Re-read this file, then `intercom_knowledge` and open the topics touching
+   your area. `docs/knowledge/` is the durable record; the chat is not.
+
+If you are the **pm**, your cadence is in
+`docs/knowledge/pm-operating-doctrine.md`: you ask every report for
+planned / done / next / blocked each session. Asking is the job, not an
+interruption — the old "do not ask for updates they have not volunteered" rule
+was withdrawn by the owner on 2026-10-28.
+
 ## Roles (always maintain this structure)
 
 - **PM (Planner)** plans: defines sprint scope, picks backlog items, writes
@@ -27,11 +50,14 @@ they live here, not in the chat.
 
 - **All worktrees live inside the main checkout, never beside it.** The layout is:
 
-  | Path | Branch | Owner |
-  |---|---|---|
-  | `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves` | `main` | — (integration + the owner's chats) |
-  | `<main>/worktrees/multiplayer` | `feature/net-protocol` | agent `net` |
-  | `<main>/worktrees/assets` | `feature/assets-maps` | agent `assets` |
+| Path | Branch | Owner |
+|---|---|---|
+| `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves` | `main` | — (integration + the owner's chats) |
+| `<main>/worktrees/multiplayer` | `feature/net-protocol` | agent `net` |
+| `<main>/worktrees/assets` | `feature/assets-maps` | agent `assets` |
+| `<main>/worktrees/animation` | `feature/animation-assets` | agent `animation` |
+| `<main>/worktrees/audio` | `feature/audio` | agent `audio` |
+| `<main>/worktrees/effects` | `feature/effects` | agent `effects` |
 
   `worktrees/` is in `.git/info/exclude` and is never committed. A sibling tree at
   `/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves-*` is a
@@ -147,11 +173,12 @@ GUI runs must be detached or the tool call hangs waiting on the window:
 R=/home/divyam-redkar/development/personal/SDL3/open-world-zombie-waves/worktrees/multiplayer
 cd "$R/build"
 IP=$(hostname -I | awk '{print $1}')
+mkdir -p build/logs
 setsid ./open_world_zombie_waves --host --port=5123 --name=Host \
-  >/tmp/opencode/coop_host.log 2>&1 </dev/null &
+  >build/logs/coop_host.log 2>&1 </dev/null &
 sleep 2
 setsid ./open_world_zombie_waves --join=$IP:5123 --name=Guest \
-  >/tmp/opencode/coop_join.log 2>&1 </dev/null &
+  >build/logs/coop_join.log 2>&1 </dev/null &
 ```
 
 **Do not** use `pkill -f open_world_zombie_waves` — the pattern matches the shell
