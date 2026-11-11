@@ -190,7 +190,7 @@ setsid ./open_world_zombie_waves --join=$IP:5123 --name=Guest \
 
 **Never write scratch or logs to `/tmp` on this machine** (tmpfs quota; builds
 have failed mid-link with `Disk quota exceeded`). Use the worktree's
-`build/logs/`. Standing rule: `docs/knowledge/scratch-paths.md`.
+`build/logs/`. Standing rule: `docs/knowledge/tmp-scratch-rule.md`.
 
 **Do not** use `pkill -f open_world_zombie_waves` — the pattern matches the shell
 running the command and kills the tool call. Use explicit PIDs, or
