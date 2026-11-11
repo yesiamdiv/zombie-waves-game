@@ -1150,9 +1150,9 @@ static HudPlayerState client_self_state(void) {
         return hs;
     }
     hs.valid = true;
-    /* NT8 (NET_WIRE_VERSION 10) adds `pistol_ammo`; until it lands, a client
-     * shows "Ammo: --" rather than a locally invented number. */
-    hs.pistol_ammo = -1;
+    /* NT8 (NET_WIRE_VERSION 10): the host replicates the pistol counter, so a
+     * client displays the host's value and never invents one locally. */
+    hs.pistol_ammo = (int)ps.pistol_ammo;
     hs.alive = (ps.flags & NET_PST_ALIVE) != 0;
     hs.eliminated = (ps.flags & NET_PST_ELIMINATED) != 0;
     hs.hp = (float)ps.hp_centis * 0.01f;

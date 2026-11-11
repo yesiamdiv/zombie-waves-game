@@ -39,3 +39,12 @@ design calls (announced the gate re-baseline to the owner in parallel):
   render-only client only displays `NetPlayerState.pistol_ammo`. The `U`
   toggle is a host/SP debug control; on a client it cannot change the host's
   rule.
+
+## 2026-11-11 - completion note by assets
+
+The loop is closed: net landed `NetPlayerState.pistol_ammo` (v10,
+`1ba8fcd`, filled from `p->inventory.pistol_ammo` in `net_snapshot.c`), the lane
+merged main `4001c06`, and the client HUD now reads `(int)ps.pistol_ammo`
+instead of showing `Ammo: --`. Gate on the merged tree: `zombie_tests` 1896/0,
+ctest 3/3, 50 textures, canonical unlimited SP 125938/1603 and default limited
+SP 129504/1648 both byte-identical.

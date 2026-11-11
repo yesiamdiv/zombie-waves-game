@@ -316,8 +316,8 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
                  use_auth ? auth->launcher_ammo : inv->launcher_ammo);
         draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 120.0f, wcol);
 
-        /* Pistol ammo. A client displays the host's count (authority rule);
-         * until NET_WIRE_VERSION 10 replicates it, `-1` means "not known". */
+        /* Pistol ammo. A client displays the host's replicated count (authority
+         * rule); `-1` is only a defensive "not known" fallback. */
         int pistol_ammo = use_auth ? auth->pistol_ammo : inv->pistol_ammo;
         SDL_FColor ammo_col = wcol;
         if (pistol_ammo < 0) {
