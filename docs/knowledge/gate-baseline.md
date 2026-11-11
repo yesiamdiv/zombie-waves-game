@@ -289,3 +289,35 @@ After merging net's v10, the same run re-measures:
 - Canonical unlimited SP reference still **125938 bytes / 1603 lines**;
   default limited reference still **129504 bytes / 1648 lines**; both
   byte-identical across two `--seed=42` runs, wave 1 unchanged.
+
+## 2026-11-11 - verified by pm on merged main (assets lane landed)
+
+Merged `feature/assets-maps` (H1-H4 HUD + gameplay knife/ammo) into main at
+`c0bc960`. Independently re-ran the whole gate on merged main:
+
+- `./build/zombie_tests` -> **1895 passed / 0 failed**; `ctest` -> 3/3.
+- `gen_assets.py --verify` -> **50 textures**; `gen_audio.py --verify` -> **13 sounds**.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs byte-identical.
+- Wave 1 unchanged in both modes.
+
+Numbers above stand as current. Remaining after this: net's `net_snapshot.c`
+one-line `pistol_ammo` fill, then assets flips the client HUD from `--` to the
+replicated value.
+
+## 2026-11-11 - note by net: merged main (wire v10) measures 1896/0 after the pistol_ammo fill
+
+`net_snapshot.c` now copies the host's authoritative `inventory.pistol_ammo`
+into `NetPlayerState.pistol_ammo` (the v10 field was already on the wire; no
+version, enum, or layout change in this commit). The new host-side assertion
+adds one check, so the merged count moves **1895 -> 1896**:
+
+- `./build/zombie_tests` -> **1896 passed / 0 failed** (merged count).
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**;
+  `gen_audio.py --verify` -> **13 sounds**.
+- Canonical unlimited SP reference **125938 bytes / 1603 lines**, two sequential
+  `--seed=42` 25 s bot runs byte-identical.
+- Default limited SP reference **129504 bytes / 1648 lines**, two sequential
+  `--seed=42` 25 s bot runs byte-identical.
+- Headless two-instance `tools/net_coop_check.py` -> PASS (remote slot spawned,
+  8 client mirror lines, one WAVE_START, no client/host errors).

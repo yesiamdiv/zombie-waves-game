@@ -2879,6 +2879,7 @@ static void test_net_player_state(void) {
     players[0].inventory.points = 1234;
     players[0].inventory.grenades = 7;
     players[0].inventory.launcher_ammo = 3;
+    players[0].inventory.pistol_ammo = 42;
     players[0].inventory.current = WEAPON_LAUNCHER;
     players[0].inventory.unlocked[WEAPON_SWORD] = true;
     players[0].inventory.unlocked[WEAPON_LAUNCHER] = true;
@@ -2899,6 +2900,7 @@ static void test_net_player_state(void) {
     CHECK(h0->points == 1234);
     CHECK(h0->grenades == 7);
     CHECK(h0->launcher_ammo == 3);
+    CHECK(h0->pistol_ammo == 42);   /* v10: host copies its authoritative count */
     CHECK(h0->weapon == (uint8_t)WEAPON_LAUNCHER);
     CHECK((h0->unlocked_mask & (1u << WEAPON_SWORD)) != 0);
     CHECK((h0->unlocked_mask & (1u << WEAPON_LAUNCHER)) != 0);
