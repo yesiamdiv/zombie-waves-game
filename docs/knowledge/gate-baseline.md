@@ -277,3 +277,15 @@ the owner in parallel (decision record:
   with net's v10); re-measure after merging main. `ctest` 3/3; 
   `gen_assets.py --verify` -> **50 textures** (knife reuses `sword_blade.png`,
   no new art; `NET_ASSET_VERSION` stays 3).
+
+### 2026-11-10 follow-up by assets: merged main (0fa9b2d, wire v10) into the lane
+
+After merging net's v10, the same run re-measures:
+
+- `./build/zombie_tests` -> **1895 passed / 0 failed** (merged count; was 1862
+  before audio/v10 additions plus this gameplay work). This is now the merged
+  baseline.
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**.
+- Canonical unlimited SP reference still **125938 bytes / 1603 lines**;
+  default limited reference still **129504 bytes / 1648 lines**; both
+  byte-identical across two `--seed=42` runs, wave 1 unchanged.
