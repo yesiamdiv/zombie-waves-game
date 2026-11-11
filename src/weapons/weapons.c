@@ -1,13 +1,17 @@
 #include "weapons/weapons.h"
 #include "events/event_bus.h"
 
+bool g_unlimited_ammo = false;
+
 void weapons_inventory_init(PlayerInventory *inv) {
     if (!inv) return;
     inv->current = WEAPON_PISTOL;
     for (int i = 0; i < WEAPON_COUNT; i++) inv->unlocked[i] = false;
     inv->unlocked[WEAPON_PISTOL] = true;
+    inv->unlocked[WEAPON_KNIFE] = true;   /* starter kit: knife + gun */
     inv->grenades = 0;
     inv->launcher_ammo = 0;
+    inv->pistol_ammo = PISTOL_AMMO_START;
     inv->points = 0;
 }
 
@@ -86,6 +90,7 @@ const char *weapons_name(WeaponType w) {
         case WEAPON_SWORD:    return "Sword";
         case WEAPON_GRENADE:  return "Grenade";
         case WEAPON_LAUNCHER: return "Launcher";
+        case WEAPON_KNIFE:    return "Knife";
         default:              return "?";
     }
 }

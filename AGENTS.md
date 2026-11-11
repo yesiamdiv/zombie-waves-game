@@ -115,9 +115,16 @@ cmake --build build                  # zero warnings in project sources
 ctest --test-dir build               # 3/3: net_spike, net_loopback, core_tests
 ./build/zombie_tests                 # green
 python3 tools/gen_assets.py --verify  # when assets were touched
-# two same-seed SP runs, diff-empty:
-./build/open_world_zombie_waves --headless --ai=bot --run-seconds=25 --events=a.log --seed=42
+# two same-seed SP runs, diff-empty (canonical invariance reference):
+./build/open_world_zombie_waves --headless --ai=bot --run-seconds=25 \
+    --events=a.log --seed=42 --unlimited-ammo
 ```
+
+`--unlimited-ammo` is part of the gate on purpose: gameplay defaults to
+**limited** pistol ammo, and the canonical reference (125938 bytes / 1603 lines)
+is the unlimited-mode run, so it still proves nothing else perturbed the sim.
+Run the default (limited) form as the separate gameplay reference recorded in
+`docs/knowledge/gate-baseline.md`.
 
 Plus: multiplayer-only behaviour stays behind `player_count > 1`, and
 single-player wave 1 is unchanged.

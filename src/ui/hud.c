@@ -8,6 +8,8 @@
 
 void hud_init(HUD *hud) {
     hud->damage_flash = 0;
+    hud->low_hp_glow = 0;
+    hud->low_hp_pulse_time = 0;
     hud->message_timer = 0;
     memset(hud->message, 0, sizeof(hud->message));
     hud->last_player_hp = -1.0f;
@@ -18,6 +20,11 @@ void hud_update(HUD *hud, float dt) {
     if (hud->damage_flash > 0) {
         hud->damage_flash -= dt * 3.0f;
         if (hud->damage_flash < 0) hud->damage_flash = 0;
+    }
+    if (hud->low_hp_glow > 0) {
+        hud->low_hp_pulse_time += dt * 4.0f;
+        float pulse = 0.5f + 0.5f * sinf(hud->low_hp_pulse_time);
+        hud->low_hp_glow = 0.3f + 0.4f * pulse;
     }
     if (hud->message_timer > 0) {
         hud->message_timer -= dt;
@@ -185,6 +192,11 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     }
     hud_track_player_hp(hud, hp_current);
 
+    /* Panels behind clusters (H3) */
+    SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.0f, 0.35f);
+    SDL_RenderFillRect(renderer, &(SDL_FRect){10, 15, 220, 130});
+    SDL_RenderFillRect(renderer, &(SDL_FRect){(float)screen_w - 230, 15, 215, 140});
+
     /* Health bar */
     float bar_x = 20.0f;
     float bar_y = 20.0f;
@@ -205,6 +217,25 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
     SDL_FColor white = {1.0f, 1.0f, 1.0f, 0.9f};
     snprintf(buf, sizeof(buf), "HP: %.0f / %.0f", hp_current, hp_max);
     draw_text(renderer, font, buf, bar_x + 5.0f, bar_y + 2.0f, white);
+
+    /* Low-HP glow (H2) - distinct from damage vignette: orange inner border */
+    if (ratio < 0.25f) {
+        hud->low_hp_glow = 0.6f;
+    } else if (ratio >= 0.3f) {
+        hud->low_hp_glow = 0.0f;
+        hud->low_hp_pulse_time = 0.0f;
+    }
+    if (hud->low_hp_glow > 0.0f) {
+        float alpha = hud->low_hp_glow * 0.4f;
+        SDL_SetRenderDrawColorFloat(renderer, 1.0f, 0.4f, 0.0f, alpha);
+        /* inner border around HP bar */
+        SDL_FRect br = {bar_x - 2, bar_y - 2, bar_w + 4, bar_h + 4};
+        /* draw border as lines/rect outline approximation */
+        SDL_RenderFillRect(renderer, &(SDL_FRect){br.x, br.y, br.w, 2});
+        SDL_RenderFillRect(renderer, &(SDL_FRect){br.x, br.y + br.h - 2, br.w, 2});
+        SDL_RenderFillRect(renderer, &(SDL_FRect){br.x, br.y, 2, br.h});
+        SDL_RenderFillRect(renderer, &(SDL_FRect){br.x + br.w - 2, br.y, 2, br.h});
+    }
 
     /* Wave info. Authoritative on a client (B26); the local WaveSystem
      * otherwise, which is the real thing for single-player and the host. */
@@ -276,7 +307,7 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
                  weapons_name((WeaponType)(use_auth ? auth->weapon
                                                      : (int)inv->current)),
                  (use_auth ? auth->weapon : (int)inv->current) != WEAPON_PISTOL
-                     ? " [1-4 to switch]" : " [1-4 weapons]");
+                     ? " [1-5 to switch]" : " [1-5 weapons]");
         SDL_FColor wcol = {0.9f, 0.9f, 0.95f, 0.95f};
         draw_text_right(renderer, font, wbuf, (float)screen_w - 20.0f, 95.0f, wcol);
 
@@ -284,6 +315,21 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
                  use_auth ? auth->grenades : inv->grenades,
                  use_auth ? auth->launcher_ammo : inv->launcher_ammo);
         draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 120.0f, wcol);
+
+        /* Pistol ammo. A client displays the host's count (authority rule);
+         * until NET_WIRE_VERSION 10 replicates it, `-1` means "not known". */
+        int pistol_ammo = use_auth ? auth->pistol_ammo : inv->pistol_ammo;
+        SDL_FColor ammo_col = wcol;
+        if (pistol_ammo < 0) {
+            snprintf(buf, sizeof(buf), "Ammo: --");
+            ammo_col = (SDL_FColor){0.6f, 0.6f, 0.65f, 0.9f};
+        } else if (!use_auth && g_unlimited_ammo) {
+            snprintf(buf, sizeof(buf), "Ammo: unlimited");
+        } else {
+            snprintf(buf, sizeof(buf), "Ammo: %d", pistol_ammo);
+            if (pistol_ammo == 0) ammo_col = (SDL_FColor){1.0f, 0.35f, 0.3f, 0.95f};
+        }
+        draw_text_right(renderer, font, buf, (float)screen_w - 20.0f, 145.0f, ammo_col);
     }
 
     /* Crosshair at the actual mouse position (tracks the cursor exactly). */
@@ -310,6 +356,6 @@ void hud_draw(SDL_Renderer *renderer, HUD *hud, World *ecs, WaveSystem *waves,
 
     /* Pause / shop hints */
     SDL_FColor pause_hint = {0.3f, 0.3f, 0.35f, 0.5f};
-    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-4: Weapon | F11: Fullscreen",
+    draw_text(renderer, font, "ESC: Pause | B: Shop | 1-5: Weapon | U: Ammo | F11: Fullscreen",
               20.0f, (float)screen_h - 30.0f, pause_hint);
 }

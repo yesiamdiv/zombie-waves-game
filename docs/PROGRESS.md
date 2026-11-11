@@ -963,3 +963,42 @@ agent's merge is not evidence for the gate, and the relay is the shared seam.
 ### Next
 - Owner push decision; human checks remain: B40 sword, animation M11 walk,
   audio's listen-for list. None can be cleared headlessly.
+
+---
+
+## Session 2026-11-10 — Gameplay: starter knife + limited ammo + unlimited toggle
+
+### PM standup — planned
+Sprint item "Gameplay: Ammo limits + knife starter + toggle" (owner request).
+PM made the design calls (recorded in `knowledge/gameplay-ammo-knife.md`) and
+announced the deliberate gate re-baseline; net took the wire bump (NT8).
+
+### DEV — done
+- **Starter knife** `e8696c6`: `WEAPON_KNIFE` appended as id 4 (stable ids),
+  always unlocked at spawn, key 5, HUD hint 1-5. Reuses the sword orbit with
+  shorter/faster/weaker tuning and `sword_blade.png` scaled, so no new texture
+  and `NET_ASSET_VERSION` stays 3. Sword remains the purchasable upgrade.
+  Tests cover unlock/name/tuning and sword<->knife respawn.
+- **Limited pistol ammo** `4fa1e4e`: one counter (`PISTOL_AMMO_START` 60, no
+  magazine/reload), one drain per shot, ammo pickups +20, empty gun silent.
+  `--unlimited-ammo` CLI flag and the in-game `U` toggle disable the drain
+  (host/SP only; a render-only client is told the host owns the rule). HUD shows
+  the count / "unlimited" / "--" until the client value is replicated.
+- **Gate re-baseline** (deliberate, declared in `knowledge/gate-baseline.md`):
+  canonical SP invariance run now uses `--unlimited-ammo` and stays
+  **125938 bytes / 1603 lines**; the default limited run is the new reference
+  **129504 bytes / 1648 lines**. Both byte-identical across two seed-42 runs;
+  wave 1 unchanged. `AGENTS.md` gate command updated to match.
+- Merged `main` `0fa9b2d` (wire v10: `pistol_ammo` + knife weapon value); the
+  knife enum may only land on main together with/after v10. Gate on the merged
+  tree: build clean, ctest 3/3, `zombie_tests` **1895/0**,
+  `gen_assets --verify` 50 textures.
+
+### PM — next
+Integrate the lane; net lands the one-line `net_snapshot.c` `pistol_ammo` fill;
+assets then merges main and switches the client HUD from "--" to the replicated
+value.
+
+### Blocked / unproven
+- Owner on-screen check of the knife swing and the ammo HUD (headless cannot
+  see either). Client ammo readout waits on the net fill.

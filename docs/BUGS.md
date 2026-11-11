@@ -128,6 +128,9 @@ Each bug gets a fix commit; statuses below are for the current HEAD of
   refills consumable stocks of owned weapons — +1 grenade when the grenade
   weapon is unlocked, +2 rockets when the launcher is unlocked. Fresh runs
   (pistol only) are a safe no-op.
+- **Extended** (commit `4fa1e4e`): the pistol now has a limited ammo counter
+  (`PISTOL_AMMO_START` 60, +`PISTOL_AMMO_PICKUP` 20 per pickup), so the pickup
+  also refills the pistol. `--unlimited-ammo` restores the old behaviour.
 
 ## B6. Camera shows empty void beyond map edges
 

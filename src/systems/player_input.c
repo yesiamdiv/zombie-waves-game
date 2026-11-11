@@ -63,8 +63,11 @@ void system_player_input(World *ecs, Player *p, Camera *cam, float dt) {
     p->shoot_cd -= dt;
     bool pistol_selected = p->inventory.unlocked[WEAPON_PISTOL] &&
                            p->inventory.current == WEAPON_PISTOL;
-    if (pistol_selected && input->mouse_buttons[0] && p->shoot_cd <= 0) {
+    bool has_ammo = g_unlimited_ammo || p->inventory.pistol_ammo > 0;
+    if (pistol_selected && input->mouse_buttons[0] && p->shoot_cd <= 0 &&
+        has_ammo) {
         p->shoot_cd = SHOOT_COOLDOWN;
+        if (!g_unlimited_ammo) p->inventory.pistol_ammo--;
 
         Vec2 dir = vec2_normalize(vec2_sub(mouse_world, pos->pos));
         if (vec2_length(dir) < 0.001f) dir = vec2(1, 0);

@@ -122,11 +122,12 @@ void items_check_pickup(World *ecs, Entity player, PlayerInventory *inv) {
                     break;
 
                 case ITEM_AMMO:
-                    /* Pistol ammo is unlimited, so the ammo pickup is a
-                     * consumable refill instead (B5): it feeds whichever
-                     * owned weapons drain ammo. Unlocking the weapon is the
-                     * gate, so a fresh run's pickup is a safe no-op. */
+                    /* B5 + ammo limits: refill the pistol counter and feed
+                     * whichever owned consumables drain ammo. Unlocking a
+                     * weapon is the gate, so a fresh run's pickup only tops
+                     * up the pistol. */
                     if (inv) {
+                        inv->pistol_ammo += PISTOL_AMMO_PICKUP;
                         if (inv->unlocked[WEAPON_GRENADE]) inv->grenades += 1;
                         if (inv->unlocked[WEAPON_LAUNCHER]) inv->launcher_ammo += 2;
                     }

@@ -57,6 +57,7 @@ typedef struct {
      * back to a flat colored shape. */
     AssetManager assets;
     TTF_Font *font;
+    TTF_Font *font_medium;
     TTF_Font *font_large;
     bool running;
 
@@ -453,10 +454,12 @@ static bool init(void) {
         }
 
         game.font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18);
+        game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22);
         game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36);
         if (!game.font) {
             LOG_WARN("Failed to load DejaVu font, trying fallback...");
             game.font = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 18);
+            game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 22);
             game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 36);
         }
         if (!game.font) {
@@ -495,6 +498,7 @@ static void shutdown_game(void) {
     map_select_free(&game.map_select);
 
     if (game.font) TTF_CloseFont(game.font);
+    if (game.font_medium) TTF_CloseFont(game.font_medium);
     if (game.font_large) TTF_CloseFont(game.font_large);
     /* R13 merge fix (B14): destroy cached textures before the renderer. */
     if (!game.headless) asset_manager_shutdown(&game.assets);
@@ -777,7 +781,7 @@ static void update(float dt) {
                 break;
             }
 
-            /* Weapon switching (1-4). Locked weapons are rejected with a hint. A
+            /* Weapon switching (1-5). Locked weapons are rejected with a hint. A
              * render-only client has no inventory - it just queues the
              * selection so the host applies it. */
             {
@@ -788,6 +792,7 @@ static void update(float dt) {
                 if (input_key_pressed(&game.input, SDL_SCANCODE_2)) { w = WEAPON_SWORD;    key = SDL_SCANCODE_2; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_3)) { w = WEAPON_GRENADE;  key = SDL_SCANCODE_3; }
                 if (input_key_pressed(&game.input, SDL_SCANCODE_4)) { w = WEAPON_LAUNCHER; key = SDL_SCANCODE_4; }
+                if (input_key_pressed(&game.input, SDL_SCANCODE_5)) { w = WEAPON_KNIFE;    key = SDL_SCANCODE_5; }
                 if (key != SDL_SCANCODE_UNKNOWN) {
                     if (!render_only_client()) {
                         if (w != local_inv->current) {
@@ -1145,6 +1150,9 @@ static HudPlayerState client_self_state(void) {
         return hs;
     }
     hs.valid = true;
+    /* NT8 (NET_WIRE_VERSION 10) adds `pistol_ammo`; until it lands, a client
+     * shows "Ammo: --" rather than a locally invented number. */
+    hs.pistol_ammo = -1;
     hs.alive = (ps.flags & NET_PST_ALIVE) != 0;
     hs.eliminated = (ps.flags & NET_PST_ELIMINATED) != 0;
     hs.hp = (float)ps.hp_centis * 0.01f;
@@ -1537,6 +1545,21 @@ static void step_frame(float dt) {
                      (event.key.mod & SDL_KMOD_ALT))) {
                     toggle_fullscreen();
                 }
+                /* Ammo-mode toggle. The host/single-player owns the rule; a
+                 * render-only client must not pretend it can change it. */
+                if (event.key.scancode == SDL_SCANCODE_U) {
+                    if (render_only_client()) {
+                        hud_show_message(&game.hud,
+                                         "Unlimited ammo is host-controlled", 2.0f);
+                    } else if (game.state == GAME_STATE_PLAYING) {
+                        g_unlimited_ammo = !g_unlimited_ammo;
+                        hud_show_message(&game.hud,
+                                         g_unlimited_ammo ? "Ammo: unlimited"
+                                                          : "Ammo: limited", 1.5f);
+                        LOG_INFO("Unlimited ammo %s",
+                                 g_unlimited_ammo ? "enabled" : "disabled");
+                    }
+                }
             }
         }
     }
@@ -1708,6 +1731,10 @@ static void parse_args(int argc, char *argv[]) {
             float m = (float)atof(arg + 20);
             if (m < 0.0f) m = 0.0f;
             g_zombie_speed_mult = m;
+        } else if (strcmp(arg, "--unlimited-ammo") == 0) {
+            /* Default gameplay is limited (visible feature); this keeps the
+             * canonical single-player invariance gate at its fixed reference. */
+            g_unlimited_ammo = true;
         } else if (strcmp(arg, "--host") == 0) {
             game.net_host_mode = true;
         } else if (strcmp(arg, "--auto-start") == 0) {
@@ -1759,6 +1786,7 @@ static void parse_args(int argc, char *argv[]) {
             printf("%s\n", "  --points=<n>          start with n shop points (debug/playtest)");
             printf("%s\n", "  --player-damage-mult=<f>  zombie melee damage multiplier (debug/playtest)");
             printf("%s\n", "  --zombie-speed-mult=<f>   zombie move-speed multiplier (debug/playtest)");
+            printf("%s\n", "  --unlimited-ammo          pistol never runs out (default: limited)");
             printf("%s\n", "  --host                    host a LAN lobby (multiplayer)");
             printf("%s\n", "  --join <ip>[:port]        join a hosted lobby (multiplayer)");
             printf("%s\n", "  --port=<n>                host listen port (default 5123)");

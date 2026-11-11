@@ -35,8 +35,6 @@ sprint.
 
 - Score/other stats on the map-select screen (no persistent storage yet).
 - Longer-term maps or procedural map generation (maps are static files today).
-- Balancing: `ITEM_AMMO` currently does nothing (pistol has unlimited ammo);
-  could grant grenades/rockets when those weapons are owned.
 - Pickup magnet (items drift toward player within a radius).
 
 ## Engineering (deferred)
