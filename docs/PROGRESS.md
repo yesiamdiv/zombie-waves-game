@@ -1029,3 +1029,40 @@ value.
   AGENTS.md conflict (kept the absolute `$R/build/logs` snippet); folded the
   scratch-path note into the existing `knowledge/tmp-scratch-rule.md` rather
   than keeping a duplicate topic (`2527efd`).
+
+## Session 2026-11-12 — AN6 integration, owner conditional sign-off
+
+### PM standup — planned
+- Owner directed completing the sprint without the human-only checks; record
+  owner-gated items as **conditionally passed, NOT human-tested**.
+- Finish the two remaining lanes: AN6 (animation client path) and effects E1–E6.
+
+### PM — done
+- Recorded the owner directive in `docs/knowledge/conditional-verification-2026-11-12.md`
+  and `docs/PENDING_VERIFICATION.md`; updated `docs/SPRINT_PLAN.md` so NT7, A10,
+  H1-H4, gameplay, animation P1-P5 and B46 read conditionally passed and AN6 is
+  unblocked (not blocked on a human).
+- Closed the owner NT7/approvals task and A10 conditionally; unblocked + assigned
+  AN6 to animation; gave effects the go-ahead to complete E1–E6 under the same
+  conditional sign-off.
+- **AN6 integrated**: merged `feature/animation-assets` (`fc5baca`, P1-P5 polish +
+  AN6 Phase D) into `main` at `4580b61`; doc-only conflicts in
+  `PENDING_VERIFICATION.md` and `knowledge/gate-baseline.md` resolved by keeping
+  both sides' entries.
+- Re-gate on merged main: build clean, ctest 3/3, `zombie_tests` **2003/0**,
+  50 textures, unlimited SP **125938/1603** and limited SP **129504/1648** both
+  byte-identical over two `--seed=42` runs. Recorded in `knowledge/gate-baseline.md`
+  (`5dabe76`).
+- Finding from animation: Phase D needed **no new client code** — design A
+  already carries the host's frame as the art id, so there is no second
+  frame-selection path; `test_net_client_animation_phase_d` proves the windowed
+  branch. On-screen two-window look stays unproven (checklist in
+  `PENDING_VERIFICATION.md`).
+
+### PM — next
+- Effects E1–E6 remain the only open code lane (agent offline; go-ahead sent).
+  On its return: integrate, re-gate, close.
+- Final "everything complete" summary to the owner; `main` stays unpushed.
+
+### Blocked
+- None hard. Effects lane offline until it resumes.
