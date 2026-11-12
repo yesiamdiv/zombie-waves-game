@@ -2721,6 +2721,121 @@ static void test_net_snapshot_build(void) {
     CHECK(sizeof(NetEntitySnap) >= NET_SNAP_ENTRY_BYTES);
 }
 
+/* AN6 / Phase D: the CLIENT shows the frame the HOST chose.
+ *
+ * Until now that was argued, never exercised: the test binary is headless, so
+ * every sprite is a flat shape and a snapshot honestly reports NET_ART_NONE.
+ * A windowed client takes the other branch - the host's sprite names a
+ * walk-frame texture, the snapshot reports that frame's art id, and
+ * system_render_mirror resolves it back to the same file. The fake asset
+ * manager below installs the real name<->texture mapping WITHOUT a renderer
+ * (every lookup is a pointer comparison), so that windowed branch is tested
+ * here.
+ *
+ * It proves ONE answer to "which frame", host to client, with the client
+ * running on an empty world (render_only_client). It cannot prove the frame
+ * LOOKS right on a second window - that stays unproven until a human watches
+ * two windows ([i5-unverified-on-screen]). */
+static void test_net_client_animation_phase_d(void) {
+    LOG_INFO("--- Test: client mirror carries the host's animation frame (AN6) ---");
+
+    static int dummy_tex[24];
+    static AssetEntry entries[18];
+    AssetManager fake = {0};
+    fake.renderer = (SDL_Renderer *)&dummy_tex[0];   /* non-NULL; never used */
+    const char *names[18];
+    int nn = 0;
+    names[nn++] = "textures/entities/player.png";
+    names[nn++] = "textures/entities/zombie.png";
+    for (int i = 0; i < ANIM_WALK_FRAMES; i++) names[nn++] = anim_walk_path(i);
+    for (int i = 0; i < ANIM_PLAYER_WALK_FRAMES; i++) {
+        names[nn++] = anim_player_walk_path(i);
+    }
+    for (int i = 0; i < nn; i++) {
+        snprintf(entries[i].name, sizeof entries[i].name, "%s", names[i]);
+        entries[i].texture = (SDL_Texture *)&dummy_tex[i];
+        entries[i].next = (i + 1 < nn) ? &entries[i + 1] : NULL;
+    }
+    fake.head = &entries[0];
+    asset_manager_set_global(&fake);
+
+    World host;
+    ecs_init(&host);
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    CHECK(player_respawn(players, &host, 0, "P1", &COLOR_RED, vec2(100, 100)) == 0);
+    Entity p = players[0].entity;
+    Entity z = waves_spawn_zombie(&host, vec2(200, 200), THEME_GRASSLAND);
+    CHECK(z != ECS_NULL_ENTITY);
+
+    GameWorld gw = {0};
+    world_init(&gw);
+    WaveSystem ws;
+    waves_init(&ws, &gw);
+    ws.wave_active = true;
+
+    /* One tick with the player moving: both cycles advance one frame. */
+    ecs_get_velocity(&host, p)->vel = vec2(1.0f, 0.0f);
+    int z_before = ecs_get_animation(&host, z)->current_frame;
+    system_animation(&host, ANIM_FRAME_PERIOD);
+    int pf = ecs_get_animation(&host, p)->current_frame;
+    int zf = ecs_get_animation(&host, z)->current_frame;
+    CHECK(pf == 1);
+    CHECK(zf == (z_before + 1) % ANIM_WALK_FRAMES);
+
+    /* The host's sprite IS the frame texture - the one source of truth the
+     * snapshot builder reads. */
+    const char *p_path = asset_manager_name_of(ecs_get_sprite(&host, p)->sprite.texture);
+    const char *z_path = asset_manager_name_of(ecs_get_sprite(&host, z)->sprite.texture);
+    CHECK(p_path != NULL && z_path != NULL);
+    CHECK(strcmp(p_path, anim_player_walk_path(pf)) == 0);
+    CHECK(strcmp(z_path, anim_walk_path(zf)) == 0);
+
+    NetSnapshot snap;
+    CHECK(net_snapshot_build(&host, players, MAX_PLAYERS, 1.0f, &ws, &snap) >= 2);
+
+    uint8_t p_art = NET_ART_NONE, z_art = NET_ART_NONE;
+    for (int i = 0; i < snap.count; i++) {
+        if (snap.entities[i].id == (uint16_t)p) p_art = snap.entities[i].art;
+        else if (snap.entities[i].id == (uint16_t)z) z_art = snap.entities[i].art;
+    }
+    CHECK(p_art == anim_player_walk_art_id(pf));
+    CHECK(z_art == anim_walk_art_id(zf));
+    /* Teeth against the I5 bug class: a peer that invented appearance from
+     * `kind` would report the static art, never a walk frame. */
+    CHECK(p_art != NET_ART_PLAYER);
+    CHECK(z_art != NET_ART_ZOMBIE);
+
+    /* The client half runs with NO ECS AT ALL - render_only_client(). */
+    NetMirror mirror;
+    net_mirror_reset(&mirror);
+    net_mirror_push(&mirror, &snap);
+    CHECK(net_mirror_ready(&mirror));
+    NetEntitySnap ce;
+    CHECK(net_mirror_sample(&mirror, (uint16_t)p, 1.0f, &ce));
+    CHECK(ce.art == p_art);
+    /* Resolving the mirrored art gives the host's own file: same picture. */
+    CHECK(strcmp(net_art_path(ce.art), p_path) == 0);
+    /* The horde animates on the client for the same reason: the host's frame
+     * is the art id, so a staggering zombie carries its own frame to peers. */
+    CHECK(net_mirror_sample(&mirror, (uint16_t)z, 1.0f, &ce));
+    CHECK(ce.art == z_art);
+    CHECK(strcmp(net_art_path(ce.art), z_path) == 0);
+
+    /* Advance the host one more frame; the client follows with no client-side
+     * frame logic, only the next snapshot. */
+    system_animation(&host, ANIM_FRAME_PERIOD);
+    int pf2 = ecs_get_animation(&host, p)->current_frame;
+    CHECK(pf2 == (pf + 1) % ANIM_PLAYER_WALK_FRAMES);
+    CHECK(net_snapshot_build(&host, players, MAX_PLAYERS, 2.0f, &ws, &snap) >= 2);
+    net_mirror_push(&mirror, &snap);
+    CHECK(net_mirror_sample(&mirror, (uint16_t)p, 2.0f, &ce));
+    CHECK(ce.art == anim_player_walk_art_id(pf2));
+    CHECK(ce.art != p_art);
+
+    asset_manager_set_global(NULL);
+}
+
 /* B38: the entity count is a u16 as of wire v9. A u8 silently wrapped above
  * 255 while the encoder still wrote every entity, desyncing every following
  * byte. This crosses the old boundary (300 entities) and round-trips. */
@@ -3527,6 +3642,9 @@ int tests_run_all(void) {
     test_audio_trigger_table();
     test_audio_health_hurt_vs_heal();
     test_audio_sfx_2d();
+    /* Last on purpose: it installs a fake asset manager and spawns a zombie,
+     * so it must not perturb rand() or the global for any other test. */
+    test_net_client_animation_phase_d();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);
