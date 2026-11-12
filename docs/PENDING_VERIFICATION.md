@@ -7,6 +7,22 @@ These are **not** regressions and **not** known-broken. They are things that are
 believed fixed or believed correct but have **not** been proven, plus two items
 deliberately left open. Nothing here blocks the merge.
 
+## 2026-11-12 — OWNER CONDITIONAL SIGN-OFF (not human-tested)
+
+Per owner directive (Intercom `msg_01a1cefe41bc4e8cf5513d37`), the owner-gated
+items below are **conditionally passed, NOT human-tested**. The owner authorized
+finishing the sprint without the on-device look/listen. This is **not** evidence
+that any of them works — every automated gate here is blind to visuals and audio.
+
+Affected (see `docs/knowledge/conditional-verification-2026-11-12.md`):
+NT7 two-window screen check; A10 audio listen; H1-H4 HUD visuals; gameplay
+visuals (knife swing, SP/host ammo HUD, client-ammo match); animation P1-P5
+visuals; B46 weapon keys in single-player. Net N1-N5 are functionally PASS (no
+on-screen component).
+
+If a human later looks or listens and finds a defect, **reopen the item
+immediately** and log it in `docs/BUGS.md`.
+
 ## Why this file exists
 
 The R13 fix series was verified almost entirely headlessly. That is a real limit,
