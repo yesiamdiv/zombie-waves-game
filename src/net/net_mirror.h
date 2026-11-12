@@ -3,11 +3,22 @@
 
 #include "net.h"
 
+/* P1b: first time we saw an entity id (sim_time of that snapshot). Used for
+ * a client-side spawn fade/scale-in; host can also use real-time age. */
+#define NET_MIRROR_SPAWN_MAX 1024
+typedef struct {
+    uint16_t id;
+    float first_sim_time;
+    bool in_use;
+} NetMirrorSpawnEntry;
+
 typedef struct {
     NetSnapshot older;      /* t=0 interpolation basis */
     NetSnapshot newer;      /* t=1 interpolation basis */
     bool has_older;
     bool has_newer;
+    NetMirrorSpawnEntry spawn[NET_MIRROR_SPAWN_MAX];
+    float now_sim_time;
 } NetMirror;
 
 void net_mirror_reset(NetMirror *m);
@@ -53,3 +64,5 @@ float net_mirror_newer_time(const NetMirror *m);
 float net_mirror_older_time(const NetMirror *m);
 
 #endif
+/* P1b: seconds since this entity first appeared in any pushed snapshot. */
+float net_mirror_spawn_age(const NetMirror *m, uint16_t id, float now_sim_time);

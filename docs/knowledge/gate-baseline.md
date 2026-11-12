@@ -321,3 +321,19 @@ adds one check, so the merged count moves **1895 -> 1896**:
   `--seed=42` 25 s bot runs byte-identical.
 - Headless two-instance `tools/net_coop_check.py` -> PASS (remote slot spawned,
   8 client mirror lines, one WAVE_START, no client/host errors).
+## 2026-11-12 - re-baseline by animation: 1895 -> 2003 after merging main into the polish lane
+
+Merged main (through `2cbaf05`, which includes the assets gameplay merge
+`c0bc960` and net's v10 `pistol_ammo`) into `feature/animation-assets`
+(`e824a53`), then added the AN6/Phase D transport test. Re-measured on the
+merged lane:
+
+- `./build/zombie_tests` -> **2003 passed / 0 failed** (1895 merged baseline +
+  84 polish checks: item bob phase, walk stagger, +29 for the Phase D test).
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs
+  byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs
+  byte-identical. Wave 1 unchanged in both modes.
+
+This is now the current lane count; the merged-main figure (1895) is history.

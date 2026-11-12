@@ -297,3 +297,42 @@ Gate numbers live in `knowledge/gate-baseline.md` (1759/0 on this lane, 49
 textures). Still open: AN6 (the client path) is human-gated on a two-window I5
 check, and the visual questions (lunge, bob, walk, mirrored player) are
 unproven on screen - `docs/PENDING_VERIFICATION.md` M9/M10/M11.
+
+## 2026-11-12 - decision by animation: AN6/Phase D needs NO new client code (transport already carries the frame)
+
+The owner conditionally signed AN6 off (NT7 assumed working). The finding is
+that Phase D is already satisfied in code by design A, and the honest work is
+to PROVE it rather than to add a second path:
+
+- The host's `system_animation()` puts the frame's texture on the entity's
+  `CSprite` ([animation-transport], 2026-10-22 18:55 entry).
+- `net_snapshot_build()` reports the sprite it actually drew through
+  `asset_manager_name_of()` -> `net_art_from_path()`, so the wire carries the
+  FRAME's art id (e.g. `NET_ART_PLAYER_WALK3`), not the kind's static art.
+- `system_render_mirror()` resolves that id back with `net_art_path()` and
+  draws it. It asks no question about frames at all, which is the property
+  Phase D's acceptance asks for: no client-side appearance opinion, no second
+  frame-selection path, and it runs on a `render_only_client()` with an empty
+  ECS because it only reads the mirror.
+
+So `tests/tests.c::test_net_client_animation_phase_d` was added (registered
+LAST so its fake asset manager and `rand()` use cannot perturb other tests).
+The test binary is headless and would normally see `NET_ART_NONE` everywhere,
+so the test installs a fake `AssetManager` whose entries map the real walk-frame
+names to dummy texture pointers. Every lookup in that path is a pointer
+comparison - no renderer is touched - so the WINDOWED branch is exercised:
+
+1. host: moving player and a chasing zombie -> sprite texture == the frame file;
+2. host: snapshot art == `anim_*_walk_art_id(frame)` and NOT the static kind
+   art (`NET_ART_PLAYER` / `NET_ART_ZOMBIE`);
+3. client: empty ECS, mirror only -> sampled art == the host's art id, and
+   `net_art_path(art)` == the exact path the host's sprite held;
+4. advancing the host one frame moves the client's art with no client code.
+
+Teeth proven: forcing the builder to derive art from `kind` (the I5 bug class)
+fails 7 checks in this test; restoring it returns 2003/0.
+
+**Still unproven, deliberately:** the picture on a second window. This test
+proves the transport and the single-answer property; it cannot prove the frame
+LOOKS right (I5_FIX §7 is honoured - no fallback was added). Recorded in
+`docs/PENDING_VERIFICATION.md` as unproven-on-screen, not done.

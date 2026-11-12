@@ -433,3 +433,44 @@ picture. Real run, `./build/open_world_zombie_waves`:
 
 If the client number disagrees, the defect is on the net side
 (`NetPlayerState.pistol_ammo`); do not make the client count locally.
+## Unproven on screen — AN6/Phase D client animation (`test_net_client_animation_phase_d`)
+
+The transport is now proven by a headless test, including the WINDOWED branch
+(a fake asset manager maps the real frame names to dummy textures, so the host
+reports a frame art id instead of `NET_ART_NONE`). What no gate can see is the
+picture. Two windows, same seed/wave, one host holding a moving player and one
+client:
+
+- [ ] **A remote player walks on the client** with the same frame the host is
+      showing, cycling smoothly (client lags by up to one snapshot, ~50 ms) and
+      holding the idle pose when the player stops.
+- [ ] **A zombie walks and staggers on the client** - two zombies in the same
+      wave must not step in lockstep, matching what the host shows.
+- [ ] **No popping between frames**: frame 0 of both cycles is the idle pose, so
+      starting/stopping a walk must not snap the sprite.
+- [ ] **Nothing else on the client changed appearance** (size, tint, health
+      bars) - Phase D is transport-only and added no client-side fallback
+      (`docs/I5_FIX.md` §7).
+
+**Status:** code path proven by test (`2003/0`); on-screen look **unproven**.
+
+### Unproven on screen — polish P1b/P2/P3/P5 (display-only, all beyond the gate)
+
+Each item is render-only, rand-free and SP byte-identical; none can be judged by
+a gate.
+
+- [ ] **P2 pickup bob**: two pickups spawned at different spots are out of
+      phase; one pickup keeps its exact shadow/sim position while bobbing 2.5 px.
+- [ ] **P1a horde stagger**: a fresh wave does not march in unison, and the
+      stagger persists as the horde walks (it is the starting frame, not a
+      one-off).
+- [ ] **P1b spawn-in**: a zombie fades/scales in over ~0.15 s, is already
+      collidable and lethal from tick 0, and a client sees the same spawn-in
+      (mirror spawn-age path exists; confirm it is actually used on screen).
+- [ ] **P3 muzzle flash**: a short additive flash at the shot position when the
+      player fires; repeated shots do not stack into a permanent glow, and the
+      blend mode is restored (no washed-out scene afterwards).
+- [ ] **P5 sword trail**: faint fading echoes behind the spinning blade while
+      the sword is held, and nothing lingering after release.
+
+**Status:** all five are `unproven`, not `fixed`, until a human looks.
