@@ -337,3 +337,19 @@ merged lane:
   byte-identical. Wave 1 unchanged in both modes.
 
 This is now the current lane count; the merged-main figure (1895) is history.
+
+## 2026-11-12 - merge by pm: animation lane integrated into main; merged-main count is 2003/0
+
+Merged `feature/animation-assets` (P1-P5 polish + AN6/Phase D `fc5baca`) into
+`main` (`4580b61`). Re-verified on the merged `main` tree, not on the lane:
+
+- `./build/zombie_tests` -> **2003 passed / 0 failed** (merged main count).
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two sequential
+  `--seed=42` 25 s bot runs byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two sequential `--seed=42`
+  25 s bot runs byte-identical. Wave 1 unchanged in both modes.
+
+**2003 is the current main count.** The animation lane's own entry above said
+"current lane count"; this note supersedes it for `main` since the lane is now
+merged. Same total because the lane had already absorbed the net fill.
