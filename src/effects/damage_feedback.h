@@ -46,7 +46,15 @@ void damage_feedback_tick(const EventBus *bus, float dt,
  * the entities and before the HUD. */
 void damage_feedback_draw(SDL_Renderer *renderer, Camera *cam);
 
+/* E5: how strongly entity `id` should be tinted red right now, 1 at the moment
+ * of the hit falling to 0 as the flash expires; 0 for anything not currently
+ * hit. Both render paths ask this -- the host's ECS loop and the client's
+ * mirror loop -- so the same zombie flashes at the same moment on both
+ * screens, driven by the host's relayed GE_DAMAGE and nothing local. */
+float damage_feedback_hit_flash(Entity id);
+
 /* Diagnostics for the tests. */
 int damage_feedback_events_consumed(void);
+int damage_feedback_flash_count(void);
 
 #endif

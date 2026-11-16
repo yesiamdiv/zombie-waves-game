@@ -3,6 +3,7 @@
 #include "systems/systems.h"
 #include "net/net_mirror.h"
 #include "events/event_bus.h"
+#include "effects/damage_feedback.h"
 #include "items/items.h"
 #include <stdlib.h>
 #include <math.h>
@@ -108,38 +109,43 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
             }
         }
 
-        /* Flash white when zombie is hurt */
+        /* E5: a zombie that was just hit flashes RED.
+         *
+         * It used to flash by raising draw_alpha to 1.45 -- which the renderer
+         * clamps, so a hit zombie went from slightly translucent to opaque and
+         * nothing more. On a dark sprite against a dark floor that is close to
+         * invisible, and it was the only hit confirmation in the game.
+         *
+         * The intensity comes from the damage-feedback table, not from
+         * CZombieTag.hurt_timer, so the client's mirror path below can show
+         * the same flash at the same moment from the host's relayed GE_DAMAGE
+         * without hurt_timer being on the wire.
+         *
+         * Considered and rejected: a crosshair hit-marker. It confirms a hit
+         * but not WHICH zombie was hit, which is the question during a swarm,
+         * and it puts the feedback where the player is not looking. */
+        Sprite hit_sprite;
+        const Sprite *draw_sprite = &spr->sprite;
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
-            CZombieTag *ztag = &ecs->zombie_tags[i];
-            if (ztag->hurt_timer > 0) {
-                draw_alpha = 0.5f + ztag->hurt_timer * 3.0f;
+            float flash = damage_feedback_hit_flash(i);
+            if (flash > 0.0f) {
+                hit_sprite = spr->sprite;
+                hit_sprite.color = sprite_hit_tint(hit_sprite.color, flash);
+                draw_sprite = &hit_sprite;
             }
         }
 
-        sprite_draw(renderer, &spr->sprite, screen.x, screen.y,
+        sprite_draw(renderer, draw_sprite, screen.x, screen.y,
                      draw_scale * cam->zoom, draw_rot, draw_alpha);
 
-        /* P3: procedural muzzle flashes driven by relayed/shoot events (render-only). */
-        if (g_events) {
-            int c = g_events->count;
-            for (int ei = 0; ei < c && ei < 1024; ei++) {
-                const GameEvent *ev = &g_events->ring[(g_events->head + ei) % EV_MAX_EVENTS];
-                if (ev->type != GE_PLAYER_SHOT) continue;
-                Vec2 es = camera_world_to_screen(cam, vec2(ev->x, ev->y));
-                float mz = cam->zoom;
-                /* Procedural, additive, no PNG, no rand affecting sim. */
-                SDL_BlendMode oldb = SDL_BLENDMODE_BLEND;
-                SDL_GetRenderDrawBlendMode(renderer, &oldb);
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_ADD);
-                SDL_SetRenderDrawColorFloat(renderer, 1.0f, 0.95f, 0.7f, 0.9f);
-                SDL_FRect fr = {es.x - 8.0f*mz, es.y - 3.0f*mz, 16.0f*mz, 6.0f*mz};
-                SDL_RenderFillRect(renderer, &fr);
-                SDL_SetRenderDrawColorFloat(renderer, 1.0f, 1.0f, 0.9f, 0.6f);
-                SDL_FRect fr2 = {es.x - 4.0f*mz, es.y - 2.0f*mz, 8.0f*mz, 4.0f*mz};
-                SDL_RenderFillRect(renderer, &fr2);
-                SDL_SetRenderDrawBlendMode(renderer, oldb);
-            }
-        }
+        /* E4: the muzzle flash used to be drawn HERE, inside the per-entity
+         * loop, straight from whatever GE_PLAYER_SHOT entries the ring still
+         * held. That meant every shot was redrawn once per entity on screen --
+         * additively, so the flash got brighter the busier the screen was --
+         * and its duration was whatever the ring happened to contain rather
+         * than a decision. It now lives in src/effects/damage_feedback.c with
+         * its own lifetime, drawn once per flash from main.c's render path. */
+
         /* Draw health bar for damaged entities */
         if ((ecs->component_masks[i] & (1u << COMP_HEALTH)) &&
             (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG))) {
@@ -231,6 +237,15 @@ void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
         color.r = (float)e.tint[0] / 255.0f;
         color.g = (float)e.tint[1] / 255.0f;
         color.b = (float)e.tint[2] / 255.0f;
+
+        /* E5: the same hit flash the host's branch applies, from the same
+         * source -- the host's relayed GE_DAMAGE, keyed by the host's entity
+         * id, which is exactly the id this snapshot entry carries. The client
+         * derives nothing: without a relayed hit it tints nothing. */
+        if (e.kind == NET_ENT_ZOMBIE) {
+            float flash = damage_feedback_hit_flash(e.id);
+            if (flash > 0.0f) color = sprite_hit_tint(color, flash);
+        }
 
         /* NT4: the sweeping sword is drawn from its handle pivot, exactly like
          * the host's branch in system_render(). Length and width are the host's
