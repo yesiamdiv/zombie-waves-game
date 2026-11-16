@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "ecs/ecs.h"
+#include "effects/wave_banner.h"
 #include "ui/text_popup.h"
 
 /* The lowest sid not yet turned into feedback. The bus ring is written during
@@ -72,6 +73,7 @@ void damage_feedback_reset(const EventBus *bus) {
     g_consumed = 0;
     memset(g_flashes, 0, sizeof(g_flashes));
     memset(g_hits, 0, sizeof(g_hits));
+    wave_banner_reset();
 }
 
 int damage_feedback_events_consumed(void) {
@@ -256,6 +258,7 @@ void damage_feedback_tick(const EventBus *bus, float dt,
                           float anchor_x, float anchor_y) {
     muzzle_flashes_age(dt);
     hit_flashes_age(dt);
+    wave_banner_update(dt);
     if (!bus) return;
 
     int count = bus->count;
@@ -278,6 +281,13 @@ void damage_feedback_tick(const EventBus *bus, float dt,
                 break;
             case GE_PLAYER_SHOT:
                 feedback_muzzle_flash(ev);
+                break;
+            case GE_WAVE_START:
+                /* E6. waves.c's payload: a = wave number, b = zombies to
+                 * spawn. Announced from the host's event on both ends, so the
+                 * client never announces a wave it inferred locally -- on a
+                 * render-only client waves_update() does not even run. */
+                wave_banner_show((int)(ev->a + 0.5f), (int)(ev->b + 0.5f));
                 break;
             default:
                 break;

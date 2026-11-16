@@ -21,6 +21,7 @@
 #include "ui/hud.h"
 #include "ui/text_popup.h"
 #include "effects/damage_feedback.h"
+#include "effects/wave_banner.h"
 #include "world/camera.h"
 #include "config.h"
 #include "net/net.h"
@@ -3902,6 +3903,76 @@ static void test_damage_feedback_hit_flash(void) {
     remove(path);
 }
 
+/* E6: the wave banner, and specifically that it does NOT just fade.
+ *
+ * The timeline is the contract: it holds long enough to be read, then spends
+ * a defined stretch flying into the HUD. A banner whose exit progress is
+ * still 0 at the end of its life has silently become a fade. */
+static void test_wave_banner(void) {
+    LOG_INFO("--- Test: Wave banner (E6) ---");
+    const char *path = test_tmp_path("test_wave_banner_events.log");
+    remove(path);
+
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+    text_popup_init();
+    damage_feedback_reset(bus);
+
+    CHECK(!wave_banner_active());
+
+    /* waves.c's payload: a = wave number, b = zombies to spawn. */
+    event_emit(bus, GE_WAVE_START, ECS_NULL_ENTITY, GEK_NONE, 0, 0, 3.0f, 12.0f, 0, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    CHECK(wave_banner_active());
+    CHECK(wave_banner_text() != NULL &&
+          strcmp(wave_banner_text(), "WAVE 3") == 0);
+
+    /* It holds first: nothing has begun leaving while it is still being read. */
+    CHECK(wave_banner_exit_progress() == 0.0f);
+    wave_banner_update(1.0f);
+    CHECK(wave_banner_active());
+    CHECK(wave_banner_exit_progress() == 0.0f);
+
+    /* Then it leaves, progressively -- this is the "not a fade" assertion. */
+    wave_banner_update(0.9f);
+    float mid = wave_banner_exit_progress();
+    CHECK(mid > 0.0f && mid < 1.0f);
+
+    /* And it retires on its own rather than hanging around. */
+    wave_banner_update(1.0f);
+    CHECK(!wave_banner_active());
+    CHECK(wave_banner_text() == NULL);
+
+    /* A wave starting while the previous banner is live REPLACES it. Queueing
+     * would leave the player reading a wave number that is already over. */
+    event_emit(bus, GE_WAVE_START, ECS_NULL_ENTITY, GEK_NONE, 0, 0, 4.0f, 14.0f, 0, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    wave_banner_update(1.8f);
+    CHECK(wave_banner_exit_progress() > 0.0f);
+    event_emit(bus, GE_WAVE_START, ECS_NULL_ENTITY, GEK_NONE, 0, 0, 5.0f, 16.0f, 0, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    CHECK(wave_banner_text() != NULL &&
+          strcmp(wave_banner_text(), "WAVE 5") == 0);
+    CHECK(wave_banner_exit_progress() == 0.0f);   /* the clock restarted too */
+
+    /* A reset clears it: a new match must not open mid-announcement. */
+    damage_feedback_reset(bus);
+    CHECK(!wave_banner_active());
+
+    /* A host that reports no count still gets a banner; only the subtitle is
+     * missing. */
+    event_emit(bus, GE_WAVE_START, ECS_NULL_ENTITY, GEK_NONE, 0, 0, 7.0f, 0.0f, 0, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    CHECK(wave_banner_active());
+    CHECK(wave_banner_text() != NULL &&
+          strcmp(wave_banner_text(), "WAVE 7") == 0);
+
+    wave_banner_reset();
+    text_popup_shutdown();
+    event_bus_shutdown(bus);
+    remove(path);
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -3982,6 +4053,7 @@ int tests_run_all(void) {
     test_damage_feedback_points_and_pickups();
     test_damage_feedback_muzzle_flash();
     test_damage_feedback_hit_flash();
+    test_wave_banner();
     /* Last on purpose: it installs a fake asset manager and spawns a zombie,
      * so it must not perturb rand() or the global for any other test. */
     test_net_client_animation_phase_d();

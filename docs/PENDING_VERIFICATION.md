@@ -474,3 +474,28 @@ a gate.
       the sword is held, and nothing lingering after release.
 
 **Status:** all five are `unproven`, not `fixed`, until a human looks.
+
+### Unproven on screen — effects E1-E6 (display-only, all beyond the gate)
+
+Every E-slice is render-only, rand-free and does not touch simulation state, so
+a green headless gate says nothing about whether any of it looks right.
+
+- [ ] **E1-E3 popups**: damage numbers rise from the zombie that was hit, point
+      and pickup popups read clearly, and many at once do not pile into mush.
+- [ ] **E4 muzzle flash** has its own lifetime (it no longer dies with the
+      shot's other feedback), and repeated fire does not stack into a glow.
+- [ ] **E5 hit flash**: a zombie flashes red when hit, **on both screens** —
+      host and client must flash the same zombie at the same moment.
+- [ ] **E6 wave banner**: it pops in, holds long enough to read, then shrinks
+      and flies *into* the HUD's "Wave: n" row while twinkling apart — it must
+      land on the readout, not drift near it, and must not fade in place.
+- [ ] **E6 no double announcement**: the old centred `hud_show_message()` wave
+      string is gone on host *and* client. If a client ever shows both, the
+      pending-wave drain in `main.c` has regressed.
+- [ ] **E6 replace, not queue**: a wave starting while the previous banner is
+      still flying shows the new number immediately.
+
+**Status:** all `unproven`, not `fixed`, until a human looks. The E6 commit
+(a7947da) additionally could **not** run the two single-player byte-identity
+runs in its session — the integrator's gate is the first proof of SP
+invariance for it.
