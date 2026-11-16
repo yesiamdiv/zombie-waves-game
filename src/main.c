@@ -22,6 +22,7 @@
 #include "ui/hud.h"
 #include "ui/text_popup.h"
 #include "effects/damage_feedback.h"
+#include "effects/wave_banner.h"
 #include "items/items.h"
 #include "weapons/weapons.h"
 #include "events/event_bus.h"
@@ -512,6 +513,8 @@ static void shutdown_game(void) {
     /* Popup textures are owned by the renderer, so they go before it (B14's
      * lesson, same ordering as the asset manager below). */
     text_popup_shutdown();
+    /* E6: same ordering rule -- the banner caches TTF textures. */
+    wave_banner_reset();
 
     if (game.font) TTF_CloseFont(game.font);
     if (game.font_medium) TTF_CloseFont(game.font_medium);
@@ -860,13 +863,13 @@ static void update(float dt) {
             waves_update(&game.waves, &game.ecs, &game.world,
                          game.players, players_active_count(game.players, MAX_PLAYERS), dt);
 
+            /* E6: same change on the host side. The banner announces the wave
+             * from GE_WAVE_START; this centred message sat in the same place
+             * and said the same thing. The latch is kept so the condition
+             * still reads as "a new wave began" for anything added later. */
             if (game.waves.wave_number != game.last_announced_wave &&
                 game.waves.wave_active) {
                 game.last_announced_wave = game.waves.wave_number;
-                char msg[64];
-                snprintf(msg, sizeof(msg), "Wave %d - %d zombies incoming!",
-                         game.waves.wave_number, game.waves.zombies_per_wave);
-                hud_show_message(&game.hud, msg, 3.0f);
             }
 
             /* Pickups resolve per player slot (multiplayer) and take that
@@ -1277,6 +1280,12 @@ static void render(void) {
                      &game.players[0], &self_state, multiplayer,
                      win_w, win_h, game.font);
 
+            /* E6: above the HUD on purpose -- the banner shrinks INTO the HUD's
+             * wave readout, so it has to be the thing on top as it lands.
+             * Below the pause and shop overlays, which own the screen while
+             * they are up. */
+            wave_banner_draw(game.renderer, game.font_large, win_w, win_h);
+
             if (game.state == GAME_STATE_PAUSED) {
                 pause_menu_draw(game.renderer, &game.pause_menu, win_w, win_h, game.font_large);
             } else if (game.state == GAME_STATE_SHOP) {
@@ -1500,11 +1509,12 @@ static void drain_net_events(void) {
                                  c->dead_count);
         c->dead_count = 0;
     }
+    /* E6: the wave announcement is the banner now. The flag is still consumed
+     * here -- it is the client's "I saw a new wave" latch -- but the centred
+     * HUD message it used to raise is gone: hud_draw() centres that message at
+     * 0.3 * screen_h, which is exactly where the banner sits, so keeping both
+     * drew the same announcement twice, on top of itself. */
     if (c->has_pending_wave) {
-        char msg[64];
-        snprintf(msg, sizeof(msg), "Wave %d - %d zombies incoming!",
-                 c->pending_wave, c->pending_wave_count);
-        hud_show_message(&game.hud, msg, 3.0f);
         c->has_pending_wave = false;
     }
 
