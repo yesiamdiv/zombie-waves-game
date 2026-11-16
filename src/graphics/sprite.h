@@ -59,6 +59,13 @@ void sprite_draw_blade(SDL_Renderer *renderer, SDL_Texture *tex,
                        float length, float width, float scale,
                        SDL_FColor color, float alpha);
 
+/* E5: blend a sprite tint towards hit-red by `amount` (0 = untouched, 1 =
+ * full flash). Declared here rather than in either renderer because both the
+ * host's ECS path and the client's mirror path apply it, and the two screens
+ * must flash the same colour -- a second copy of the formula is a difference
+ * waiting to happen. */
+SDL_FColor sprite_hit_tint(SDL_FColor base, float amount);
+
 SDL_FColor color_rgb(float r, float g, float b);
 SDL_FColor color_rgba(float r, float g, float b, float a);
 SDL_FColor color_hex(Uint32 hex);

@@ -23,6 +23,23 @@ const SDL_FColor COLOR_DARK_GREEN = {0.1f, 0.4f, 0.1f, 1.0f};
 const SDL_FColor COLOR_DARK_RED   = {0.6f, 0.1f, 0.1f, 1.0f};
 const SDL_FColor COLOR_LIGHT_BLUE = {0.5f, 0.7f, 1.0f, 1.0f};
 
+/* Pull the tint towards a hot red and, at the same time, push the green and
+ * blue channels DOWN harder than the lerp alone would. Lerping all three
+ * towards red washes a pale sprite out to pink, which reads as a sprite
+ * changing colour; crushing the other two channels reads as the sprite being
+ * lit red, which is the impact cue. */
+SDL_FColor sprite_hit_tint(SDL_FColor base, float amount) {
+    if (amount <= 0.0f) return base;
+    if (amount > 1.0f) amount = 1.0f;
+
+    const float target_r = 1.0f;
+    SDL_FColor out = base;
+    out.r = base.r + (target_r - base.r) * amount;
+    out.g = base.g * (1.0f - 0.85f * amount);
+    out.b = base.b * (1.0f - 0.85f * amount);
+    return out;
+}
+
 SDL_FColor color_rgb(float r, float g, float b) {
     return (SDL_FColor){r, g, b, 1.0f};
 }

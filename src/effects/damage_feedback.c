@@ -40,6 +40,30 @@ typedef struct {
 
 static MuzzleFlash g_flashes[MAX_MUZZLE_FLASHES];
 
+/* E5: hit flashes, keyed by the victim's entity id.
+ *
+ * Driven by GE_DAMAGE rather than by CZombieTag.hurt_timer, which is the only
+ * way this can work on both ends. A render-only client has no local ECS -- it
+ * draws from the snapshot mirror -- so hurt_timer is simply not there, and
+ * putting it on the wire would be a NET_WIRE_VERSION bump for a purely
+ * cosmetic value. The host's GE_DAMAGE is already relayed and already carries
+ * the victim id, so the client flashes the same zombie at the same moment for
+ * free, and the value shown is still the host's.
+ *
+ * A small table scanned linearly rather than an array indexed by entity id:
+ * ids on a client are the HOST's, so nothing here may assume they are small,
+ * dense or bounded by this process's MAX_ENTITIES. */
+#define MAX_HIT_FLASHES 64
+#define HIT_FLASH_LIFETIME 0.12f
+
+typedef struct {
+    Entity id;
+    float age;
+    bool active;
+} HitFlash;
+
+static HitFlash g_hits[MAX_HIT_FLASHES];
+
 void damage_feedback_reset(const EventBus *bus) {
     /* Re-arm rather than zero. Sids keep counting across a reset, so starting
      * from 0 would replay the previous match's tail as a burst of popups over
@@ -47,6 +71,7 @@ void damage_feedback_reset(const EventBus *bus) {
     g_next_sid = bus ? bus->next_sid : 0;
     g_consumed = 0;
     memset(g_flashes, 0, sizeof(g_flashes));
+    memset(g_hits, 0, sizeof(g_hits));
 }
 
 int damage_feedback_events_consumed(void) {
@@ -65,6 +90,55 @@ static void feedback_damage(const GameEvent *ev) {
     int dmg = (int)(ev->a + 0.5f);
     if (dmg <= 0) return;
     text_popup_spawn_damage(ev->x, ev->y, dmg);
+}
+
+/* E5: mark the victim for a red flash. Re-hitting a zombie that is still
+ * flashing restarts its flash rather than adding a second entry, so a
+ * sustained burst keeps the zombie lit instead of filling the table. */
+static void feedback_hit_flash(const GameEvent *ev) {
+    if (ev->kind != GEK_ZOMBIE) return;
+    if (ev->entity == ECS_NULL_ENTITY) return;
+
+    HitFlash *free_slot = NULL;
+    HitFlash *oldest = NULL;
+    for (int i = 0; i < MAX_HIT_FLASHES; i++) {
+        HitFlash *h = &g_hits[i];
+        if (h->active && h->id == ev->entity) {
+            h->age = 0.0f;
+            return;
+        }
+        if (!h->active) {
+            if (!free_slot) free_slot = h;
+        } else if (!oldest || h->age > oldest->age) {
+            oldest = h;
+        }
+    }
+    HitFlash *slot = free_slot ? free_slot : oldest;
+    if (!slot) return;
+    slot->id = ev->entity;
+    slot->age = 0.0f;
+    slot->active = true;
+}
+
+static void hit_flashes_age(float dt) {
+    for (int i = 0; i < MAX_HIT_FLASHES; i++) {
+        if (!g_hits[i].active) continue;
+        g_hits[i].age += dt;
+        if (g_hits[i].age >= HIT_FLASH_LIFETIME) g_hits[i].active = false;
+    }
+}
+
+float damage_feedback_hit_flash(Entity id) {
+    if (id == ECS_NULL_ENTITY) return 0.0f;
+    for (int i = 0; i < MAX_HIT_FLASHES; i++) {
+        const HitFlash *h = &g_hits[i];
+        if (!h->active || h->id != id) continue;
+        float t = h->age / HIT_FLASH_LIFETIME;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        return 1.0f - t;
+    }
+    return 0.0f;
 }
 
 /* E3: points.
@@ -181,6 +255,7 @@ int damage_feedback_flash_count(void) {
 void damage_feedback_tick(const EventBus *bus, float dt,
                           float anchor_x, float anchor_y) {
     muzzle_flashes_age(dt);
+    hit_flashes_age(dt);
     if (!bus) return;
 
     int count = bus->count;
@@ -193,6 +268,7 @@ void damage_feedback_tick(const EventBus *bus, float dt,
         switch (ev->type) {
             case GE_DAMAGE:
                 feedback_damage(ev);
+                feedback_hit_flash(ev);
                 break;
             case GE_POINTS:
                 feedback_points(ev, anchor_x, anchor_y);

@@ -3821,6 +3821,87 @@ static void test_damage_feedback_muzzle_flash(void) {
     remove(path);
 }
 
+/* E5: the hit flash, and the tint formula both render paths share.
+ *
+ * The flash is keyed by the victim's entity id and driven by GE_DAMAGE, which
+ * is what lets a client show it: a client has no CZombieTag.hurt_timer to read
+ * (no local ECS) and the host's relayed event is all it gets. The ids a client
+ * sees are the HOST's, so nothing may assume they are small or dense -- the
+ * large id below is the case that would break an array indexed by entity. */
+static void test_damage_feedback_hit_flash(void) {
+    LOG_INFO("--- Test: Hit flash (E5) ---");
+    const char *path = test_tmp_path("test_feedback_hitflash_events.log");
+    remove(path);
+
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+    text_popup_init();
+    damage_feedback_reset(bus);
+
+    CHECK(damage_feedback_hit_flash(7) == 0.0f);
+
+    event_emit(bus, GE_DAMAGE, 7, GEK_ZOMBIE, 0.0f, 0.0f, 10.0f, 90.0f, 100, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    CHECK(damage_feedback_hit_flash(7) == 1.0f);   /* full at the moment of the hit */
+    CHECK(damage_feedback_hit_flash(8) == 0.0f);   /* and only on the victim */
+
+    /* It decays rather than switching off, so the flash reads as an impact. */
+    damage_feedback_tick(bus, 0.06f, 0.0f, 0.0f);
+    float mid = damage_feedback_hit_flash(7);
+    CHECK(mid > 0.0f && mid < 1.0f);
+    damage_feedback_tick(bus, 0.1f, 0.0f, 0.0f);
+    CHECK(damage_feedback_hit_flash(7) == 0.0f);
+
+    /* Re-hitting a still-flashing zombie restarts its flash instead of
+     * consuming a second slot -- otherwise a sustained burst fills the
+     * table and later victims stop flashing. */
+    event_emit(bus, GE_DAMAGE, 7, GEK_ZOMBIE, 0.0f, 0.0f, 10.0f, 80.0f, 90, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    damage_feedback_tick(bus, 0.06f, 0.0f, 0.0f);
+    event_emit(bus, GE_DAMAGE, 7, GEK_ZOMBIE, 0.0f, 0.0f, 10.0f, 70.0f, 80, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    CHECK(damage_feedback_hit_flash(7) == 1.0f);
+
+    /* A host-side entity id far outside this process's ECS range still works:
+     * on a client the ids are the host's. */
+    event_emit(bus, GE_DAMAGE, 900000, GEK_ZOMBIE, 0.0f, 0.0f, 5.0f, 5.0f, 10, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    CHECK(damage_feedback_hit_flash(900000) == 1.0f);
+
+    /* Player damage does not tint anything: the vignette owns that. */
+    event_emit(bus, GE_DAMAGE, 11, GEK_PLAYER, 0.0f, 0.0f, 20.0f, 80.0f, 100, 0);
+    damage_feedback_tick(bus, 0.0f, 0.0f, 0.0f);
+    CHECK(damage_feedback_hit_flash(11) == 0.0f);
+
+    damage_feedback_reset(bus);
+    CHECK(damage_feedback_hit_flash(7) == 0.0f);
+
+    /* The shared tint: red rises, green and blue are crushed rather than
+     * merely lerped, so a pale sprite reads as lit red instead of pink. */
+    SDL_FColor base = {0.4f, 0.8f, 0.4f, 1.0f};
+    SDL_FColor none = sprite_hit_tint(base, 0.0f);
+    CHECK(none.r == base.r && none.g == base.g && none.b == base.b);
+
+    SDL_FColor full = sprite_hit_tint(base, 1.0f);
+    CHECK(full.r > base.r);
+    CHECK(full.g < base.g * 0.2f);
+    CHECK(full.b < base.b * 0.2f);
+    CHECK(full.a == base.a);          /* opacity is not the flash's business */
+
+    SDL_FColor half = sprite_hit_tint(base, 0.5f);
+    CHECK(half.r > base.r && half.r < full.r);
+    CHECK(half.g > full.g && half.g < base.g);
+
+    /* Out-of-range amounts clamp instead of overshooting into a negative or
+     * super-saturated channel. */
+    SDL_FColor over = sprite_hit_tint(base, 4.0f);
+    CHECK(over.r == full.r && over.g == full.g && over.b == full.b);
+
+    text_popup_shutdown();
+    event_bus_shutdown(bus);
+    remove(path);
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -3900,6 +3981,7 @@ int tests_run_all(void) {
     test_damage_feedback_events();
     test_damage_feedback_points_and_pickups();
     test_damage_feedback_muzzle_flash();
+    test_damage_feedback_hit_flash();
     /* Last on purpose: it installs a fake asset manager and spawns a zombie,
      * so it must not perturb rand() or the global for any other test. */
     test_net_client_animation_phase_d();
