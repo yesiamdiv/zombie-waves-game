@@ -20,6 +20,7 @@
 #include "ai/ai_types.h"
 #include "ui/hud.h"
 #include "ui/text_popup.h"
+#include "effects/damage_feedback.h"
 #include "world/camera.h"
 #include "config.h"
 #include "net/net.h"
@@ -3640,6 +3641,58 @@ static void test_text_popup_lifecycle(void) {
     CHECK(text_popup_active_count() == 0);
 }
 
+/* E2: damage numbers come from the event bus, and only for zombie hits.
+ *
+ * The properties worth pinning are the ones a later edit could quietly break:
+ * the number shown is the host's `ev->a` rather than anything recomputed here,
+ * each event is consumed exactly once even though the ring is not drained
+ * between ticks, player damage stays silent (the vignette tells that story),
+ * and a reset does not replay the previous match's tail. */
+static void test_damage_feedback_events(void) {
+    LOG_INFO("--- Test: Damage feedback (E2) ---");
+    const char *path = test_tmp_path("test_damage_feedback_events.log");
+    remove(path);
+
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+
+    text_popup_init();
+    damage_feedback_reset(bus);
+
+    /* Three zombie hits and one player hit. Only the zombie hits are shown. */
+    event_emit(bus, GE_DAMAGE, 1, GEK_ZOMBIE, 10.0f, 20.0f, 25.0f, 75.0f, 100, 0);
+    event_emit(bus, GE_DAMAGE, 2, GEK_ZOMBIE, 30.0f, 40.0f, 10.0f, 0.0f, 10, 0);
+    event_emit(bus, GE_DAMAGE, 3, GEK_PLAYER, 50.0f, 60.0f, 15.0f, 85.0f, 100, 0);
+    event_emit(bus, GE_DAMAGE, 4, GEK_ZOMBIE, 70.0f, 80.0f, 5.0f, 20.0f, 25, 0);
+    damage_feedback_tick(bus, 0.016f, 0.0f, 0.0f);
+    CHECK(text_popup_active_count() == 3);
+    CHECK(damage_feedback_events_consumed() == 4);
+
+    /* Ticking again without new events must add nothing: the ring still holds
+     * all four entries until event_bus_flush() drains it, so the watermark is
+     * the only thing standing between one hit and a popup every frame. */
+    damage_feedback_tick(bus, 0.016f, 0.0f, 0.0f);
+    CHECK(text_popup_active_count() == 3);
+    CHECK(damage_feedback_events_consumed() == 4);
+
+    /* Zero and negative damage are not worth a "-0" over a zombie's head. */
+    event_emit(bus, GE_DAMAGE, 5, GEK_ZOMBIE, 90.0f, 90.0f, 0.0f, 10.0f, 10, 0);
+    damage_feedback_tick(bus, 0.016f, 0.0f, 0.0f);
+    CHECK(text_popup_active_count() == 3);
+
+    /* A reset re-arms past the events already in the ring. A watermark of 0
+     * would replay every one of them over the new match's first frame. */
+    for (int i = 0; i < 30; i++) text_popup_update(0.05f);
+    CHECK(text_popup_active_count() == 0);
+    damage_feedback_reset(bus);
+    damage_feedback_tick(bus, 0.016f, 0.0f, 0.0f);
+    CHECK(text_popup_active_count() == 0);
+
+    text_popup_shutdown();
+    event_bus_shutdown(bus);
+    remove(path);
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -3716,6 +3769,7 @@ int tests_run_all(void) {
     test_audio_sfx_2d();
     test_text_popup_no_global_rand();
     test_text_popup_lifecycle();
+    test_damage_feedback_events();
     /* Last on purpose: it installs a fake asset manager and spawns a zombie,
      * so it must not perturb rand() or the global for any other test. */
     test_net_client_animation_phase_d();
