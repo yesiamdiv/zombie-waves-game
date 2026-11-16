@@ -10,13 +10,15 @@ Raised: 2026-10-09 (PM onboarding; replaces Sprint 3, which is closed — see
 Source of truth for scope: the two KT answers of 2026-10-09. **Every task below
 was named by the developer who owns it.** The PM invented none of them.
 
-> **STATUS 2026-11-12 — owner conditional sign-off, sprint being completed.**
+> **STATUS 2026-11-16 — sprint scope COMPLETE on `main` (unpushed).**
 > The owner directed finishing without the human-only checks: all owner-gated
 > items are recorded as **conditionally passed, NOT human-tested**
 > (`docs/knowledge/conditional-verification-2026-11-12.md`,
-> `docs/PENDING_VERIFICATION.md`). AN6 is unblocked and in progress; effects
-> E1–E6 are the other remaining lane. Everything else (net N1–N5, H1–H4,
-> gameplay knife/ammo, animation P1–P5, audio A1–A10, B46) is landed/gate-green.
+> `docs/PENDING_VERIFICATION.md`). AN6 and effects E1-E6 are now integrated and
+> gate-green on `main` (final: `zombie_tests` 2075/0, ctest 3/3, both SP
+> references byte-identical). Remaining: the owner's on-screen/on-ear look, then
+> push. Everything else (net N1–N5, H1–H4, gameplay knife/ammo, animation
+> P1–P5, audio A1–A10, B46, effects E1–E6) is landed.
 
 ---
 
