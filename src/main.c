@@ -21,6 +21,7 @@
 #include "ui/menu.h"
 #include "ui/hud.h"
 #include "ui/text_popup.h"
+#include "effects/damage_feedback.h"
 #include "items/items.h"
 #include "weapons/weapons.h"
 #include "events/event_bus.h"
@@ -250,6 +251,9 @@ static void reset_game(void) {
      * on the one path the single-player byte-identity gate measures. Clearing
      * on reset also drops popups left over from the previous match. */
     if (!game.headless) text_popup_init();
+    /* E2: re-arm against the live bus rather than zeroing, so the previous
+     * match's tail does not replay as popups over this one's first frame. */
+    damage_feedback_reset(g_events);
 
     game.item_spawn_timer = 0;
     game.last_announced_wave = 0;
@@ -1256,6 +1260,7 @@ static void render(void) {
              * came off, nor cover the health bar. Drawn from main.c rather
              * than inside hud_draw() so this does not collide with the HUD
              * work in the assets lane. */
+            damage_feedback_draw(game.renderer, &game.camera);
             text_popup_draw(game.renderer, &game.camera, game.font);
             /* Must be a named local: the HUD keeps no copy, so an lvalue is
              * needed to pass its address. */
@@ -1589,6 +1594,24 @@ static void step_frame(float dt) {
         ai_apply_controls(&game.input, &game.ai_controls, &game.camera);
     }
 
+    /* E3: where feedback for an event with no world position goes. The camera
+     * centre is NOT good enough -- camera_clamp_world() holds it inside the
+     * border walls, so in a corner it sits up to half a viewport away from the
+     * player and a points popup would appear off to one side. Both branches
+     * read a position the host owns: the mirror on a client, the ECS on a
+     * host. */
+    Vec2 feedback_anchor = game.camera.position;
+    if (render_only_client()) {
+        Vec2 p;
+        if (client_local_pos(&p)) feedback_anchor = p;
+    } else {
+        Player *local = &game.players[0];
+        if (local->entity != ECS_NULL_ENTITY &&
+            ecs_is_alive(&game.ecs, local->entity)) {
+            feedback_anchor = ecs_get_position(&game.ecs, local->entity)->pos;
+        }
+    }
+
     /* Mirror the local raw input into the local player's slot so the systems
      * read through the per-player table (single-player == slot 0). */
     if (game.players[0].in_use) {
@@ -1618,6 +1641,16 @@ static void step_frame(float dt) {
         audio_tick(g_events, game.camera.position.x, game.camera.position.y,
                    game.camera.viewport_w / game.camera.zoom,
                    game.camera.viewport_h / game.camera.zoom);
+        /* E2: the same ring, for the same reason, and on both ends -- a client
+         * re-emits the host's relayed events into its own bus, so this one
+         * consumer covers host and client with no second code path. Skipped in
+         * headless: nothing would be drawn, and not running it at all is a
+         * stronger guarantee for the SP gate than relying on the popup
+         * system's no-op. */
+        if (!game.headless) {
+            damage_feedback_tick(g_events, dt, feedback_anchor.x,
+                                 feedback_anchor.y);
+        }
         event_bus_flush(g_events);
     }
 

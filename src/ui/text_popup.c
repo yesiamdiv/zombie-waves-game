@@ -60,6 +60,11 @@ int text_popup_active_count(void) {
     return n;
 }
 
+const TextPopup *text_popup_at(int index) {
+    if (index < 0 || index >= MAX_TEXT_POPUPS) return NULL;
+    return g_popups[index].active ? &g_popups[index] : NULL;
+}
+
 /* Free slot, else the live popup with the least life left. Dropping the new
  * popup instead would silently hide exactly the feedback the player is
  * currently generating -- a burst of damage numbers would show its first 256
