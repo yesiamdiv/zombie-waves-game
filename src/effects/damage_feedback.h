@@ -48,5 +48,6 @@ void damage_feedback_draw(SDL_Renderer *renderer, Camera *cam);
 
 /* Diagnostics for the tests. */
 int damage_feedback_events_consumed(void);
+int damage_feedback_flash_count(void);
 
 #endif
