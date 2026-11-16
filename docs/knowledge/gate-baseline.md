@@ -400,3 +400,20 @@ into `main` (`85eb0a8`). Re-verified on merged main:
   byte-identical. Wave 1 unchanged.
 - `gen_assets.py --verify` still blocked by the Pillow NEAREST env bug; assets
   unchanged since the last green verify.
+
+## 2026-11-16 - merge by pm: effects E6 integrated (E1-E6 complete); merged-main count is 2075/0
+
+Merged `feature/effects` E6 (wave banner `a7947da`) + its docs (`b9d85f5`) into
+`main` (`cfd0049`). This is the first SP-invariance proof for E6 (the effects
+agent's session could not launch the binary). Re-verified on merged main:
+
+- `./build/zombie_tests` -> **2075 passed / 0 failed** (2059 + 16 wave-banner checks).
+- `ctest --test-dir build` -> 3/3.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs
+  byte-identical — E6 did NOT move it.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs
+  byte-identical. Wave 1 unchanged.
+- `gen_assets.py --verify` still blocked by the Pillow NEAREST env bug; assets
+  unchanged since the last green verify (50 textures).
+
+Effects E1-E6 are now all on main. Same numbers hold: 50 textures, 13 sounds.
