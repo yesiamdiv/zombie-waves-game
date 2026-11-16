@@ -20,6 +20,7 @@
 #include "systems/systems.h"
 #include "ui/menu.h"
 #include "ui/hud.h"
+#include "ui/text_popup.h"
 #include "items/items.h"
 #include "weapons/weapons.h"
 #include "events/event_bus.h"
@@ -242,6 +243,13 @@ static void reset_game(void) {
 
     hud_init(&game.hud);
     hud_show_message(&game.hud, "Survive the zombie horde!", 3.0f);
+
+    /* E1: deliberately NOT initialized in headless. Every text_popup_spawn()
+     * returns immediately while the system is uninitialized, so the trigger
+     * sites cost nothing and -- more to the point -- cannot perturb anything
+     * on the one path the single-player byte-identity gate measures. Clearing
+     * on reset also drops popups left over from the previous match. */
+    if (!game.headless) text_popup_init();
 
     game.item_spawn_timer = 0;
     game.last_announced_wave = 0;
@@ -496,6 +504,10 @@ static void shutdown_game(void) {
 
     world_free(&game.world);
     map_select_free(&game.map_select);
+
+    /* Popup textures are owned by the renderer, so they go before it (B14's
+     * lesson, same ordering as the asset manager below). */
+    text_popup_shutdown();
 
     if (game.font) TTF_CloseFont(game.font);
     if (game.font_medium) TTF_CloseFont(game.font_medium);
@@ -818,6 +830,7 @@ static void update(float dt) {
                     camera_follow(&game.camera, p, dt);
                 }
                 hud_update(&game.hud, dt);
+                text_popup_update(dt);
                 break;
             }
 
@@ -890,6 +903,7 @@ static void update(float dt) {
             }
 
             hud_update(&game.hud, dt);
+            text_popup_update(dt);
 
             bool game_over = false;
             switch (game.mode) {
@@ -1237,6 +1251,12 @@ static void render(void) {
             } else {
                 system_render(&game.ecs, game.renderer, &game.camera);
             }
+            /* E1: world-space floating text sits above the entities and below
+             * the HUD -- a damage number must not be hidden by the zombie it
+             * came off, nor cover the health bar. Drawn from main.c rather
+             * than inside hud_draw() so this does not collide with the HUD
+             * work in the assets lane. */
+            text_popup_draw(game.renderer, &game.camera, game.font);
             /* Must be a named local: the HUD keeps no copy, so an lvalue is
              * needed to pass its address. */
             HudPlayerState self_state = client_self_state();
