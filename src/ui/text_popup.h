@@ -78,4 +78,10 @@ void text_popup_spawn_points(float x, float y, int points);
 /* Live popup count. For tests and diagnostics. */
 int text_popup_active_count(void);
 
+/* Read-only view of a slot, or NULL if the index is out of range or the slot
+ * is idle. For tests: what a popup SAYS and WHERE it sits is the whole
+ * contract of the spawn wrappers, and it is otherwise only observable by
+ * looking at the screen. */
+const TextPopup *text_popup_at(int index);
+
 #endif

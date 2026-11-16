@@ -3693,6 +3693,79 @@ static void test_damage_feedback_events(void) {
     remove(path);
 }
 
+/* E3: points and pickup popups, from the same ring as E2.
+ *
+ * The property that is easy to lose later is the anchoring: GE_POINTS is
+ * emitted at (0,0) because points belong to the player rather than a place,
+ * so a popup that trusts ev->x/ev->y lands in the world's top-left corner and
+ * is never seen. Pickups are the opposite -- they must stay on the item. */
+static void test_damage_feedback_points_and_pickups(void) {
+    LOG_INFO("--- Test: Points and pickup popups (E3) ---");
+    const char *path = test_tmp_path("test_feedback_points_events.log");
+    remove(path);
+
+    EventBus *bus = event_bus_init(path);
+    CHECK(bus != NULL);
+
+    text_popup_init();
+    damage_feedback_reset(bus);
+
+    /* weapons_award_kill()'s payload shape: a = running total, b = awarded. */
+    event_emit(bus, GE_POINTS, ECS_NULL_ENTITY, GEK_PLAYER, 0, 0, 350.0f, 50.0f, 1, 0);
+    damage_feedback_tick(bus, 0.016f, 500.0f, 600.0f);
+    CHECK(text_popup_active_count() == 1);
+
+    /* Anchored on the player passed in, not on the event's (0,0). */
+    const TextPopup *pts = text_popup_at(0);
+    CHECK(pts != NULL && pts->x == 500.0f);
+    CHECK(pts != NULL && pts->y < 600.0f);   /* lifted clear of the head */
+    CHECK(pts != NULL && strcmp(pts->text, "+50") == 0);
+
+    /* A zero award (a purchase refund path, or a kill credited to someone
+     * else) must not leave a "+0" hanging over the player. */
+    event_emit(bus, GE_POINTS, ECS_NULL_ENTITY, GEK_PLAYER, 0, 0, 350.0f, 0.0f, 0, 0);
+    damage_feedback_tick(bus, 0.016f, 500.0f, 600.0f);
+    CHECK(text_popup_active_count() == 1);
+
+    for (int i = 0; i < 30; i++) text_popup_update(0.05f);
+    CHECK(text_popup_active_count() == 0);
+
+    /* Pickups: named, and left on the item's own position. */
+    event_emit(bus, GE_ITEM_PICKUP, 9, GEK_ITEM, 120.0f, 240.0f,
+               (float)ITEM_HEALTH, 25.0f, 0, 0);
+    damage_feedback_tick(bus, 0.016f, 500.0f, 600.0f);
+    CHECK(text_popup_active_count() == 1);
+    const TextPopup *pick = text_popup_at(0);
+    CHECK(pick != NULL && pick->x == 120.0f && pick->y == 240.0f);
+    CHECK(pick != NULL && strcmp(pick->text, "+25 HP") == 0);
+
+    for (int i = 0; i < 30; i++) text_popup_update(0.05f);
+    event_emit(bus, GE_ITEM_PICKUP, 10, GEK_ITEM, 0.0f, 0.0f,
+               (float)ITEM_AMMO, 30.0f, 0, 0);
+    damage_feedback_tick(bus, 0.016f, 500.0f, 600.0f);
+    CHECK(text_popup_at(0) != NULL &&
+          strcmp(text_popup_at(0)->text, "+30 AMMO") == 0);
+
+    for (int i = 0; i < 30; i++) text_popup_update(0.05f);
+    event_emit(bus, GE_ITEM_PICKUP, 11, GEK_ITEM, 0.0f, 0.0f,
+               (float)ITEM_SPEED_BOOST, 40.0f, 0, 0);
+    damage_feedback_tick(bus, 0.016f, 500.0f, 600.0f);
+    CHECK(text_popup_at(0) != NULL &&
+          strcmp(text_popup_at(0)->text, "SPEED+") == 0);
+
+    /* An ItemType this code has never heard of still produces feedback: a
+     * pickup that looks like it did nothing is worse than an unnamed one. */
+    for (int i = 0; i < 30; i++) text_popup_update(0.05f);
+    event_emit(bus, GE_ITEM_PICKUP, 12, GEK_ITEM, 0.0f, 0.0f,
+               (float)ITEM_COUNT + 3.0f, 1.0f, 0, 0);
+    damage_feedback_tick(bus, 0.016f, 500.0f, 600.0f);
+    CHECK(text_popup_active_count() == 1);
+
+    text_popup_shutdown();
+    event_bus_shutdown(bus);
+    remove(path);
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -3770,6 +3843,7 @@ int tests_run_all(void) {
     test_text_popup_no_global_rand();
     test_text_popup_lifecycle();
     test_damage_feedback_events();
+    test_damage_feedback_points_and_pickups();
     /* Last on purpose: it installs a fake asset manager and spawns a zombie,
      * so it must not perturb rand() or the global for any other test. */
     test_net_client_animation_phase_d();

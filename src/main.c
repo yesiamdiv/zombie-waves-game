@@ -1594,6 +1594,24 @@ static void step_frame(float dt) {
         ai_apply_controls(&game.input, &game.ai_controls, &game.camera);
     }
 
+    /* E3: where feedback for an event with no world position goes. The camera
+     * centre is NOT good enough -- camera_clamp_world() holds it inside the
+     * border walls, so in a corner it sits up to half a viewport away from the
+     * player and a points popup would appear off to one side. Both branches
+     * read a position the host owns: the mirror on a client, the ECS on a
+     * host. */
+    Vec2 feedback_anchor = game.camera.position;
+    if (render_only_client()) {
+        Vec2 p;
+        if (client_local_pos(&p)) feedback_anchor = p;
+    } else {
+        Player *local = &game.players[0];
+        if (local->entity != ECS_NULL_ENTITY &&
+            ecs_is_alive(&game.ecs, local->entity)) {
+            feedback_anchor = ecs_get_position(&game.ecs, local->entity)->pos;
+        }
+    }
+
     /* Mirror the local raw input into the local player's slot so the systems
      * read through the per-player table (single-player == slot 0). */
     if (game.players[0].in_use) {
@@ -1630,8 +1648,8 @@ static void step_frame(float dt) {
          * stronger guarantee for the SP gate than relying on the popup
          * system's no-op. */
         if (!game.headless) {
-            damage_feedback_tick(g_events, dt, game.camera.position.x,
-                                 game.camera.position.y);
+            damage_feedback_tick(g_events, dt, feedback_anchor.x,
+                                 feedback_anchor.y);
         }
         event_bus_flush(g_events);
     }
