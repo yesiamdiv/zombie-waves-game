@@ -1066,3 +1066,25 @@ value.
 
 ### Blocked
 - None hard. Effects lane offline until it resumes.
+
+## Session 2026-11-16 — Effects E1-E6 integrated; sprint complete
+
+### PM standup — planned
+- Owner: resume the effects agent and complete E1-E6 (no reassignment).
+- Integrate each effects slice on main, full gate per slice.
+
+### PM/DEV — done
+- Effects resumed (owner relaunched it; see knowledge/intercom-agent-wake).
+- Integrated on main, each re-gated: E1 text popup (`7fb6242`, 2011/0),
+  E2+E3 (`2632ec4`, 2032/0), E4+E5 (`85eb0a8`, 2059/0), E6 (`cfd0049`, **2075/0**).
+- Final full gate on main: build clean, **2075/0**, ctest 3/3, unlimited SP
+  **125938/1603** + limited SP **129504/1648**, both two-run byte-identical.
+  E6 needed the PM gate for SP invariance (effects' session could not launch the
+  binary); it held.
+- Flagged an environment bug: `gen_assets.py --verify` crashes on Pillow's
+  `Image.NEAREST` (Pillow 12.1.1 / Python 3.14.4). Assets unchanged since the
+  last green verify, so 50 textures stands. knowledge/pillow-nearest-env-bug.
+
+### PM — next
+- Sprint scope is complete on main (unpushed, for owner). Remaining: owner's
+  on-screen look at the conditionally-passed visuals/audio; then push.
