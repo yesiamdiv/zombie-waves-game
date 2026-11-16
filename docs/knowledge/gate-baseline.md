@@ -386,3 +386,17 @@ popups `9fcc309`) into `main` (`2632ec4`). Re-verified on merged main:
 - `gen_assets.py --verify` still blocked by the Pillow NEAREST env bug
   (knowledge/pillow-nearest-env-bug); `assets/` unchanged since the last green
   verify, so 50 textures stands.
+
+## 2026-11-16 - merge by pm: effects E4+E5 integrated; merged-main count is 2059/0
+
+Merged `feature/effects` E4 (muzzle flash `d6fe142`) + E5 (hit flash `fabff2b`)
+into `main` (`85eb0a8`). Re-verified on merged main:
+
+- `./build/zombie_tests` -> **2059 passed / 0 failed** (2032 + 27 E4/E5 checks).
+- `ctest --test-dir build` -> 3/3.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs
+  byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs
+  byte-identical. Wave 1 unchanged.
+- `gen_assets.py --verify` still blocked by the Pillow NEAREST env bug; assets
+  unchanged since the last green verify.
