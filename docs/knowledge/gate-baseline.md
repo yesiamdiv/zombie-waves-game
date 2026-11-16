@@ -353,3 +353,21 @@ Merged `feature/animation-assets` (P1-P5 polish + AN6/Phase D `fc5baca`) into
 **2003 is the current main count.** The animation lane's own entry above said
 "current lane count"; this note supersedes it for `main` since the lane is now
 merged. Same total because the lane had already absorbed the net fill.
+
+## 2026-11-16 - merge by pm: effects E1 integrated; merged-main count is 2011/0
+
+Merged `feature/effects` (E1 shared world-space text popup `89a4034`, on top of
+its merge of main `3c8b427`) into `main` (`7fb6242`). Re-verified on merged main:
+
+- `./build/zombie_tests` -> **2011 passed / 0 failed** (2003 + 8 popup checks).
+- `ctest --test-dir build` -> 3/3.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs
+  byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs
+  byte-identical. Wave 1 unchanged.
+- `gen_assets.py --verify` could **not** run in this environment: Pillow 12.1.1
+  on Python 3.14.4 fails only `Image.NEAREST` ("ImagingCore.resize returned
+  NULL without setting an exception"); BILINEAR/BICUBIC/LANCZOS/BOX all work.
+  Environment bug, not the repo; `assets/` is byte-identical to the last green
+  verify (`git diff 03b0e6e HEAD -- assets/` empty), so the 50-texture result
+  stands. See knowledge/pillow-nearest-env-bug.
