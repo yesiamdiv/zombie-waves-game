@@ -1,8 +1,36 @@
+#include <SDL3/SDL_blendmode.h>
+#include <SDL3/SDL.h>
 #include "systems/systems.h"
 #include "net/net_mirror.h"
 #include "events/event_bus.h"
 #include "items/items.h"
 #include <stdlib.h>
+#include <math.h>
+/* P1b: spawn-in timing (display only). */
+static float g_spawn_first_t[ECS_MAX_ENTITIES];
+static uint8_t g_spawn_first_t_set[ECS_MAX_ENTITIES];
+#define SPAWN_IN_DURATION 0.15f
+
+/* P3: muzzle flash from relayed/shoot events (procedural, no PNG). */
+#define MUZZLE_MAX 32
+__attribute__((unused)) static struct { float x,y,ang,life,ttl; } g_muzzle[MUZZLE_MAX];
+
+/* P5: sword trail history (render-only). */
+#define SWORD_TRAIL_LEN 8
+__attribute__((unused)) static struct { Entity sword; float ang[SWORD_TRAIL_LEN]; int count; int idx; float len[SWORD_TRAIL_LEN]; float w[SWORD_TRAIL_LEN]; float ox[SWORD_TRAIL_LEN]; float oy[SWORD_TRAIL_LEN]; } g_trail[SWORD_TRAIL_LEN];
+static float now_seconds(void) {
+    return (float)(SDL_GetTicks()) / 1000.0f;
+}
+__attribute__((unused)) static float entity_spawn_age_host(uint32_t idx) {
+    if (idx >= ECS_MAX_ENTITIES) return 1e9f;
+    if (!g_spawn_first_t_set[idx]) {
+        g_spawn_first_t[idx] = now_seconds();
+        g_spawn_first_t_set[idx] = 1;
+    }
+    float age = now_seconds() - g_spawn_first_t[idx];
+    if (age < 0.0f) age = 0.0f;
+    return age;
+}
 
 void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
@@ -23,6 +51,38 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
             const CSwordTag *sword = &ecs->sword_tags[i];
             float length = sword->outer_radius - sword->radius;
             float width = spr->sprite.as.rect.w > 0.0f ? spr->sprite.as.rect.w : 8.0f;
+            /* P5: procedural blade trail from recent angles (render-only). */
+            {
+                int slot = -1;
+                for (int t = 0; t < SWORD_TRAIL_LEN; t++) {
+                    if (g_trail[t].count == 0 || g_trail[t].sword == i) { slot = t; break; }
+                }
+                if (slot < 0) slot = 0;
+                if (g_trail[slot].sword != i) {
+                    g_trail[slot].sword = i;
+                    g_trail[slot].count = 0;
+                    g_trail[slot].idx = 0;
+                }
+                int ti = g_trail[slot].idx;
+                g_trail[slot].ang[ti] = sword->angle;
+                g_trail[slot].len[ti] = length;
+                g_trail[slot].w[ti] = width;
+                g_trail[slot].ox[ti] = screen.x;
+                g_trail[slot].oy[ti] = screen.y;
+                g_trail[slot].idx = (ti + 1) % SWORD_TRAIL_LEN;
+                if (g_trail[slot].count < SWORD_TRAIL_LEN) g_trail[slot].count++;
+                /* draw faint trail behind */
+                for (int j = 1; j < g_trail[slot].count; j++) {
+                    int k = (g_trail[slot].idx - j + SWORD_TRAIL_LEN) % SWORD_TRAIL_LEN;
+                    float fade = 1.0f - (float)j / (float)g_trail[slot].count;
+                    float tw = g_trail[slot].w[k] * (0.4f + 0.6f * fade);
+                    float talpha = spr->base_alpha * 0.25f * fade;
+                    sprite_draw_blade(renderer, spr->sprite.texture,
+                                      g_trail[slot].ox[k], g_trail[slot].oy[k], g_trail[slot].ang[k],
+                                      g_trail[slot].len[k], tw, cam->zoom,
+                                      spr->sprite.color, talpha);
+                }
+            }
             sprite_draw_blade(renderer, spr->sprite.texture,
                               screen.x, screen.y, sword->angle,
                               length, width, cam->zoom,
@@ -33,6 +93,20 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         float draw_alpha = spr->base_alpha;
         float draw_scale = spr->scale;
         float draw_rot = 0.0f;
+
+        /* P1b: spawn fade/scale-in (~0.15 s), display-only. */
+        if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
+            float age = entity_spawn_age_host(i);
+            if (age < SPAWN_IN_DURATION) {
+                float t = age / SPAWN_IN_DURATION;
+                if (t < 0.0f) t = 0.0f;
+                if (t > 1.0f) t = 1.0f;
+                /* ease in */
+                t = t * t;
+                draw_scale *= (0.6f + 0.4f * t);
+                draw_alpha *= t;
+            }
+        }
 
         /* Flash white when zombie is hurt */
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
@@ -45,6 +119,27 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         sprite_draw(renderer, &spr->sprite, screen.x, screen.y,
                      draw_scale * cam->zoom, draw_rot, draw_alpha);
 
+        /* P3: procedural muzzle flashes driven by relayed/shoot events (render-only). */
+        if (g_events) {
+            int c = g_events->count;
+            for (int ei = 0; ei < c && ei < 1024; ei++) {
+                const GameEvent *ev = &g_events->ring[(g_events->head + ei) % EV_MAX_EVENTS];
+                if (ev->type != GE_PLAYER_SHOT) continue;
+                Vec2 es = camera_world_to_screen(cam, vec2(ev->x, ev->y));
+                float mz = cam->zoom;
+                /* Procedural, additive, no PNG, no rand affecting sim. */
+                SDL_BlendMode oldb = SDL_BLENDMODE_BLEND;
+                SDL_GetRenderDrawBlendMode(renderer, &oldb);
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_ADD);
+                SDL_SetRenderDrawColorFloat(renderer, 1.0f, 0.95f, 0.7f, 0.9f);
+                SDL_FRect fr = {es.x - 8.0f*mz, es.y - 3.0f*mz, 16.0f*mz, 6.0f*mz};
+                SDL_RenderFillRect(renderer, &fr);
+                SDL_SetRenderDrawColorFloat(renderer, 1.0f, 1.0f, 0.9f, 0.6f);
+                SDL_FRect fr2 = {es.x - 4.0f*mz, es.y - 2.0f*mz, 8.0f*mz, 4.0f*mz};
+                SDL_RenderFillRect(renderer, &fr2);
+                SDL_SetRenderDrawBlendMode(renderer, oldb);
+            }
+        }
         /* Draw health bar for damaged entities */
         if ((ecs->component_masks[i] & (1u << COMP_HEALTH)) &&
             (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG))) {

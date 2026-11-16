@@ -11,6 +11,38 @@
 #define SWORD_DAMAGE       55.0f
 #define SWORD_HIT_INTERVAL 0.15f   /* per-zombie re-hit cooldown */
 
+/* Starter knife: a shorter, faster, weaker version of the same sweeping
+ * blade. It reuses the sword's art (scaled) and orbit mechanism, so the
+ * starter kit adds no texture and no second melee system. */
+#define KNIFE_RADIUS       10.0f
+#define KNIFE_TIP_RADIUS   30.0f
+#define KNIFE_WIDTH        6.0f
+#define KNIFE_SPIN_SPEED   7.0f
+#define KNIFE_DAMAGE       22.0f
+#define KNIFE_HIT_INTERVAL 0.12f
+
+typedef struct {
+    float radius;
+    float outer_radius;
+    float width;
+    float spin_speed;
+    float damage;
+    float hit_interval;
+    const char *deploy_msg;
+} MeleeTuning;
+
+static MeleeTuning sword_tuning(void) {
+    return (MeleeTuning){SWORD_RADIUS, SWORD_TIP_RADIUS, SWORD_WIDTH,
+                         SWORD_SPIN_SPEED, SWORD_DAMAGE, SWORD_HIT_INTERVAL,
+                         "Sword deployed"};
+}
+
+static MeleeTuning knife_tuning(void) {
+    return (MeleeTuning){KNIFE_RADIUS, KNIFE_TIP_RADIUS, KNIFE_WIDTH,
+                         KNIFE_SPIN_SPEED, KNIFE_DAMAGE, KNIFE_HIT_INTERVAL,
+                         "Knife deployed"};
+}
+
 /* Damage a zombie like the bullet path in system_collision (same knockback
  * and hurt-state so the render/audit behavior stays consistent). `owner` is
  * credited with the kill if the zombie dies. */
@@ -50,7 +82,8 @@ static Entity find_sword(World *ecs, Entity owner) {
     return ECS_NULL_ENTITY;
 }
 
-static Entity spawn_sword(World *ecs, Entity player, float aim_angle) {
+static Entity spawn_sword(World *ecs, Entity player, float aim_angle,
+                          const MeleeTuning *t) {
     Entity s = ecs_create_entity(ecs);
     if (s == ECS_NULL_ENTITY) return s;
 
@@ -59,18 +92,18 @@ static Entity spawn_sword(World *ecs, Entity player, float aim_angle) {
     ecs_add_component(ecs, s, COMP_SWORD_TAG);
 
     Vec2 ppos = ecs_get_position(ecs, player)->pos;
-    Vec2 handle = vec2_add(ppos, vec2_from_angle(aim_angle, SWORD_RADIUS));
+    Vec2 handle = vec2_add(ppos, vec2_from_angle(aim_angle, t->radius));
     *ecs_get_position(ecs, s) = (CPosition){{handle.x, handle.y}};
     *ecs_get_sword_tag(ecs, s) = (CSwordTag){
         .owner = player,
-        .radius = SWORD_RADIUS,
-        .outer_radius = SWORD_TIP_RADIUS,
+        .radius = t->radius,
+        .outer_radius = t->outer_radius,
         .angle = aim_angle,
-        .spin_speed = SWORD_SPIN_SPEED,
-        .damage = SWORD_DAMAGE,
-        .hit_interval = SWORD_HIT_INTERVAL
+        .spin_speed = t->spin_speed,
+        .damage = t->damage,
+        .hit_interval = t->hit_interval
     };
-    Sprite blade = sprite_rect(SWORD_WIDTH, SWORD_TIP_RADIUS - SWORD_RADIUS,
+    Sprite blade = sprite_rect(t->width, t->outer_radius - t->radius,
                                COLOR_LIGHT_BLUE);
     blade.texture = sprite_tex("textures/entities/sword_blade.png");
     if (blade.texture) {
@@ -96,16 +129,32 @@ void system_sword(World *ecs, Player *p, float dt) {
     InputState *input = &p->input;
     PlayerInventory *inv = &p->inventory;
 
-    bool spinning = inv->unlocked[WEAPON_SWORD] &&
-                    inv->current == WEAPON_SWORD &&
-                    input->mouse_buttons[0];
+    /* Both the purchasable sword and the always-unlocked starter knife use the
+     * same orbit. Only one can be equipped at a time. */
+    WeaponType melee = WEAPON_COUNT;
+    if (inv->unlocked[WEAPON_SWORD] && inv->current == WEAPON_SWORD) {
+        melee = WEAPON_SWORD;
+    } else if (inv->unlocked[WEAPON_KNIFE] && inv->current == WEAPON_KNIFE) {
+        melee = WEAPON_KNIFE;
+    }
+    bool spinning = melee != WEAPON_COUNT && input->mouse_buttons[0];
+    MeleeTuning tune = (melee == WEAPON_KNIFE) ? knife_tuning()
+                                               : sword_tuning();
 
     Entity sword = find_sword(ecs, player);
+
+    /* Swapping sword <-> knife while the button is held must not keep the old
+     * blade's reach: destroy it so the next block respawns with the new size. */
+    if (sword != ECS_NULL_ENTITY &&
+        ecs_get_sword_tag(ecs, sword)->radius != tune.radius) {
+        ecs_destroy_entity(ecs, sword);
+        sword = ECS_NULL_ENTITY;
+    }
 
     if (!spinning) {
         if (sword != ECS_NULL_ENTITY) {
             ecs_destroy_entity(ecs, sword);
-            LOG_DEBUG("Sword released");
+            LOG_DEBUG("Melee released");
         }
         return;
     }
@@ -114,9 +163,9 @@ void system_sword(World *ecs, Player *p, float dt) {
     if (sword == ECS_NULL_ENTITY) {
         Vec2 aim = vec2(input->mouse_world_x, input->mouse_world_y);
         float aim_angle = atan2f(aim.y - ppos->pos.y, aim.x - ppos->pos.x);
-        sword = spawn_sword(ecs, player, aim_angle);
+        sword = spawn_sword(ecs, player, aim_angle, &tune);
         if (sword == ECS_NULL_ENTITY) return;
-        LOG_DEBUG("Sword deployed (angle: %.2f)", aim_angle);
+        LOG_DEBUG("%s (angle: %.2f)", tune.deploy_msg, aim_angle);
     }
 
     CSwordTag *tag = ecs_get_sword_tag(ecs, sword);
@@ -132,7 +181,7 @@ void system_sword(World *ecs, Player *p, float dt) {
 
     /* Segment-vs-circle hit test against the full blade. Cooldowns are tracked
      * per zombie so a single sweep can slash through several at once. */
-    float blade_half_width = SWORD_WIDTH * 0.5f;
+    float blade_half_width = tune.width * 0.5f;
     for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
         if (!ecs->alive[i]) continue;
         if (!(ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG))) continue;

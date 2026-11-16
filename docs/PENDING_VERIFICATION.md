@@ -7,6 +7,22 @@ These are **not** regressions and **not** known-broken. They are things that are
 believed fixed or believed correct but have **not** been proven, plus two items
 deliberately left open. Nothing here blocks the merge.
 
+## 2026-11-12 — OWNER CONDITIONAL SIGN-OFF (not human-tested)
+
+Per owner directive (Intercom `msg_01a1cefe41bc4e8cf5513d37`), the owner-gated
+items below are **conditionally passed, NOT human-tested**. The owner authorized
+finishing the sprint without the on-device look/listen. This is **not** evidence
+that any of them works — every automated gate here is blind to visuals and audio.
+
+Affected (see `docs/knowledge/conditional-verification-2026-11-12.md`):
+NT7 two-window screen check; A10 audio listen; H1-H4 HUD visuals; gameplay
+visuals (knife swing, SP/host ammo HUD, client-ammo match); animation P1-P5
+visuals; B46 weapon keys in single-player. Net N1-N5 are functionally PASS (no
+on-screen component).
+
+If a human later looks or listens and finds a defect, **reopen the item
+immediately** and log it in `docs/BUGS.md`.
+
 ## Why this file exists
 
 The R13 fix series was verified almost entirely headlessly. That is a real limit,
@@ -395,3 +411,66 @@ see the blade. Two instances, one player holding the sword:
 The client mirror is render-only: the host remains the sole source of the angle.
 If any of these fail, the fix is on the net side — do not "correct" it by having
 the client derive an angle from the owner's input.
+
+## Unproven on screen — starter knife + pistol ammo HUD (2026-11-11, `67e6329`)
+
+Headless tests prove the tuning, the counter and the wire; none can see the
+picture. Real run, `./build/open_world_zombie_waves`:
+
+- [ ] **Knife swing** — press `5` (starter kit; no purchase) and hold fire: a
+      short blade (length 20, width 6 world units) orbits the player using
+      `sword_blade.png`, faster than the sword. Sword (key `2`) still looks and
+      reaches as before; swapping 2<->5 mid-hold changes the blade size with no
+      stale blade left behind.
+- [ ] **Ammo HUD (single-player/host)** — the right panel shows `Ammo: 60`
+      initially, drops by one per shot, turns red at 0 and the gun goes silent;
+      an ammo pickup adds 20. `U` toggles "Ammo: unlimited" and firing no longer
+      drains. The extra line fits inside the right panel (panel was 110 -> 140).
+- [ ] **Ammo HUD (client)** — with two instances, the client's `Ammo:` number
+      matches the host's and falls as the **host** fires that slot. It must never
+      change from local input on the client.
+- [ ] **Key hints** — the HUD reads `1-5` and the bottom hint includes `U: Ammo`.
+
+If the client number disagrees, the defect is on the net side
+(`NetPlayerState.pistol_ammo`); do not make the client count locally.
+## Unproven on screen — AN6/Phase D client animation (`test_net_client_animation_phase_d`)
+
+The transport is now proven by a headless test, including the WINDOWED branch
+(a fake asset manager maps the real frame names to dummy textures, so the host
+reports a frame art id instead of `NET_ART_NONE`). What no gate can see is the
+picture. Two windows, same seed/wave, one host holding a moving player and one
+client:
+
+- [ ] **A remote player walks on the client** with the same frame the host is
+      showing, cycling smoothly (client lags by up to one snapshot, ~50 ms) and
+      holding the idle pose when the player stops.
+- [ ] **A zombie walks and staggers on the client** - two zombies in the same
+      wave must not step in lockstep, matching what the host shows.
+- [ ] **No popping between frames**: frame 0 of both cycles is the idle pose, so
+      starting/stopping a walk must not snap the sprite.
+- [ ] **Nothing else on the client changed appearance** (size, tint, health
+      bars) - Phase D is transport-only and added no client-side fallback
+      (`docs/I5_FIX.md` §7).
+
+**Status:** code path proven by test (`2003/0`); on-screen look **unproven**.
+
+### Unproven on screen — polish P1b/P2/P3/P5 (display-only, all beyond the gate)
+
+Each item is render-only, rand-free and SP byte-identical; none can be judged by
+a gate.
+
+- [ ] **P2 pickup bob**: two pickups spawned at different spots are out of
+      phase; one pickup keeps its exact shadow/sim position while bobbing 2.5 px.
+- [ ] **P1a horde stagger**: a fresh wave does not march in unison, and the
+      stagger persists as the horde walks (it is the starting frame, not a
+      one-off).
+- [ ] **P1b spawn-in**: a zombie fades/scales in over ~0.15 s, is already
+      collidable and lethal from tick 0, and a client sees the same spawn-in
+      (mirror spawn-age path exists; confirm it is actually used on screen).
+- [ ] **P3 muzzle flash**: a short additive flash at the shot position when the
+      player fires; repeated shots do not stack into a permanent glow, and the
+      blend mode is restored (no washed-out scene afterwards).
+- [ ] **P5 sword trail**: faint fading echoes behind the spinning blade while
+      the sword is held, and nothing lingering after release.
+
+**Status:** all five are `unproven`, not `fixed`, until a human looks.

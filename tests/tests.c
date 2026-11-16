@@ -533,13 +533,15 @@ static void test_item_ammo_pickup(void) {
     PlayerInventory inv;
     weapons_inventory_init(&inv);
 
-    /* Fresh run: only pistol unlocked → pickup grants nothing but is safe. */
+    /* Fresh run: only the starter kit (pistol + knife) is unlocked → no
+     * consumable stock to feed, but the pickup is still safe. */
     Entity ammo0 = items_spawn(&ecs, vec2(110, 100), ITEM_AMMO);
     CHECK(ammo0 != ECS_NULL_ENTITY);
     items_check_pickup(&ecs, player, &inv);
     CHECK(!ecs_is_alive(&ecs, ammo0));
     CHECK(inv.grenades == 0);
     CHECK(inv.launcher_ammo == 0);
+    CHECK(inv.pistol_ammo == PISTOL_AMMO_START + PISTOL_AMMO_PICKUP);
 
     /* After unlocking grenades + launcher, pickups feed both stocks. */
     inv.unlocked[WEAPON_GRENADE] = true;
@@ -555,6 +557,122 @@ static void test_item_ammo_pickup(void) {
     items_check_pickup(&ecs, player, &inv);
     CHECK(inv.grenades == 2);
     CHECK(inv.launcher_ammo == 4);
+}
+
+static void test_knife_starter(void) {
+    LOG_INFO("--- Test: Starter knife melee (always unlocked) ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    CHECK(p.inventory.unlocked[WEAPON_KNIFE]);
+    CHECK(weapons_select(&p.inventory, WEAPON_KNIFE));
+
+    p.input.mouse_buttons[0] = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+
+    Entity blade = ECS_NULL_ENTITY;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs.alive[i]) continue;
+        if (ecs.component_masks[i] & (1u << COMP_SWORD_TAG)) { blade = i; break; }
+    }
+    CHECK(blade != ECS_NULL_ENTITY);
+    CSwordTag *knife = ecs_get_sword_tag(&ecs, blade);
+    CHECK(knife->damage == 22.0f);
+    CHECK(knife->radius == 10.0f);
+    CHECK(knife->outer_radius == 30.0f);
+
+    /* Equipping the purchased sword mid-swing respawns a longer blade. */
+    p.inventory.points = SWORD_COST;
+    CHECK(weapons_buy_sword(&p.inventory));
+    CHECK(weapons_select(&p.inventory, WEAPON_SWORD));
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+
+    blade = ECS_NULL_ENTITY;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs.alive[i]) continue;
+        if (ecs.component_masks[i] & (1u << COMP_SWORD_TAG)) { blade = i; break; }
+    }
+    CHECK(blade != ECS_NULL_ENTITY);
+    CSwordTag *sword = ecs_get_sword_tag(&ecs, blade);
+    CHECK(sword->radius == 26.0f);
+    CHECK(sword->outer_radius == 58.0f);
+
+    /* Release destroys the blade. */
+    p.input.mouse_buttons[0] = false;
+    system_sword(&ecs, &p, 1.0f / 60.0f);
+    bool alive = false;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (!ecs.alive[i]) continue;
+        if (ecs.component_masks[i] & (1u << COMP_SWORD_TAG)) alive = true;
+    }
+    CHECK(!alive);
+}
+
+static void test_pistol_ammo_and_toggle(void) {
+    LOG_INFO("--- Test: Pistol ammo limit + unlimited toggle ---");
+    World ecs;
+    ecs_init(&ecs);
+    GameWorld world = {0};
+    world_init(&world);
+
+    Vec2 spawn = {world.world_pixel_w * 0.5f, world.world_pixel_h * 0.5f};
+    Entity player = spawn_player(&ecs, spawn);
+    CHECK(player != ECS_NULL_ENTITY);
+
+    Player p;
+    player_slot_wrap(&p, player);
+    Camera cam;
+    camera_init(&cam, 800, 600);
+    CHECK(p.inventory.pistol_ammo == PISTOL_AMMO_START);
+
+    p.input.mouse_buttons[0] = true;
+    p.input.world_aim = true;
+    p.input.mouse_world_x = spawn.x + 100.0f;
+    p.input.mouse_world_y = spawn.y;
+
+    /* Limited by default: the last shot fires, then the empty gun is silent. */
+    g_unlimited_ammo = false;
+    p.inventory.pistol_ammo = 1;
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+
+    int bullets = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets++;
+    }
+    CHECK(bullets == 1);
+
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+    int bullets_after = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets_after++;
+    }
+    CHECK(bullets_after == 1);
+
+    /* Unlimited mode fires without draining the counter. */
+    g_unlimited_ammo = true;
+    p.shoot_cd = 0.0f;
+    system_player_input(&ecs, &p, &cam, 1.0f / 60.0f);
+    CHECK(p.inventory.pistol_ammo == 0);
+    int bullets_unlimited = 0;
+    for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+        if (ecs.alive[i] && (ecs.component_masks[i] & (1u << COMP_BULLET_TAG))) bullets_unlimited++;
+    }
+    CHECK(bullets_unlimited == 2);
+    g_unlimited_ammo = false;
 }
 
 static void test_camera_clamp_world(void) {
@@ -887,6 +1005,13 @@ static void test_weapons_inventory(void) {
     CHECK(!inv.unlocked[WEAPON_SWORD]);
     CHECK(inv.points == 0);
     CHECK(inv.grenades == 0);
+
+    /* Starter kit: the knife comes with the gun and needs no purchase. */
+    CHECK(inv.unlocked[WEAPON_KNIFE]);
+    CHECK(weapons_select(&inv, WEAPON_KNIFE));
+    CHECK(inv.current == WEAPON_KNIFE);
+    CHECK(strcmp(weapons_name(WEAPON_KNIFE), "Knife") == 0);
+    CHECK(weapons_select(&inv, WEAPON_PISTOL));
 
     /* Cannot select a locked weapon. */
     CHECK(!weapons_select(&inv, WEAPON_SWORD));
@@ -2360,6 +2485,102 @@ static void test_item_bob(void) {
     CHECK(ecs_get_health(&ecs, player)->current == 80.0f);
 }
 
+/* P1a: a wave must not march in step. Each zombie's starting frame is hashed
+ * from its entity slot, so a horde is a crowd rather than a chorus line. The
+ * frame PERIOD is untouched, so the offset is permanent - and because the frame
+ * travels as the art id, a client inherits it with no wire field. */
+static void test_zombie_walk_stagger(void) {
+    LOG_INFO("--- Test: the horde walk is staggered ---");
+
+    enum { N = 12 };
+    World ecs;
+    ecs_init(&ecs);
+    Entity z[N];
+    int seen[ANIM_WALK_FRAMES] = {0};
+    int distinct = 0;
+
+    for (int i = 0; i < N; i++) {
+        z[i] = waves_spawn_zombie(&ecs, vec2(100.0f + 20.0f * i, 200), THEME_GRASSLAND);
+        CHECK(z[i] != ECS_NULL_ENTITY);
+        CAnimation *a = ecs_get_animation(&ecs, z[i]);
+        CHECK(a->current_frame >= 0 && a->current_frame < ANIM_WALK_FRAMES);
+        /* The pose is offset, the timing is not. */
+        CHECK(a->frame_timer == 0.0f);
+        CHECK(a->frame_duration == ANIM_FRAME_PERIOD);
+        CHECK(a->total_frames == ANIM_WALK_FRAMES);
+        if (!seen[a->current_frame]) {
+            seen[a->current_frame] = 1;
+            distinct++;
+        }
+    }
+    /* A dozen zombies landing on four different frames would already be
+     * suspicious luck; landing on ONE (the old behaviour) is what this test
+     * exists to catch. */
+    CHECK(distinct >= 3);
+
+    /* Deterministic: the same slot hash gives the same starting frame. */
+    uint32_t phase = z[0] * 2654435761u;
+    phase ^= phase >> 15;
+    phase *= 0x85ebca6bu;
+    phase ^= phase >> 13;
+    CHECK(ecs_get_animation(&ecs, z[0])->current_frame
+          == (int)(phase % (uint32_t)ANIM_WALK_FRAMES));
+
+    /* Advancing keeps everyone's relative offset: the cycle wraps, it does not
+     * resynchronise the wave. */
+    int before[N];
+    for (int i = 0; i < N; i++) {
+        before[i] = ecs_get_animation(&ecs, z[i])->current_frame;
+    }
+    system_animation(&ecs, ANIM_FRAME_PERIOD);
+    for (int i = 0; i < N; i++) {
+        int expect = (before[i] + 1) % ANIM_WALK_FRAMES;
+        CHECK(ecs_get_animation(&ecs, z[i])->current_frame == expect);
+    }
+}
+
+/* AN/P2: drops must not bob in lockstep. The phase comes from the item's own
+ * data (type + spawn position) and is offset from zero, so a wave's pickups
+ * hover out of step instead of pumping together. */
+static void test_item_bob_phase(void) {
+    LOG_INFO("--- Test: pickups bob out of phase ---");
+
+    World ecs;
+    ecs_init(&ecs);
+    Entity a = items_spawn(&ecs, vec2(100, 200), ITEM_HEALTH);
+    Entity b = items_spawn(&ecs, vec2(140, 200), ITEM_HEALTH);
+    Entity c = items_spawn(&ecs, vec2(140, 200), ITEM_AMMO);
+    CHECK(a != ECS_NULL_ENTITY && b != ECS_NULL_ENTITY && c != ECS_NULL_ENTITY);
+
+    CItemTag *ta = ecs_get_item_tag(&ecs, a);
+    CItemTag *tb = ecs_get_item_tag(&ecs, b);
+    CItemTag *tc = ecs_get_item_tag(&ecs, c);
+
+    const float period = 1.0f / ITEM_BOB_HZ;
+    CHECK(ta->bob_timer >= 0.0f && ta->bob_timer < period);
+    CHECK(tb->bob_timer >= 0.0f && tb->bob_timer < period);
+    /* Different position, same type: different phase. */
+    CHECK(ta->bob_timer != tb->bob_timer);
+    /* Same position, different type: different phase. */
+    CHECK(tb->bob_timer != tc->bob_timer);
+
+    /* Deterministic: the same spawn is the same phase, so a host and a client
+     * that both spawn it agree without any wire field. */
+    Entity again = items_spawn(&ecs, vec2(100, 200), ITEM_HEALTH);
+    CHECK(ecs_get_item_tag(&ecs, again)->bob_timer == ta->bob_timer);
+
+    /* De-synced displays, not de-synced simulation: the base (sim) position is
+     * exactly where it was asked to spawn. */
+    CHECK(ta->base_pos.x == 100.0f && ta->base_pos.y == 200.0f);
+    CHECK(tb->base_pos.x == 140.0f && tb->base_pos.y == 200.0f);
+
+    /* And they are actually at different heights in the same frame. */
+    items_tick_bob(&ecs, 0.37f);
+    float ya = ecs_get_position(&ecs, a)->pos.y;
+    float yb = ecs_get_position(&ecs, b)->pos.y;
+    CHECK(ya != yb);
+}
+
 /* Snapshot builder maps a live world into the 20 Hz wire format. */
 static void test_net_snapshot_build(void) {
     LOG_INFO("--- Test: net_snapshot_build maps the live world ---");
@@ -2499,6 +2720,121 @@ static void test_net_snapshot_build(void) {
      * so nobody "fixes" NET_SNAP_ENTRY_BYTES to sizeof() and silently changes
      * the protocol. The load-bearing check is the encoded length above. */
     CHECK(sizeof(NetEntitySnap) >= NET_SNAP_ENTRY_BYTES);
+}
+
+/* AN6 / Phase D: the CLIENT shows the frame the HOST chose.
+ *
+ * Until now that was argued, never exercised: the test binary is headless, so
+ * every sprite is a flat shape and a snapshot honestly reports NET_ART_NONE.
+ * A windowed client takes the other branch - the host's sprite names a
+ * walk-frame texture, the snapshot reports that frame's art id, and
+ * system_render_mirror resolves it back to the same file. The fake asset
+ * manager below installs the real name<->texture mapping WITHOUT a renderer
+ * (every lookup is a pointer comparison), so that windowed branch is tested
+ * here.
+ *
+ * It proves ONE answer to "which frame", host to client, with the client
+ * running on an empty world (render_only_client). It cannot prove the frame
+ * LOOKS right on a second window - that stays unproven until a human watches
+ * two windows ([i5-unverified-on-screen]). */
+static void test_net_client_animation_phase_d(void) {
+    LOG_INFO("--- Test: client mirror carries the host's animation frame (AN6) ---");
+
+    static int dummy_tex[24];
+    static AssetEntry entries[18];
+    AssetManager fake = {0};
+    fake.renderer = (SDL_Renderer *)&dummy_tex[0];   /* non-NULL; never used */
+    const char *names[18];
+    int nn = 0;
+    names[nn++] = "textures/entities/player.png";
+    names[nn++] = "textures/entities/zombie.png";
+    for (int i = 0; i < ANIM_WALK_FRAMES; i++) names[nn++] = anim_walk_path(i);
+    for (int i = 0; i < ANIM_PLAYER_WALK_FRAMES; i++) {
+        names[nn++] = anim_player_walk_path(i);
+    }
+    for (int i = 0; i < nn; i++) {
+        snprintf(entries[i].name, sizeof entries[i].name, "%s", names[i]);
+        entries[i].texture = (SDL_Texture *)&dummy_tex[i];
+        entries[i].next = (i + 1 < nn) ? &entries[i + 1] : NULL;
+    }
+    fake.head = &entries[0];
+    asset_manager_set_global(&fake);
+
+    World host;
+    ecs_init(&host);
+    Player players[MAX_PLAYERS];
+    players_reset(players, MAX_PLAYERS);
+    CHECK(player_respawn(players, &host, 0, "P1", &COLOR_RED, vec2(100, 100)) == 0);
+    Entity p = players[0].entity;
+    Entity z = waves_spawn_zombie(&host, vec2(200, 200), THEME_GRASSLAND);
+    CHECK(z != ECS_NULL_ENTITY);
+
+    GameWorld gw = {0};
+    world_init(&gw);
+    WaveSystem ws;
+    waves_init(&ws, &gw);
+    ws.wave_active = true;
+
+    /* One tick with the player moving: both cycles advance one frame. */
+    ecs_get_velocity(&host, p)->vel = vec2(1.0f, 0.0f);
+    int z_before = ecs_get_animation(&host, z)->current_frame;
+    system_animation(&host, ANIM_FRAME_PERIOD);
+    int pf = ecs_get_animation(&host, p)->current_frame;
+    int zf = ecs_get_animation(&host, z)->current_frame;
+    CHECK(pf == 1);
+    CHECK(zf == (z_before + 1) % ANIM_WALK_FRAMES);
+
+    /* The host's sprite IS the frame texture - the one source of truth the
+     * snapshot builder reads. */
+    const char *p_path = asset_manager_name_of(ecs_get_sprite(&host, p)->sprite.texture);
+    const char *z_path = asset_manager_name_of(ecs_get_sprite(&host, z)->sprite.texture);
+    CHECK(p_path != NULL && z_path != NULL);
+    CHECK(strcmp(p_path, anim_player_walk_path(pf)) == 0);
+    CHECK(strcmp(z_path, anim_walk_path(zf)) == 0);
+
+    NetSnapshot snap;
+    CHECK(net_snapshot_build(&host, players, MAX_PLAYERS, 1.0f, &ws, &snap) >= 2);
+
+    uint8_t p_art = NET_ART_NONE, z_art = NET_ART_NONE;
+    for (int i = 0; i < snap.count; i++) {
+        if (snap.entities[i].id == (uint16_t)p) p_art = snap.entities[i].art;
+        else if (snap.entities[i].id == (uint16_t)z) z_art = snap.entities[i].art;
+    }
+    CHECK(p_art == anim_player_walk_art_id(pf));
+    CHECK(z_art == anim_walk_art_id(zf));
+    /* Teeth against the I5 bug class: a peer that invented appearance from
+     * `kind` would report the static art, never a walk frame. */
+    CHECK(p_art != NET_ART_PLAYER);
+    CHECK(z_art != NET_ART_ZOMBIE);
+
+    /* The client half runs with NO ECS AT ALL - render_only_client(). */
+    NetMirror mirror;
+    net_mirror_reset(&mirror);
+    net_mirror_push(&mirror, &snap);
+    CHECK(net_mirror_ready(&mirror));
+    NetEntitySnap ce;
+    CHECK(net_mirror_sample(&mirror, (uint16_t)p, 1.0f, &ce));
+    CHECK(ce.art == p_art);
+    /* Resolving the mirrored art gives the host's own file: same picture. */
+    CHECK(strcmp(net_art_path(ce.art), p_path) == 0);
+    /* The horde animates on the client for the same reason: the host's frame
+     * is the art id, so a staggering zombie carries its own frame to peers. */
+    CHECK(net_mirror_sample(&mirror, (uint16_t)z, 1.0f, &ce));
+    CHECK(ce.art == z_art);
+    CHECK(strcmp(net_art_path(ce.art), z_path) == 0);
+
+    /* Advance the host one more frame; the client follows with no client-side
+     * frame logic, only the next snapshot. */
+    system_animation(&host, ANIM_FRAME_PERIOD);
+    int pf2 = ecs_get_animation(&host, p)->current_frame;
+    CHECK(pf2 == (pf + 1) % ANIM_PLAYER_WALK_FRAMES);
+    CHECK(net_snapshot_build(&host, players, MAX_PLAYERS, 2.0f, &ws, &snap) >= 2);
+    net_mirror_push(&mirror, &snap);
+    CHECK(net_mirror_sample(&mirror, (uint16_t)p, 2.0f, &ce));
+    CHECK(ce.art == anim_player_walk_art_id(pf2));
+    CHECK(ce.art != p_art);
+
+    asset_manager_set_global(NULL);
 }
 
 /* B38: the entity count is a u16 as of wire v9. A u8 silently wrapped above
@@ -2755,6 +3091,7 @@ static void test_net_player_state(void) {
     players[0].inventory.points = 1234;
     players[0].inventory.grenades = 7;
     players[0].inventory.launcher_ammo = 3;
+    players[0].inventory.pistol_ammo = 42;
     players[0].inventory.current = WEAPON_LAUNCHER;
     players[0].inventory.unlocked[WEAPON_SWORD] = true;
     players[0].inventory.unlocked[WEAPON_LAUNCHER] = true;
@@ -2775,6 +3112,7 @@ static void test_net_player_state(void) {
     CHECK(h0->points == 1234);
     CHECK(h0->grenades == 7);
     CHECK(h0->launcher_ammo == 3);
+    CHECK(h0->pistol_ammo == 42);   /* v10: host copies its authoritative count */
     CHECK(h0->weapon == (uint8_t)WEAPON_LAUNCHER);
     CHECK((h0->unlocked_mask & (1u << WEAPON_SWORD)) != 0);
     CHECK((h0->unlocked_mask & (1u << WEAPON_LAUNCHER)) != 0);
@@ -2792,6 +3130,17 @@ static void test_net_player_state(void) {
      * spawned, so it must read as not-in-use. */
     CHECK((snap.player_states[3].flags & NET_PST_IN_USE) == 0);
 
+    /* v10 wire-size assertion: deliberate literal, not the macro. A layout
+     * change must force someone to read this test next to the version bump. */
+    CHECK(NET_PLAYER_STATE_BYTES == 25);
+    /* v10: pistol_ammo is host-authoritative and must cross the wire intact,
+     * including the saturating maximum. */
+    snap.player_states[0].pistol_ammo = 123;
+    snap.player_states[1].pistol_ammo = 65535;
+    /* v10: weapon 4 is WEAPON_KNIFE (enum lands in weapons.h with the assets
+     * work); the wire carries it as the same u8 as every other weapon. */
+    snap.player_states[1].weapon = 4;
+
     /* ---- round trip ---- */
     uint8_t buf[NET_SNAP_MAX_BYTES];
     NetHeader hdr = {NET_WIRE_VERSION, NET_PKT_SNAPSHOT, 7, 0, 0};
@@ -2803,6 +3152,8 @@ static void test_net_player_state(void) {
         CHECK(got.player_states[i].grenades == snap.player_states[i].grenades);
         CHECK(got.player_states[i].launcher_ammo ==
               snap.player_states[i].launcher_ammo);
+        CHECK(got.player_states[i].pistol_ammo ==
+              snap.player_states[i].pistol_ammo);
         CHECK(got.player_states[i].hp_centis == snap.player_states[i].hp_centis);
         CHECK(got.player_states[i].hp_max_centis ==
               snap.player_states[i].hp_max_centis);
@@ -2822,6 +3173,7 @@ static void test_net_player_state(void) {
     net_mirror_push(&m, &snap);
     CHECK(net_mirror_player_state(&m, 0, &hs));
     CHECK(hs.points == 1234 && hs.grenades == 7 && hs.launcher_ammo == 3);
+    CHECK(hs.pistol_ammo == 123);   /* v10: the HUD reads this via the mirror */
     CHECK(hs.weapon == WEAPON_LAUNCHER);
     CHECK(net_mirror_player_state(&m, 2, &hs));  /* dead, but still in use */
     CHECK((hs.flags & NET_PST_ALIVE) == 0);
@@ -3317,6 +3669,8 @@ int tests_run_all(void) {
     test_wave_timeout();
     test_weapons_inventory();
     test_sword_spin();
+    test_knife_starter();
+    test_pistol_ammo_and_toggle();
     test_rocket_damage_and_destruction();
     test_grenade_detonation();
     /* R13 merge: both engines' suites run. The assets tests (map parser,
@@ -3343,6 +3697,8 @@ int tests_run_all(void) {
     test_animation_states();
     test_animation_missing_texture();
     test_item_bob();
+    test_item_bob_phase();
+    test_zombie_walk_stagger();
     test_animation_rate_rule();
     test_animation_player_walk();
     test_net_snapshot_build();
@@ -3360,6 +3716,9 @@ int tests_run_all(void) {
     test_audio_sfx_2d();
     test_text_popup_no_global_rand();
     test_text_popup_lifecycle();
+    /* Last on purpose: it installs a fake asset manager and spawns a zombie,
+     * so it must not perturb rand() or the global for any other test. */
+    test_net_client_animation_phase_d();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);

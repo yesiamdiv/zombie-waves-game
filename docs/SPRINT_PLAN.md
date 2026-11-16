@@ -10,6 +10,14 @@ Raised: 2026-10-09 (PM onboarding; replaces Sprint 3, which is closed — see
 Source of truth for scope: the two KT answers of 2026-10-09. **Every task below
 was named by the developer who owns it.** The PM invented none of them.
 
+> **STATUS 2026-11-12 — owner conditional sign-off, sprint being completed.**
+> The owner directed finishing without the human-only checks: all owner-gated
+> items are recorded as **conditionally passed, NOT human-tested**
+> (`docs/knowledge/conditional-verification-2026-11-12.md`,
+> `docs/PENDING_VERIFICATION.md`). AN6 is unblocked and in progress; effects
+> E1–E6 are the other remaining lane. Everything else (net N1–N5, H1–H4,
+> gameplay knife/ammo, animation P1–P5, audio A1–A10, B46) is landed/gate-green.
+
 ---
 
 # Sprint 5 — Sync + Playtest — CLOSED 2026-10-15
@@ -124,7 +132,7 @@ next stage opens on the owner's go.**
 | NT4 | B40 swords: new `NET_ENT_SWORD` snapshot kind, inherits `art`/`owner`, no derivation; **must render on the client for other players and provision for future attributes (attack speed etc.)**. Verdict: **procedural blade** — snapshot carries `int16` centidegrees angle (wraps at 180°) + extensible attribute block; client draws via `sprite_draw_blade()` with wrap-safe interpolation. **Rides the single 8→9 bump with NT3.** | D1 ✔, AN7 ✔, bump | **DONE / LANDED on main `6801d7c`** (`31c8d8f`; builder test + stale-attr/O(1)-fold). AN7 confirmed id 9/base 40. Merged gate green; **on-screen mirrored-sword check still unproven (human)**. |
 | NT5 | Freeze `src/net/net.h`, `src/net/net_codec.c`, `tests/net_test.c` when `assets` posts "starting"; confirm the freeze. | assets starts | **DONE** — froze for AN1, clean at start, released after `35a8b46`; netcode files untouched by animation |
 | NT6 | Purge `/tmp/opencode` scratch paths from `tests/tests.c` (tmpfs quota hazard). | — | P1 · **DONE `f260c55`** |
-| NT7 | B32–B35 human two-window screen check on `feature/net-protocol`. | a human | P1 verification debt · blocked (human) |
+| NT7 | B32–B35 human two-window screen check on `feature/net-protocol`. | a human | P1 verification debt · **conditionally passed** (owner 2026-11-12, not human-tested) |
 
 ### animation + audio lanes (new hires, cut 2026-10-22)
 
@@ -145,7 +153,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | AN3 | Frame-selection function + host wiring (one function; ECS keeps `current_frame`). Can start now. | AT3 | **DONE `e45304c`** — `src/graphics/anim.*` + `src/systems/animation.c`; frame texture on the sprite so host/client share one answer; wire untouched; tests 1253→1347; walk cycle on-screen unproven |
 | AN4 | Rate rule as code (≤15 fps named constant + failing test). | AN3 | **DONE `bbf4805`** — `ANIM_MAX_FPS`/`ANIM_FRAME_PERIOD_MIN`, `test_animation_rate_rule` simulates the 20 Hz snapshot client; teeth proven by breaking it; tests 1347→1382 |
 | AN5 | Content: walk/attack/death states + pickup bob, no wire change (player walk split out to AN8). **No death pose** — a corpse would delay destruction and move the death timestamp, breaking SP invariance (gameplay item). | AN2, AN3 | **DONE `e5d3f8a`** — landed with AN8 on main `3648856` |
-| AN6 | Phase D client path — same selection function; **blocked on human two-window I5 check**. | human | animation · blocked (human) |
+| AN6 | Phase D client path — same selection function; **unblocked by owner conditional sign-off 2026-11-12** (NT7 assumed working). | — | animation · **in progress** |
 | AN7 | NT4 animation-side support: sword art ids + angle contract (procedural blade, int16 centidegrees) for net. | AN1 | **DONE `275a9af`** — v9 had already consumed the art (id 9/base 40), so only the contract + geometry check; no code, no `NET_ASSET_VERSION` bump |
 | AN8 | **Player walk** (future piece): needs new art ids + a `NET_ASSET_VERSION` bump, so it is a separate commit after AN5 and a net freeze window. | AN5, net freeze | **DONE `13621b8`/`e4f730f`/`629d4ad`** — player_walk0..7 (18–25), ASSET 3, COMP_ANIMATION on spawn; frame 0 == idle; tests 1721→1759 on lane; M11 unproven; **LANDED on main `3648856`** |
 | AT6 | ~~Audio Phase-0 spike~~ — **superseded** by audio's own proposed breakdown A1–A6 (owner rule: build tasks from the agent's proposal). | AT2 | cancelled → A1–A6 |
@@ -158,7 +166,7 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 | A7 | **Phase B** — audio foundations on the SDL3 backend: `src/audio/`, init/update/shutdown in `main.c`, `AUDIO_TICK` between `relay_net_events()` and `event_bus_flush()`. | A1 | **DONE `ecf7a2f`/`e5c9c54`** — SDL public API path, pure mixer, trigger ring, unit tests (1207/0); headless silent, allocation-free, unproven by ear |
 | A8 | **Phase C** — `tools/gen_audio.py` + `assets/audio/**` + the sounds; deterministic regeneration. | A7 | **DONE `9d4e592`/`a98b0bc`** — stdlib 48 kHz WAV generator, 13 slots; mapping still a stub; unproven by ear |
 | A9 | **Phase D** — consume relayed triggers; own gunfire = **option (a)** (PM decision `knowledge/audio-decisions`); `GE_EXPLOSION` from NT2. Adds no wire field, edits no relay list. | A8, NT2 | **DONE / LANDED on main `5997c86`** — gate 1862/0, SP identical; unproven by ear |
-| A10 | **Phase E** — human listens, two windows; judge whether the client's own gunshot feels late. | A9 | audio · blocked (human) |
+| A10 | **Phase E** — human listens, two windows; judge whether the client's own gunshot feels late. | A9 | audio · **conditionally passed** (owner 2026-11-12, not human-tested) |
 | AT7 | NT2 (`GE_EXPLOSION`) landing window, re-verified jointly with `net`. Measured correction: NT2 does not move the seed-42 SP reference (bot never detonates); only test count 1186→1194. | A6, D3 | **DONE** — NT2 landed `6801d7c`; SP ref unchanged; merged gate 1808/0 |
 | AT8 | Stale-path sweep. **DONE.** assets: `ASSET_MAP_PLAN.md:81` (`243630a`) + `CROSS_BRANCH_CONFLICTS.md:211`. net: `MULTIPLAYER_PROGRESS.md` + `R13_BUGFIX_TRACKER.md` (`362e60e`). `BUGS.md` historical refs **left as history**. | — | P1 · **DONE `362e60e`** |
 | AT9 | Fullscreen toggle (F11/Alt+Enter → fullscreen-desktop, restore size on exit). Owner request 2026-10-22. Programmatic window moving is NOT possible under Wayland; do not attempt it. Board: `task_01a163659bb91efec271f487`. | assets | **DONE + VERIFIED `c01c0fc`** — toggle in `main.c`, hint in `hud.c`, size captured/restored, repeat-guarded; owner confirmed 2026-10-23 |
@@ -210,8 +218,8 @@ first; audio rebases onto `feature/animation-assets` before landing (D5).
 
 | ID | Task | Owner | Status |
 |---|---|---|---|
-| HU1 | **Ideation proposal only (no code):** 6–10 concrete HUD/effects ideas, each with player-visible result, files touched, cost S/M/L, risk, on-screen verification; ranked with top 3 named; menu backdrop included; wire/sim changes flagged separately. Board: `task_01a168c19b7d139fadc3c13b`. | assets | **in progress** (lane synced to `0da6e3f`) |
-| HU2 | Approved HUD/effect slices — one commit each, full gate, **unproven until the owner looks**. | assets | pending owner ranking |
+| HU1 | **Ideation proposal only (no code):** 6–10 concrete HUD/effects ideas, each with player-visible result, files touched, cost S/M/L, risk, on-screen verification; ranked with top 3 named; menu backdrop included; wire/sim changes flagged separately. Board: `task_01a168c19b7d139fadc3c13b`. | assets | **done** — superseded by H1-H4 + E1-E6 |
+| HU2 | Approved HUD/effect slices — one commit each, full gate, **unproven until the owner looks**. | assets | **H1-H4 done/landed** (conditional, not human-tested); effects E1-E6 in progress |
 | AP1 | **Ideation only:** animation polish (staggered horde phase P1, per-item bob P2, relayed-event muzzle flash P3, player damage feedback P4, sword trail P5). No sim, rand-free; P3 needs confirmation re "cosmetic deterministic from relayed stream". | animation | **review** (`task_01a168cde42e6f4418f66391`) |
 | NR1 | **Ideation only:** net robustness/docs (co-op check tool, hostile decoder sweep + ASan, relay overflow visibility, reject-message fixes, snapshot size assert). No wire/sim changes. | net | **review** (`task_01a168cf05e23e005591399a`) |
 | QI1 | **Ideation only:** QA guardrails (tree/path banner, gate manifest, safer two-instance launch, untracked policy, GUI-only tagging). Recommends 1+3 first. | qa | **done** (`task_01a168cf460224e48e532d31`) |

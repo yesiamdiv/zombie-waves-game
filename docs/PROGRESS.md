@@ -963,3 +963,106 @@ agent's merge is not evidence for the gate, and the relay is the shared seam.
 ### Next
 - Owner push decision; human checks remain: B40 sword, animation M11 walk,
   audio's listen-for list. None can be cleared headlessly.
+
+---
+
+## Session 2026-11-10 — Gameplay: starter knife + limited ammo + unlimited toggle
+
+### PM standup — planned
+Sprint item "Gameplay: Ammo limits + knife starter + toggle" (owner request).
+PM made the design calls (recorded in `knowledge/gameplay-ammo-knife.md`) and
+announced the deliberate gate re-baseline; net took the wire bump (NT8).
+
+### DEV — done
+- **Starter knife** `e8696c6`: `WEAPON_KNIFE` appended as id 4 (stable ids),
+  always unlocked at spawn, key 5, HUD hint 1-5. Reuses the sword orbit with
+  shorter/faster/weaker tuning and `sword_blade.png` scaled, so no new texture
+  and `NET_ASSET_VERSION` stays 3. Sword remains the purchasable upgrade.
+  Tests cover unlock/name/tuning and sword<->knife respawn.
+- **Limited pistol ammo** `4fa1e4e`: one counter (`PISTOL_AMMO_START` 60, no
+  magazine/reload), one drain per shot, ammo pickups +20, empty gun silent.
+  `--unlimited-ammo` CLI flag and the in-game `U` toggle disable the drain
+  (host/SP only; a render-only client is told the host owns the rule). HUD shows
+  the count / "unlimited" / "--" until the client value is replicated.
+- **Gate re-baseline** (deliberate, declared in `knowledge/gate-baseline.md`):
+  canonical SP invariance run now uses `--unlimited-ammo` and stays
+  **125938 bytes / 1603 lines**; the default limited run is the new reference
+  **129504 bytes / 1648 lines**. Both byte-identical across two seed-42 runs;
+  wave 1 unchanged. `AGENTS.md` gate command updated to match.
+- Merged `main` `0fa9b2d` (wire v10: `pistol_ammo` + knife weapon value); the
+  knife enum may only land on main together with/after v10. Gate on the merged
+  tree: build clean, ctest 3/3, `zombie_tests` **1895/0**,
+  `gen_assets --verify` 50 textures.
+
+### PM — next
+Integrate the lane; net lands the one-line `net_snapshot.c` `pistol_ammo` fill;
+assets then merges main and switches the client HUD from "--" to the replicated
+value.
+
+### Blocked / unproven
+- Owner on-screen check of the knife swing and the ammo HUD (headless cannot
+  see either). Client ammo readout waits on the net fill.
+
+## 2026-11-11 — net: v10 pistol_ammo fill + sanitizer dependency cache isolation
+
+- Landed the NT8 follow-up: `net_snapshot.c` now copies the host's
+  `inventory.pistol_ammo` into `NetPlayerState.pistol_ammo` (wire v10 field
+  already existed; no version/layout change). `1ba8fcd`; merged main `2cbaf05`;
+  gate note `4001c06`. Merged baseline **1896/0**, ctest 3/3, SP unlimited
+  125938/1603 and limited 129504/1648 both byte-identical, headless two-instance
+  net check PASS.
+- N-ASAN-CACHE: `BUILD_ASAN`/`BUILD_UBSAN` now get a private
+  `FETCHCONTENT_BASE_DIR` (`<build>/_deps`) so sanitizer dep builds can never
+  flag-flip `~/.cache/cmake-deps` for other worktrees (`ae19836`).
+- While verifying that, found the sanitizer flags were dead: the
+  `add_compile_options`/`add_link_options` block sat **after** every target, and
+  those commands only affect targets created later — `BUILD_ASAN=ON` configured
+  an uninstrumented build. Moved before the project targets and after the
+  FetchContent deps (project code instrumented, deps not). `1e09543`.
+  Verified by configure: private base dir in the cache, `-fsanitize=address` on
+  project compile lines and absent from the SDL3 dep line. A full sanitizer
+  rebuild was not run (1.6 GB dep tree; earlier parallel ASan compile ICE'd).
+### DEV — follow-up (same session)
+- Merged main `4001c06` (net's `pistol_ammo` fill) and switched the client HUD
+  from the temporary "Ammo: --" to the replicated `NetPlayerState.pistol_ammo`;
+  the client never invents a local value. Merged main `27188e2` clean after one
+  AGENTS.md conflict (kept the absolute `$R/build/logs` snippet); folded the
+  scratch-path note into the existing `knowledge/tmp-scratch-rule.md` rather
+  than keeping a duplicate topic (`2527efd`).
+
+## Session 2026-11-12 — AN6 integration, owner conditional sign-off
+
+### PM standup — planned
+- Owner directed completing the sprint without the human-only checks; record
+  owner-gated items as **conditionally passed, NOT human-tested**.
+- Finish the two remaining lanes: AN6 (animation client path) and effects E1–E6.
+
+### PM — done
+- Recorded the owner directive in `docs/knowledge/conditional-verification-2026-11-12.md`
+  and `docs/PENDING_VERIFICATION.md`; updated `docs/SPRINT_PLAN.md` so NT7, A10,
+  H1-H4, gameplay, animation P1-P5 and B46 read conditionally passed and AN6 is
+  unblocked (not blocked on a human).
+- Closed the owner NT7/approvals task and A10 conditionally; unblocked + assigned
+  AN6 to animation; gave effects the go-ahead to complete E1–E6 under the same
+  conditional sign-off.
+- **AN6 integrated**: merged `feature/animation-assets` (`fc5baca`, P1-P5 polish +
+  AN6 Phase D) into `main` at `4580b61`; doc-only conflicts in
+  `PENDING_VERIFICATION.md` and `knowledge/gate-baseline.md` resolved by keeping
+  both sides' entries.
+- Re-gate on merged main: build clean, ctest 3/3, `zombie_tests` **2003/0**,
+  50 textures, unlimited SP **125938/1603** and limited SP **129504/1648** both
+  byte-identical over two `--seed=42` runs. Recorded in `knowledge/gate-baseline.md`
+  (`5dabe76`).
+- Finding from animation: Phase D needed **no new client code** — design A
+  already carries the host's frame as the art id, so there is no second
+  frame-selection path; `test_net_client_animation_phase_d` proves the windowed
+  branch. On-screen two-window look stays unproven (checklist in
+  `PENDING_VERIFICATION.md`).
+
+### PM — next
+- Effects E1–E6 remain the only open code lane (agent offline; go-ahead sent).
+  On its return: integrate, re-gate, close.
+- Final "everything complete" summary to the owner; `main` stays unpushed.
+
+### Blocked
+- None hard. Effects lane offline until it resumes.

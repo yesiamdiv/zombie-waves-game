@@ -202,8 +202,19 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
         .scale = size / 16.0f,
         .base_alpha = 1.0f
     };
+    /* P1a: stagger the horde. Every zombie used to start on frame 0 with the
+     * same frame period, so a whole wave marched in perfect unison - the
+     * strongest "this is fake" tell in the game. The STARTING FRAME is hashed
+     * from the entity's slot; the period is unchanged, so the offset lasts for
+     * the zombie's whole life. Display-only: the frame is what the snapshot
+     * names, so a client inherits the stagger without a wire field. No rand() -
+     * the seed sequence is load-bearing for single-player determinism. */
+    uint32_t phase = e * 2654435761u;
+    phase ^= phase >> 15;
+    phase *= 0x85ebca6bu;
+    phase ^= phase >> 13;
     *ecs_get_animation(ecs, e) = (CAnimation){
-        .current_frame = 0,
+        .current_frame = (int)(phase % (uint32_t)ANIM_WALK_FRAMES),
         .frame_timer = 0.0f,
         .frame_duration = ANIM_FRAME_PERIOD,
         .total_frames = ANIM_WALK_FRAMES

@@ -15,7 +15,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # An explicit -D FETCHCONTENT_BASE_DIR=... still wins; this only supplies the
 # default for a fresh cache. The populated cache is bound to one generator, so
 # configure with -G Ninja unless you point at a cache populated by another one.
-if(NOT FETCHCONTENT_BASE_DIR AND DEFINED ENV{HOME})
+option(BUILD_ASAN "Build with AddressSanitizer" OFF)
+option(BUILD_UBSAN "Build with UndefinedBehaviorSanitizer" OFF)
+# Sanitizer configurations must NOT share the dependency cache: ASan/UBSan
+# recompile the FetchContent deps with different flags, which flag-flips that
+# cache for every other worktree until a normal rebuild heals it (and has
+# corrupted the SDL3 precompiled header). Give them a private base dir inside
+# their own build tree, unless the user explicitly chose a non-default dir.
+if(BUILD_ASAN OR BUILD_UBSAN)
+    if(NOT FETCHCONTENT_BASE_DIR OR
+       FETCHCONTENT_BASE_DIR STREQUAL "$ENV{HOME}/.cache/cmake-deps")
+        set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH
+            "Private FetchContent tree for sanitizer builds" FORCE)
+    endif()
+elseif(NOT FETCHCONTENT_BASE_DIR AND DEFINED ENV{HOME})
     set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/cmake-deps" CACHE PATH
         "Shared FetchContent cache (downloads + builds), reused across build dirs")
 endif()
@@ -73,6 +86,20 @@ FetchContent_MakeAvailable(SDL_image)
 # Applied to project targets only - SDL3 is fetched from a third-party repo and
 # has its own (many) unused parameters and sign-compare warnings.
 set(PROJECT_WARNINGS -Wall -Wextra -Werror)
+
+# N2: sanitizer flags. They must be added BEFORE the project targets are
+# created - add_compile_options/add_link_options only affect targets created
+# afterwards - and AFTER the FetchContent deps, so only project code is
+# instrumented. (Declared at the end of this file they applied to no target at
+# all: BUILD_ASAN configured a build with no -fsanitize anywhere.)
+if(BUILD_ASAN)
+  add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address)
+endif()
+if(BUILD_UBSAN)
+  add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=undefined)
+endif()
 
 # Core game logic library (everything except the entry point)
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
@@ -134,14 +161,3 @@ endif()
 enable_testing()
 add_test(NAME core_tests COMMAND zombie_tests)
 set_tests_properties(core_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-# N2: sanitizer targets for hostile decoder testing (opt-in)
-option(BUILD_ASAN "Build with AddressSanitizer" OFF)
-option(BUILD_UBSAN "Build with UndefinedBehaviorSanitizer" OFF)
-if(BUILD_ASAN)
-  add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-  add_link_options(-fsanitize=address)
-endif()
-if(BUILD_UBSAN)
-  add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
-  add_link_options(-fsanitize=undefined)
-endif()

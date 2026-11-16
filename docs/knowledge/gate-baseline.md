@@ -253,3 +253,103 @@ figure except the C test count, which carries audio's 33 trigger checks:
   `gen_assets.py --verify` -> **50 textures**, unchanged.
 - Two sequential `--seed=42` SP runs still byte-identical at **125938 bytes /
   1603 lines**; wave 1 unchanged. Headless opens no audio device.
+
+## 2026-11-10 - note by assets: deliberate re-baseline for limited pistol ammo (gameplay)
+
+Sprint item "Gameplay: ammo limits + knife starter + toggle" makes **limited
+pistol ammo the default**. This is a deliberate re-baseline, announced by PM to
+the owner in parallel (decision record:
+`docs/knowledge/gameplay-ammo-knife.md`).
+
+- **Canonical invariance reference is UNCHANGED** at **125938 bytes / 1603
+  lines**, measured with `--unlimited-ammo` (two sequential `--seed=42` 25 s bot
+  runs, byte-identical). That is now the command the gate uses: the flag turns
+  the new drain off, so the reference still proves net/effects/HUD did not
+  perturb the sim.
+- **Default (limited) gameplay reference: 129504 bytes / 1648 lines**, two
+  sequential `--seed=42` 25 s bot runs byte-identical. This is the new
+  default-gameplay baseline while `PISTOL_AMMO_START` is 60 and
+  `PISTOL_AMMO_PICKUP` is 20; changing either number re-baselines this figure
+  (not the canonical one).
+- Wave 1 is unchanged in both modes: `8 zombies, interval: 1.90s,
+  difficulty: 1.00`.
+- `zombie_tests` -> **1889 passed / 0 failed** on the assets lane (pre-merge
+  with net's v10); re-measure after merging main. `ctest` 3/3; 
+  `gen_assets.py --verify` -> **50 textures** (knife reuses `sword_blade.png`,
+  no new art; `NET_ASSET_VERSION` stays 3).
+
+### 2026-11-10 follow-up by assets: merged main (0fa9b2d, wire v10) into the lane
+
+After merging net's v10, the same run re-measures:
+
+- `./build/zombie_tests` -> **1895 passed / 0 failed** (merged count; was 1862
+  before audio/v10 additions plus this gameplay work). This is now the merged
+  baseline.
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**.
+- Canonical unlimited SP reference still **125938 bytes / 1603 lines**;
+  default limited reference still **129504 bytes / 1648 lines**; both
+  byte-identical across two `--seed=42` runs, wave 1 unchanged.
+
+## 2026-11-11 - verified by pm on merged main (assets lane landed)
+
+Merged `feature/assets-maps` (H1-H4 HUD + gameplay knife/ammo) into main at
+`c0bc960`. Independently re-ran the whole gate on merged main:
+
+- `./build/zombie_tests` -> **1895 passed / 0 failed**; `ctest` -> 3/3.
+- `gen_assets.py --verify` -> **50 textures**; `gen_audio.py --verify` -> **13 sounds**.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs byte-identical.
+- Wave 1 unchanged in both modes.
+
+Numbers above stand as current. Remaining after this: net's `net_snapshot.c`
+one-line `pistol_ammo` fill, then assets flips the client HUD from `--` to the
+replicated value.
+
+## 2026-11-11 - note by net: merged main (wire v10) measures 1896/0 after the pistol_ammo fill
+
+`net_snapshot.c` now copies the host's authoritative `inventory.pistol_ammo`
+into `NetPlayerState.pistol_ammo` (the v10 field was already on the wire; no
+version, enum, or layout change in this commit). The new host-side assertion
+adds one check, so the merged count moves **1895 -> 1896**:
+
+- `./build/zombie_tests` -> **1896 passed / 0 failed** (merged count).
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**;
+  `gen_audio.py --verify` -> **13 sounds**.
+- Canonical unlimited SP reference **125938 bytes / 1603 lines**, two sequential
+  `--seed=42` 25 s bot runs byte-identical.
+- Default limited SP reference **129504 bytes / 1648 lines**, two sequential
+  `--seed=42` 25 s bot runs byte-identical.
+- Headless two-instance `tools/net_coop_check.py` -> PASS (remote slot spawned,
+  8 client mirror lines, one WAVE_START, no client/host errors).
+## 2026-11-12 - re-baseline by animation: 1895 -> 2003 after merging main into the polish lane
+
+Merged main (through `2cbaf05`, which includes the assets gameplay merge
+`c0bc960` and net's v10 `pistol_ammo`) into `feature/animation-assets`
+(`e824a53`), then added the AN6/Phase D transport test. Re-measured on the
+merged lane:
+
+- `./build/zombie_tests` -> **2003 passed / 0 failed** (1895 merged baseline +
+  84 polish checks: item bob phase, walk stagger, +29 for the Phase D test).
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs
+  byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs
+  byte-identical. Wave 1 unchanged in both modes.
+
+This is now the current lane count; the merged-main figure (1895) is history.
+
+## 2026-11-12 - merge by pm: animation lane integrated into main; merged-main count is 2003/0
+
+Merged `feature/animation-assets` (P1-P5 polish + AN6/Phase D `fc5baca`) into
+`main` (`4580b61`). Re-verified on the merged `main` tree, not on the lane:
+
+- `./build/zombie_tests` -> **2003 passed / 0 failed** (merged main count).
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two sequential
+  `--seed=42` 25 s bot runs byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two sequential `--seed=42`
+  25 s bot runs byte-identical. Wave 1 unchanged in both modes.
+
+**2003 is the current main count.** The animation lane's own entry above said
+"current lane count"; this note supersedes it for `main` since the lane is now
+merged. Same total because the lane had already absorbed the net fill.
