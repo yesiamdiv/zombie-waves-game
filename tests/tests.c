@@ -19,6 +19,7 @@
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
 #include "ui/hud.h"
+#include "ui/text_popup.h"
 #include "world/camera.h"
 #include "config.h"
 #include "net/net.h"
@@ -3216,6 +3217,77 @@ static void test_audio_sfx_2d(void) {
     CHECK(!audio_sfx_is_2d(AUDIO_SFX_NONE));
 }
 
+/* E1: the popup system must not touch the global rand() stream.
+ *
+ * This is the test that matters most in the effects lane, and the one whose
+ * failure is hardest to recognise from its symptom. waves.c draws the spawn
+ * angle, ring radius, zombie variant, zombie size, spawn-point index and
+ * spawn jitter from global rand(); items.c draws the item type; bot.c draws
+ * the strafe. One cosmetic rand() call in a popup therefore shifts every
+ * later sim draw, and the single-player byte-identity gate fails with a diff
+ * in zombie positions that looks completely unrelated to floating text.
+ *
+ * Pinning the seed and comparing the next draw makes that regression a red
+ * test instead of a mystery. TEXT_POPUP_RANDOM is the style that needs an
+ * angle, so it is the one spawned here. */
+static void test_text_popup_no_global_rand(void) {
+    text_popup_init();
+
+    srand(12345);
+    int expect[8];
+    for (int i = 0; i < 8; i++) expect[i] = rand();
+
+    srand(12345);
+    for (int i = 0; i < 64; i++) {
+        text_popup_spawn_damage(100.0f + (float)i, 200.0f, 7 + i);
+    }
+    for (int i = 0; i < 20; i++) text_popup_update(0.016f);
+
+    bool stream_intact = true;
+    for (int i = 0; i < 8; i++) {
+        if (rand() != expect[i]) stream_intact = false;
+    }
+    CHECK(stream_intact);
+
+    text_popup_shutdown();
+}
+
+/* Lifecycle: spawn, age out, and the full-buffer policy. */
+static void test_text_popup_lifecycle(void) {
+    /* Spawning before init must be a no-op -- that property is what keeps the
+     * headless gate untouched, since main.c never initializes the system in
+     * headless mode. */
+    text_popup_shutdown();
+    text_popup_spawn_points(10.0f, 10.0f, 50);
+    CHECK(text_popup_active_count() == 0);
+
+    text_popup_init();
+    CHECK(text_popup_active_count() == 0);
+
+    text_popup_spawn_points(10.0f, 10.0f, 50);
+    text_popup_spawn_pickup(20.0f, 20.0f, "MEDKIT");
+    CHECK(text_popup_active_count() == 2);
+
+    /* Empty text is rejected rather than spawning an invisible popup that
+     * still occupies a slot. */
+    text_popup_spawn_pickup(30.0f, 30.0f, "");
+    CHECK(text_popup_active_count() == 2);
+
+    /* Default lifetime is 1s; 1.5s of updates must retire everything. */
+    for (int i = 0; i < 30; i++) text_popup_update(0.05f);
+    CHECK(text_popup_active_count() == 0);
+
+    /* Over-full: the newest feedback must survive, so the count saturates at
+     * the cap rather than the extra spawns being dropped on the floor. */
+    for (int i = 0; i < MAX_TEXT_POPUPS + 40; i++) {
+        text_popup_spawn_damage(0.0f, 0.0f, i);
+    }
+    CHECK(text_popup_active_count() == MAX_TEXT_POPUPS);
+
+    text_popup_shutdown();
+    CHECK(text_popup_active_count() == 0);
+}
+
 int tests_run_all(void) {
     tests_passed = 0;
     tests_failed = 0;
@@ -3286,6 +3358,8 @@ int tests_run_all(void) {
     test_audio_trigger_table();
     test_audio_health_hurt_vs_heal();
     test_audio_sfx_2d();
+    test_text_popup_no_global_rand();
+    test_text_popup_lifecycle();
 
     LOG_INFO("========================================");
     LOG_INFO("  Tests passed: %d  Failed: %d", tests_passed, tests_failed);
