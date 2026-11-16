@@ -371,3 +371,18 @@ its merge of main `3c8b427`) into `main` (`7fb6242`). Re-verified on merged main
   Environment bug, not the repo; `assets/` is byte-identical to the last green
   verify (`git diff 03b0e6e HEAD -- assets/` empty), so the 50-texture result
   stands. See knowledge/pillow-nearest-env-bug.
+
+## 2026-11-16 - merge by pm: effects E2+E3 integrated; merged-main count is 2032/0
+
+Merged `feature/effects` E2 (damage numbers `4d26b65`) + E3 (points/pickup
+popups `9fcc309`) into `main` (`2632ec4`). Re-verified on merged main:
+
+- `./build/zombie_tests` -> **2032 passed / 0 failed** (2011 + 21 E2/E3 checks).
+- `ctest --test-dir build` -> 3/3.
+- Canonical unlimited SP: **125938 bytes / 1603 lines**, two `--seed=42` runs
+  byte-identical.
+- Default limited SP: **129504 bytes / 1648 lines**, two `--seed=42` runs
+  byte-identical. Wave 1 unchanged.
+- `gen_assets.py --verify` still blocked by the Pillow NEAREST env bug
+  (knowledge/pillow-nearest-env-bug); `assets/` unchanged since the last green
+  verify, so 50 textures stands.
