@@ -31,7 +31,8 @@ tasks).
 |---|---|---|---|
 | S6-1 | **H5** — themed menu backdrop. Render-only; no sim/wire change. Texture count may move only with a declared re-baseline in the same commit. | assets | todo |
 | S6-2 | **N3 phase 1** — relay overflow visibility. Client-local counter/visibility only; **no wire change**, host stays source of truth. | net | todo |
-| S6-3 | **Q6** — QA functional pass on H5 + N3 after both land; findings untracked per policy. | qa | todo (blocked on S6-1/S6-2) |
+| S6-3 | **Q6** — QA functional pass on H5 + N3 after both land; findings untracked per policy. | qa | **done** (PASS functional; H5/N3 looks unproven) |
+| S6-4 | **B47** — local/host shop purchases silently discarded (`src/main.c:971` copies the inventory with no write-back; regression from B30 `e9e5107`). Fix the wiring and add a wiring-level regression test; burst weapons become buyable again, which unblocks the N3 forced-overflow re-run. | assets | todo (critical, found by Q6) |
 
 ## Acceptance (all tickets)
 
