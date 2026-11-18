@@ -98,6 +98,15 @@ GameState gameover_update(GameOverScreen *go, InputState *input);
 GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv,
                            uint8_t *request_out);
 
+/* B47 wiring: main.c calls this one function so the "which inventory does the
+ * shop mutate?" decision lives in the same testable place as the menu logic.
+ * Render-only clients get `client_view` + `request_out`; every local/host slot
+ * gets the real `local_inventory` and no request is raised. */
+GameState shop_update_wired(ShopMenu *menu, InputState *input,
+                            PlayerInventory *client_view,
+                            PlayerInventory *local_inventory,
+                            bool render_only, uint8_t *request_out);
+
 void menu_draw(SDL_Renderer *renderer, MainMenu *menu, ThemeID theme,
                int screen_w, int screen_h, TTF_Font *font);
 void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, ThemeID theme,

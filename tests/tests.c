@@ -19,6 +19,7 @@
 #include "ai/ai_driver.h"
 #include "ai/ai_types.h"
 #include "ui/hud.h"
+#include "ui/menu.h"
 #include "ui/text_popup.h"
 #include "effects/damage_feedback.h"
 #include "effects/wave_banner.h"
@@ -1538,6 +1539,70 @@ static void test_weapons_shop_apply(void) {
     for (int it = NET_SHOP_PISTOL; it <= NET_SHOP_ROCKETS; it++) {
         CHECK(it == SHOP_ITEM_PISTOL + (it - NET_SHOP_PISTOL));
         CHECK(strcmp(net_shop_item_name((uint8_t)it), "unknown") != 0);
+    }
+}
+
+/* B47: the unit-level shop tests above cannot see WHICH inventory the state
+ * machine hands to the menu. Drive the exact helper main.c calls, with a
+ * display copy that differs from the real local slot. */
+static void test_shop_wiring_local_purchase(void) {
+    /* Local / host slot: the purchase must land in the real inventory. */
+    {
+        ShopMenu menu;
+        shop_menu_init(&menu);
+        menu.selected_option = 2;  /* Grenades x5 */
+
+        PlayerInventory real;
+        weapons_inventory_init(&real);
+        real.points = 1000;
+        PlayerInventory view = real;  /* what a client would render */
+
+        InputState input;
+        memset(&input, 0, sizeof(input));
+        input.keys_pressed[SDL_SCANCODE_RETURN] = true;
+
+        uint8_t request = NET_SHOP_NONE;
+        GameState next = shop_update_wired(&menu, &input, &view, &real,
+                                           false, &request);
+
+        CHECK(next == GAME_STATE_SHOP);
+        CHECK(request == NET_SHOP_NONE);  /* locals never send a request */
+        CHECK(real.grenades == GRENADES_PER_PACK);
+        CHECK(real.points == 1000 - GRENADE_PACK_COST);
+        CHECK(real.current == WEAPON_GRENADE);
+        CHECK(real.unlocked[WEAPON_GRENADE]);
+        /* The discarded-copy regression is precisely a changed view. */
+        CHECK(view.grenades == 0);
+        CHECK(view.points == 1000);
+        CHECK(view.current == WEAPON_PISTOL);
+    }
+
+    /* Render-only client: still request-only, never invents a local purchase. */
+    {
+        ShopMenu menu;
+        shop_menu_init(&menu);
+        menu.selected_option = 2;
+
+        PlayerInventory real;
+        weapons_inventory_init(&real);
+        real.points = 1000;
+        PlayerInventory view = real;
+
+        InputState input;
+        memset(&input, 0, sizeof(input));
+        input.keys_pressed[SDL_SCANCODE_RETURN] = true;
+
+        uint8_t request = NET_SHOP_NONE;
+        GameState next = shop_update_wired(&menu, &input, &view, &real,
+                                           true, &request);
+
+        CHECK(next == GAME_STATE_SHOP);
+        CHECK(request == NET_SHOP_GRENADES);
+        CHECK(real.grenades == 0);
+        CHECK(real.points == 1000);
+        CHECK(real.current == WEAPON_PISTOL);
+        CHECK(view.grenades == 0);
+        CHECK(view.points == 1000);
     }
 }
 
@@ -4016,6 +4081,7 @@ int tests_run_all(void) {
     test_sword_sweep_hits();
     test_zombie_contact_and_slow();
     test_weapons_shop_apply();
+    test_shop_wiring_local_purchase();
     test_net_codec_shop();
     test_net_codec();
     test_net_codec_game();

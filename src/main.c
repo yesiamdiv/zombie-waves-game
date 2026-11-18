@@ -964,19 +964,15 @@ static void update(float dt) {
         }
 
         case GAME_STATE_SHOP: {
-            /* B30. A co-op client gets a *display-only* copy of its
-             * inventory, rebuilt from the snapshot, and every purchase leaves
-             * as a request for the host to apply. Nothing local is mutated, so
-             * the menu can never contradict the next snapshot. */
+            /* B30/B47. A render-only client gets a display-only snapshot and
+             * sends a request; the local/host slot gets the REAL inventory.
+             * shop_update_wired() owns that choice so a wiring test can see it. */
             PlayerInventory view = shop_display_inventory();
             uint8_t request = NET_SHOP_NONE;
-            uint8_t *request_out = NULL;
-            if (render_only_client()) {
-                request_out = &request;
-            }
-            GameState next = shop_menu_update(&game.shop_menu, &game.input,
-                                              &view, request_out);
-            if (request_out && request != NET_SHOP_NONE) {
+            GameState next = shop_update_wired(&game.shop_menu, &game.input,
+                                               &view, &game.players[0].inventory,
+                                               render_only_client(), &request);
+            if (request != NET_SHOP_NONE) {
                 if (net_client_send_shop_request(&game.net_client, request) != 0) {
                     shop_menu_vset_message(&game.shop_menu,
                                            "%s", "Request not sent - try again");
