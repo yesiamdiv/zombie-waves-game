@@ -1175,3 +1175,36 @@ value.
 ### Blocked
 - On-screen shop confirmation remains unproven; headless proves state + events,
   not the menu's appearance.
+
+---
+
+## 2026-11-18 — PM: Sprint 6 closed (S6-1..S6-5 done)
+
+### PM standup — planned
+- Close Sprint 6 after H5 (S6-1), N3 phase 1 (S6-2), Q6 (S6-3), the B47 shop
+  regression Q6 uncovered (S6-4), and the forced-overflow re-run it unblocked
+  (S6-5); push the durable record to `origin/main`.
+
+### PM — done
+- Integrated H5 (`5fb55b2` -> `9c2fdae`) and N3 (`49f1efe` -> `0a11d2f`); Q6
+  closed PASS with visuals unproven, findings left untracked.
+- Q6 found critical B47 (local/host shop purchases discarded since B30).
+  Assigned S6-4 to assets; fix `30c2a57` merged `c2c2dd3`, docs `f4a64ed`.
+  PM gate 2091/0 (16 new wiring tests), ctest 3/3, 50 textures, SP unlimited
+  125938/1603 + limited 129504/1648 byte-identical; headless repro now emits
+  `SHOP_PURCHASE a=2 b=75` then `PLAYER_SHOT k=grenade`.
+- Assigned S6-5 to QA after correcting the pass criterion (>=16 kills in one
+  frame, not >=12). Forced overflow fired: one host warning with 10 events
+  dropped at wave 5, events frame 35039 = 58 relayable / 18 kills, no assert,
+  run continued into wave 6. Docs `e5a9f4e`, gate note `6811f0f`.
+- Sprint plan closed `5e2f817`; gate/baseline and PENDING_VERIFICATION updated.
+  `main` pushed to `origin/main` through `5e2f817`.
+
+### PM — next
+- Only owner-side visual checks remain (H5 backdrop, overflow HUD notice, shop
+  on-screen). No code tasks open; B48 (CLI doc drift) is a separate low-priority
+  docs item if the owner wants it.
+
+### Blocked
+- Nothing. On-screen checks are `unproven`, not blocking, under the owner's
+  2026-11-12 conditional sign-off.
