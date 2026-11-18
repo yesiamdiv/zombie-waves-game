@@ -464,3 +464,15 @@ and docs `f4a64ed`). PM re-gate on merged main:
   `PLAYER_SHOT k=grenade` (pre-fix QA saw `k=bullet`).
 
 On-screen shop appearance remains UNPROVEN until a human looks.
+
+## 2026-11-18 - S6-5 forced relay overflow proven (no code change)
+
+QA re-ran the grenade-burst probe on the B47-fixed tree (S6-4). No source or
+gate numbers changed (2091/0, ctest 3/3, 50 textures, SP 125938/1603 +
+129504/1648 byte-identical). Forced path now proven in a real headless run:
+one host warning `NET: relay overflow - 10 event(s) dropped at this frame's
+flush (max 48/frame, 10 total)` at wave 5, with `--events` frame 35039 holding
+58 relayable events (18 kills) => 48 kept, 10 dropped, no assert, run continued
+into wave 6. Measured economics: 3 relayable events per kill + 2 for the blast,
+so the cap needs >=16 kills in one frame. HUD text remains unproven on a real
+display (same branch as the proven log line, `src/main.c:1536-1547`).
