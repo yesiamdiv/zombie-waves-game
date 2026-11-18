@@ -98,12 +98,16 @@ GameState gameover_update(GameOverScreen *go, InputState *input);
 GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *inv,
                            uint8_t *request_out);
 
-void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_h, TTF_Font *font);
-void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, int screen_h, TTF_Font *font);
-void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int screen_h, TTF_Font *font);
-void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int screen_h, TTF_Font *font);
+void menu_draw(SDL_Renderer *renderer, MainMenu *menu, ThemeID theme,
+               int screen_w, int screen_h, TTF_Font *font);
+void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, ThemeID theme,
+                     int screen_w, int screen_h, TTF_Font *font);
+void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, ThemeID theme,
+                     int screen_w, int screen_h, TTF_Font *font);
+void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, ThemeID theme,
+                   int screen_w, int screen_h, TTF_Font *font);
 void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventory *inv,
-                    int screen_w, int screen_h, TTF_Font *font);
+                    ThemeID theme, int screen_w, int screen_h, TTF_Font *font);
 
 /* Centered text helper shared with main.c lobby overlays. */
 void menu_draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
