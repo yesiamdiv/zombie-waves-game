@@ -1015,3 +1015,37 @@ Found 2026-10-22 by the owner, playing (follow-up to B41).
   simulation or event). **On-screen result is UNPROVEN until the owner looks**
   (`i5-unverified-on-screen`) — no gate can see banding.
 | B46 | Weapon keys 1-4 do nothing in single-player (input routed to net-client queue) | `3ac2528` (main) | FIXED; UNPROVEN on screen until owner confirms |
+| B47 | Shop purchases silently discarded for the local/host slot (single-player included); buying never unlocks or equips anything | — | OPEN (found on main `2723e06`, 2026-11-18) |
+
+## B47. Local shop purchases are silently discarded (SP and the host's own player)
+
+Found by QA on main `2723e06` (Q6/S6-2 probe), 2026-11-18. **OPEN** — no fix
+commit yet.
+
+- **Symptom**: in single-player (and for the host's own player in a co-op
+  session), buying anything in the shop (B) does nothing that sticks. The
+  purchase event is emitted and the menu shows the item while it is open, but
+  after closing, points/unlocks/grenades are unchanged and the player still
+  holds the pistol. Remote slots are unaffected: a joining client's request
+  goes through `apply_net_shop_requests()` -> `weapons_shop_apply()` on the real
+  slot inventory, so only the local slot is broken.
+- **Root cause**: `src/main.c` GAME_STATE_SHOP takes
+  `PlayerInventory view = shop_display_inventory();` (a **copy**) and passes
+  `&view` to `shop_menu_update()` with `request_out == NULL` for non-clients.
+  Nothing copies `view` back, so every local purchase mutates the discarded
+  copy. Introduced by B30 (`e9e5107`, 2026-10-05); before that the call site
+  passed `&game.players[0].inventory` directly.
+- **Why no test caught it**: `tests/tests.c` covers `weapons_shop_apply()` and
+  the wire loopback, but nothing drives the state-machine wiring that decides
+  which inventory the menu receives — the same "wiring, not logic" class B33's
+  message warned about.
+- **Repro** (headless, ~6 s): script opens the shop, buys row 2 (Grenades x5),
+  closes, clicks once; `--points=1000`. Log shows `SHOP_PURCHASE` (a=2, b=75)
+  and then `PLAYER_SHOT k=bullet` — expected `k=grenade`. Full script and
+  command in `playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
+- **Fix sketch**: use the snapshot view only for `render_only_client()`;
+  otherwise pass the real `&game.players[0].inventory` (or copy `view` back
+  before leaving the state). Add a wiring-level regression test.
+- **Impact**: the pistol is the only usable weapon in SP; the economy is dead.
+  Also blocks the N3 forced-overflow QA probe (grenades/sword/launcher are
+  shop-only).

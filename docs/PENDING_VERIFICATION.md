@@ -516,3 +516,21 @@ green gate proves nothing about legibility or theme matching.
       grid drifts slowly without becoming busy or flickering.
 
 **Status:** all `unproven`, not `fixed`, until a human looks.
+
+### Unproven trigger — S6-2 N3 relay-overflow notice
+
+The 48-relayable-events-per-frame cap is instrumented (host-local counter,
+`LOG_WARN "NET: relay overflow ..."`, HUD "Net: relay batch overflow"), and a
+two-instance normal run shows no false positives and healthy relay traffic. The
+*warning path itself* has never fired in a real run.
+
+- [ ] **N3 forced overflow**: with a burst-capable weapon, kill >=12 zombies in
+      one frame (one grenade into a wave-3+ horde). Expect one
+      `NET: relay overflow` line on the host, `"dropped at this frame's flush"`
+      when `--events` is set and `"deferred to the next frame"` otherwise, and
+      the HUD notice on a real display.
+
+**Blocked**: every burst weapon is shop-only and the local shop is currently
+broken (B47), so the probe cannot be built on this tree. Re-run once B47 is
+fixed; QA script and timings are in
+`playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
