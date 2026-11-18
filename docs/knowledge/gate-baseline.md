@@ -431,3 +431,19 @@ merged main:
   knowledge/pillow-nearest-env-bug).
 - Unlimited SP **125938 / 1603**, limited SP **129504 / 1648**, both two-run
   byte-identical. Wave 1 unchanged.
+
+## 2026-11-18 - S6-2 N3 phase 1 landed on main; gate stays 2075/0
+
+Net landed relay-overflow visibility (`49f1efe`) on `main` (`0a11d2f`, after
+merging H5 in `f521182`). Local counting/warnings + host HUD notice only; no wire
+field, no `NET_WIRE_VERSION` bump, `last_relay_sid` retry untouched. PM re-gate
+on merged main:
+
+- `./build/zombie_tests` -> **2075 passed / 0 failed** (no count change).
+- `ctest --test-dir build` -> 3/3; `gen_assets.py --verify` -> **50 textures**.
+- Unlimited SP **125938 / 1603**, limited SP **129504 / 1648**, both two-run
+  byte-identical. Wave 1 unchanged.
+- Headless two-instance `tools/net_coop_check.py` -> PASS (remote slot spawned,
+  8 client mirror lines, one WAVE_START, host/client errors 0).
+
+HUD notice / warning are unproven on screen until a real overflow is observed.
