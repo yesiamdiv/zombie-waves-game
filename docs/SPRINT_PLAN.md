@@ -33,10 +33,14 @@ tasks).
 | S6-2 | **N3 phase 1** — relay overflow visibility. Client-local counter/visibility only; **no wire change**, host stays source of truth. | net | **done** (main `0a11d2f`; gate recorded) |
 | S6-3 | **Q6** — QA functional pass on H5 + N3 after both land; findings untracked per policy. | qa | **done** (PASS functional; H5/N3 looks unproven; forced-overflow trigger deferred to S6-5) |
 | S6-4 | **B47** — local/host shop purchases silently discarded (`src/main.c:971` copies the inventory with no write-back; regression from B30 `e9e5107`). Fix the wiring and add a wiring-level regression test; burst weapons become buyable again, which unblocks the N3 forced-overflow re-run. | assets | **done** (`30c2a57`, main `c2c2dd3`; 2091/0, grenade repro passes) |
-| S6-5 | **N3 forced-overflow re-run** — now unblocked by S6-4: QA re-runs the grenade-burst probe. Corrected criterion (QA measurement): 3 relayable events/kill + 2 for the blast, so the 48/frame cap needs **>=16 kills in one frame**; 12-15 kills staying silent is correct. Upgrade `knowledge/relay-overflow-visibility.md` / `PENDING_VERIFICATION.md` to PASS if it fires; otherwise record UNPROVEN-TRIGGER (practical) with the design ceiling. | qa | in_progress |
+| S6-5 | **N3 forced-overflow re-run** — now unblocked by S6-4: QA re-runs the grenade-burst probe. Corrected criterion (QA measurement): 3 relayable events/kill + 2 for the blast, so the 48/frame cap needs **>=16 kills in one frame**; 12-15 kills staying silent is correct. Upgrade `knowledge/relay-overflow-visibility.md` / `PENDING_VERIFICATION.md` to PASS if it fires; otherwise record UNPROVEN-TRIGGER (practical) with the design ceiling. | qa | **done** (forced overflow fired: 58 events/frame, 10 dropped, no assert) |
 
-S6-4/S6-5 were added mid-sprint when Q6 found critical B47 (local/host shop
-purchases discarded since B30); the sprint is not green until both close.
+**Sprint 6 closed 2026-11-18.** S6-4/S6-5 were added mid-sprint when Q6 found
+critical B47 (local/host shop purchases discarded since B30); both are done.
+Headless gate is green at 2091/0 with both SP refs byte-identical. H5 backdrop
+look, the overflow HUD text and the shop on-screen appearance remain `unproven`
+until a human looks (`PENDING_VERIFICATION.md`); that is not a sprint blocker
+under the owner's 2026-11-12 conditional sign-off.
 
 ## Acceptance (all tickets)
 
