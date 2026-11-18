@@ -34,9 +34,13 @@ free — the client stages a batch-worth of events too. Phase 2 options are to
 raise it deliberately, split a frame across several packets, or coalesce
 `GE_DAMAGE`; each is its own decision.
 
-TRIGGER: more than 48 relayable events in one frame. An explosion emits
-`GE_DAMAGE` per victim (plus death/kill/points), so one rocket/grenade into a
-packed wave can exceed it.
+TRIGGER: more than 48 relayable events in one frame. MEASURED economics: a
+zombie kill contributes 3 relayable events (GE_DAMAGE + GE_KILL + GE_POINTS;
+zombie GE_ENTITY_DEATH is NOT in relay_event_type), plus GE_EXPLOSION and the
+grenade's own GE_ENTITY_DEATH, so a blast needs **>=16 kills in one frame**
+(16*3+2=50). A 12-kill blast is 38 and correctly stays silent. Grenades explode
+at the first zombie contact, i.e. on the ring's edge, so a 17-zombie wave only
+reaches ~13 kills; the trigger needs wave 5 (20) or 6 (23) fully packed.
 
 SINGLE-PLAYER SAFETY: the first statement of `relay_net_events()` is
 `if (!game.net_host_mode || !g_events) return;`, so none of this runs in SP.
@@ -47,6 +51,16 @@ VERIFIED on the merged Sprint-6 tree (2075/0 baseline):
   default limited SP `129504 bytes / 1648 lines`, two runs byte-identical.
 - `gen_assets.py --verify` 50 textures; `gen_audio.py --verify` 13 sounds;
   `tools/net_coop_check.py` PASS.
-- The HUD notice and the log line have **not** been seen by a human in a real
-  overflowing session: visual result is `unproven`. Forcing an overflow on
-  demand needs a dense-wave scenario or a temporary lowered cap.
+- FORCED TRIGGER (S6-5, 2026-11-18, after B47): a grenade blast into a packed
+  wave-5 horde produced exactly one host warning -
+  `NET: relay overflow - 10 event(s) dropped at this frame's flush (max 48/frame, 10 total)`;
+  the `--events` frame 35039 holds 58 relayable events (18 KILL) => 48 kept, 10
+  dropped, counter total 10, no assertion, run continued into wave 6.
+  Evidence: `build/logs/qa_n3_burst9.{stdout,events.log}`.
+- Recipe that works (do not re-derive): buy 8 grenade packs, let waves 1-4 TIME
+  OUT untouched (leftovers are force-destroyed, so waves 5/6 spawn fresh and
+  fully), `--player-damage-mult=0.00001` so the thrower never dies, then a
+  burst of throws at the wave-5 tail (~t=290-310, 20 zombies pressed tight).
+  Clearing earlier waves with grenades shrinks the pack and misses the cap.
+- Remaining `unproven`: the HUD text on a real display. It is queued in the same
+  branch as the log line (`src/main.c:1536-1547`), so only rendering is unseen.

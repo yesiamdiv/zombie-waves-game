@@ -517,20 +517,30 @@ green gate proves nothing about legibility or theme matching.
 
 **Status:** all `unproven`, not `fixed`, until a human looks.
 
-### Unproven trigger — S6-2 N3 relay-overflow notice
+### S6-5 N3 relay-overflow notice — TRIGGERED 2026-11-18
 
 The 48-relayable-events-per-frame cap is instrumented (host-local counter,
-`LOG_WARN "NET: relay overflow ..."`, HUD "Net: relay batch overflow"), and a
-two-instance normal run shows no false positives and healthy relay traffic. The
-*warning path itself* has never fired in a real run.
+`LOG_WARN "NET: relay overflow ..."`, HUD "Net: relay batch overflow"). A
+two-instance normal run showed no false positives; the forced trigger has now
+fired in a real headless host run.
 
-- [ ] **N3 forced overflow**: with a burst-capable weapon, kill >=12 zombies in
-      one frame (one grenade into a wave-3+ horde). Expect one
-      `NET: relay overflow` line on the host, `"dropped at this frame's flush"`
-      when `--events` is set and `"deferred to the next frame"` otherwise, and
-      the HUD notice on a real display.
+- [x] **N3 forced overflow**: grenade blast into a packed wave-5 horde on the
+      B47-fixed tree. Host log, one line:
+      `NET: relay overflow - 10 event(s) dropped at this frame's flush (max 48/frame, 10 total)`;
+      `--events` log frame 35039 holds 58 relayable events (18 KILL), i.e. the
+      frame's 48-event batch kept 48 and dropped 10. No assertion/crash; the run
+      continued into wave 6. Evidence: `build/logs/qa_n3_burst9.{stdout,events.log}`
+      (`build/logs/qa_n3_overflow_tail.script`).
+- [ ] **HUD text on a real display**: still `unproven` on this headless box. The
+      log line and the `hud_show_message("Net: relay batch overflow")` call are
+      the same branch (`src/main.c:1536-1547`), so the code path is proven; only
+      the on-screen rendering is not.
 
-**Blocked**: every burst weapon is shop-only and the local shop is currently
-broken (B47), so the probe cannot be built on this tree. Re-run once B47 is
-fixed; QA script and timings are in
-`playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
+**Economics (measured, not assumed)**: a zombie kill contributes 3 relayable
+events (DAMAGE + KILL + POINTS; zombie ENTITY_DEATH is not relayed) plus
+EXPLOSION + the grenade's own ENTITY_DEATH, so the cap needs **>=16 kills in one
+frame** — a 12-kill blast (38 events) correctly stays silent. Grenade blasts
+land on the ring's edge, so a 17-zombie wave only yields ~13; the trigger needs
+wave 5 (20) or 6 (23) fully packed.
+
+Script and timings: `playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
