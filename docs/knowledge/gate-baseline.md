@@ -447,3 +447,20 @@ on merged main:
   8 client mirror lines, one WAVE_START, host/client errors 0).
 
 HUD notice / warning are unproven on screen until a real overflow is observed.
+
+## 2026-11-18 - S6-4 B47 shop wiring fix on main; count 2075 -> 2091/0
+
+Assets fixed the local/host shop-copy regression (`30c2a57`, merged `c2c2dd3`
+and docs `f4a64ed`). PM re-gate on merged main:
+
+- `cmake --build build` -> clean; `./build/zombie_tests` -> **2091 passed /
+  0 failed** (16 new `shop_update_wired()` wiring assertions).
+- `ctest --test-dir build` -> 3/3; `python3 tools/gen_assets.py --verify` ->
+  **50 textures**.
+- Unlimited SP **125938 / 1603**, limited SP **129504 / 1648**, both two-run
+  byte-identical. Wave 1 unchanged — the shop fix does not touch the gate path.
+- Headless shop repro (`build/logs/qa_b47_shop_repro.script`, 6 s, seed 42,
+  `--points=1000`) now emits `SHOP_PURCHASE a=2 b=75` followed by
+  `PLAYER_SHOT k=grenade` (pre-fix QA saw `k=bullet`).
+
+On-screen shop appearance remains UNPROVEN until a human looks.
