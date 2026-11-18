@@ -51,6 +51,10 @@ typedef struct {
      * snapshot; wave starts feed the client HUD. Cleared after each drain. */
     uint16_t dead_ids[NET_EVENTS_MAX_BATCH];
     int dead_count;
+    /* S6-2: client-local count of death ids this staging cap had to drop.
+     * Local diagnostic only - never sent anywhere. */
+    uint32_t dead_dropped;
+    Uint64 dead_warn_ms;
     int pending_wave;
     int pending_wave_count;
     bool has_pending_wave;

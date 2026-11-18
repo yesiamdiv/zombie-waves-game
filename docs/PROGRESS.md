@@ -1088,3 +1088,29 @@ value.
 ### PM — next
 - Sprint scope is complete on main (unpushed, for owner). Remaining: owner's
   on-screen look at the conditionally-passed visuals/audio; then push.
+
+---
+
+## Session 2026-11-18 — Sprint 6, S6-2 / N3 phase 1: relay overflow visibility
+
+### PM — planned
+- Start S6-2: make the 48-events/frame relay cap's silent overflow visible
+  without a wire change; host remains the single source of truth.
+
+### DEV (net) — planned / done / next / blocked
+- Planned: local visibility only — count and report on the side that overflows,
+  never replicate the count. Keep `last_relay_sid` retry behaviour intact.
+- Done: `relay_net_events()` now scans the ring beyond a full batch, adds the
+  leftovers to a local `game.net_relay_overflow`, warns (2 s rate limit) with
+  whether this frame's flush will drop them or the next frame will retry them,
+  and raises a host-HUD notice. Client-side `NetClient.dead_dropped` warns when
+  its own death-id staging array is full (timing only; snapshots still prune).
+  Decision recorded in `docs/knowledge/relay-overflow-visibility.md`.
+- Gate on the merged Sprint-6 tree: build clean (project sources), `zombie_tests`
+  **2075/0**, ctest 3/3, unlimited SP **125938/1603** and limited SP
+  **129504/1648**, both two-run byte-identical; assets 50, sounds 13,
+  `net_coop_check.py` PASS. No wire/version change.
+- Next: land on `main`, report the task done; phase 2 (raise the cap / split
+  batches) is deliberately not in this slice.
+- Blocked: nothing. HUD notice and overflow warn are `unproven` on screen until
+  a human sees a real overflow (no deterministic way to force one yet).

@@ -364,9 +364,26 @@ void net_client_update(NetClient *c) {
                                        (EventKind)e->kind, e->x, e->y, e->a, e->b,
                                        0, 0);
                             if ((e->type == GE_ENTITY_DEATH ||
-                                 e->type == GE_KILL) && e->id != 0 &&
-                                c->dead_count < NET_EVENTS_MAX_BATCH) {
-                                c->dead_ids[c->dead_count++] = e->id;
+                                 e->type == GE_KILL) && e->id != 0) {
+                                if (c->dead_count < NET_EVENTS_MAX_BATCH) {
+                                    c->dead_ids[c->dead_count++] = e->id;
+                                } else {
+                                    /* S6-2: this staging cap is client-local and
+                                     * was silent; report it locally, never on the
+                                     * wire. The next snapshot still prunes these
+                                     * entities - this is a timing loss only. */
+                                    c->dead_dropped++;
+                                    Uint64 now = SDL_GetTicks();
+                                    if (c->dead_warn_ms == 0 ||
+                                        now - c->dead_warn_ms >= 2000) {
+                                        c->dead_warn_ms = now;
+                                        LOG_WARN("NET: client death-id staging full - "
+                                                 "dropped %u (cap %d, last frame %d)",
+                                                 (unsigned)c->dead_dropped,
+                                                 NET_EVENTS_MAX_BATCH,
+                                                 c->dead_count);
+                                    }
+                                }
                             } else if (e->type == GE_WAVE_START) {
                                 c->pending_wave = (int)e->a;
                                 c->pending_wave_count = (int)e->b;

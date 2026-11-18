@@ -134,6 +134,9 @@ typedef struct {
     /* P2: net input cadence + client-side weapon selection. */
     float net_input_tx_accum;
     uint8_t net_weapon;
+    /* S6-2: local-only count of relayable events left beyond the per-frame
+     * batch cap. Never sent on the wire; the host owns this fact. */
+    uint32_t net_relay_overflow;
     float net_snap_accum;   /* host: 20 Hz snapshot cadence accumulator */
     NetMirror net_mirror;   /* client: interpolated world mirror */
     /* R13-I1: client render clock. Trails the newest snapshot by one snapshot
@@ -1460,29 +1463,38 @@ static void broadcast_host_pause(bool paused) {
  * (reliable/ordered). Entity deaths let clients tidy the mirror ahead of the
  * next snapshot; wave starts feed the client HUD. Runs BEFORE the event bus
  * flush drains the ring. */
+static bool relay_event_type(GameEventType type) {
+    /* R13-D1: GE_POINTS/GE_DAMAGE/GE_ITEM_PICKUP must cross the wire too,
+     * or a joined client can never evidence scoring/credit in its log.
+     * B37: GE_PLAYER_SHOT likewise - it is emitted only by host-side
+     * simulation (player_input/grenades/rockets) and a render-only client
+     * runs none of that, so without this a client hears no gunshot at all.
+     * Payload is spawn origin (x,y), direction (a,b) and weapon class
+     * (kind). The enum value already exists, so no wire bump. */
+    switch (type) {
+    case GE_ENTITY_DEATH: case GE_WAVE_START: case GE_PLAYER_SHOT:
+    case GE_WAVE_END: case GE_PLAYER_HEALTH: case GE_KILL:
+    case GE_POINTS: case GE_DAMAGE: case GE_ITEM_PICKUP:
+    case GE_HOST_PAUSE: case GE_EXPLOSION:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static void relay_net_events(void) {
     if (!game.net_host_mode || !g_events) return;
     static Uint64 last_relay_sid = 0;
+    static Uint64 last_warn_ms = 0;
     NetRelayedEvent batch[NET_EVENTS_MAX_BATCH];
     int n = 0;
     int count = g_events->count;
-    for (int i = 0; i < count && n < NET_EVENTS_MAX_BATCH; i++) {
+    int i = 0;
+    for (; i < count && n < NET_EVENTS_MAX_BATCH; i++) {
         const GameEvent *ev = &g_events->ring[(g_events->head + i) % EV_MAX_EVENTS];
         if (ev->sid <= last_relay_sid) continue;
         if (ev->sid > last_relay_sid) last_relay_sid = ev->sid;
-        /* R13-D1: GE_POINTS/GE_DAMAGE/GE_ITEM_PICKUP must cross the wire too,
-         * or a joined client can never evidence scoring/credit in its log.
-         * B37: GE_PLAYER_SHOT likewise - it is emitted only by host-side
-         * simulation (player_input/grenades/rockets) and a render-only client
-         * runs none of that, so without this a client hears no gunshot at all.
-         * Payload is spawn origin (x,y), direction (a,b) and weapon class
-         * (kind). The enum value already exists, so no wire bump. */
-        if (ev->type == GE_ENTITY_DEATH || ev->type == GE_WAVE_START ||
-            ev->type == GE_PLAYER_SHOT || ev->type == GE_WAVE_END ||
-            ev->type == GE_PLAYER_HEALTH || ev->type == GE_KILL ||
-            ev->type == GE_POINTS || ev->type == GE_DAMAGE ||
-            ev->type == GE_ITEM_PICKUP || ev->type == GE_HOST_PAUSE ||
-            ev->type == GE_EXPLOSION) {
+        if (relay_event_type(ev->type)) {
             batch[n++] = (NetRelayedEvent){
                 (uint8_t)ev->type, (uint8_t)ev->kind,
                 (uint16_t)ev->entity,
@@ -1492,6 +1504,33 @@ static void relay_net_events(void) {
     }
     if (n > 0) {
         net_server_broadcast_events(&game.net_server, batch, n);
+    }
+
+    /* S6-2: surface the batch-cap overflow instead of losing it silently.
+     * last_relay_sid is deliberately NOT advanced past these events: today's
+     * retry behaviour stays intact. With --events the frame's flush below
+     * drains them (so they are lost); without a log file they stay in the
+     * ring and are retried next frame. Count/reported locally only - no wire
+     * field, no client-side guess about the host's backlog. */
+    int overflow = 0;
+    for (; i < count; i++) {
+        const GameEvent *ev = &g_events->ring[(g_events->head + i) % EV_MAX_EVENTS];
+        if (ev->sid > last_relay_sid && relay_event_type(ev->type)) overflow++;
+    }
+    if (overflow > 0) {
+        game.net_relay_overflow += (uint32_t)overflow;
+        Uint64 now = SDL_GetTicks();
+        if (last_warn_ms == 0 || now - last_warn_ms >= 2000) {
+            last_warn_ms = now;
+            const char *fate = g_events->file ? "dropped at this frame's flush"
+                                              : "deferred to the next frame";
+            LOG_WARN("NET: relay overflow - %d event(s) %s (max %d/frame, %u total)",
+                     overflow, fate, NET_EVENTS_MAX_BATCH,
+                     (unsigned)game.net_relay_overflow);
+            if (game.state == GAME_STATE_PLAYING) {
+                hud_show_message(&game.hud, "Net: relay batch overflow", 2.0f);
+            }
+        }
     }
 }
 
