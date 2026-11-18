@@ -29,10 +29,14 @@ tasks).
 
 | ID | Task | Owner | Status |
 |---|---|---|---|
-| S6-1 | **H5** — themed menu backdrop. Render-only; no sim/wire change. Texture count may move only with a declared re-baseline in the same commit. | assets | todo |
-| S6-2 | **N3 phase 1** — relay overflow visibility. Client-local counter/visibility only; **no wire change**, host stays source of truth. | net | todo |
-| S6-3 | **Q6** — QA functional pass on H5 + N3 after both land; findings untracked per policy. | qa | **done** (PASS functional; H5/N3 looks unproven) |
-| S6-4 | **B47** — local/host shop purchases silently discarded (`src/main.c:971` copies the inventory with no write-back; regression from B30 `e9e5107`). Fix the wiring and add a wiring-level regression test; burst weapons become buyable again, which unblocks the N3 forced-overflow re-run. | assets | todo (critical, found by Q6) |
+| S6-1 | **H5** — themed menu backdrop. Render-only; no sim/wire change. Texture count may move only with a declared re-baseline in the same commit. | assets | **done** (main `9c2fdae`; gate recorded) |
+| S6-2 | **N3 phase 1** — relay overflow visibility. Client-local counter/visibility only; **no wire change**, host stays source of truth. | net | **done** (main `0a11d2f`; gate recorded) |
+| S6-3 | **Q6** — QA functional pass on H5 + N3 after both land; findings untracked per policy. | qa | **done** (PASS functional; H5/N3 looks unproven; forced-overflow trigger deferred to S6-5) |
+| S6-4 | **B47** — local/host shop purchases silently discarded (`src/main.c:971` copies the inventory with no write-back; regression from B30 `e9e5107`). Fix the wiring and add a wiring-level regression test; burst weapons become buyable again, which unblocks the N3 forced-overflow re-run. | assets | **done** (`30c2a57`, main `c2c2dd3`; 2091/0, grenade repro passes) |
+| S6-5 | **N3 forced-overflow re-run** — now unblocked by S6-4: QA re-runs the grenade-burst probe, upgrades `knowledge/relay-overflow-visibility.md` / `PENDING_VERIFICATION.md` from UNPROVEN-TRIGGER to PASS, or files a counter-defect. | qa | todo (blocked on S6-4 done) |
+
+S6-4/S6-5 were added mid-sprint when Q6 found critical B47 (local/host shop
+purchases discarded since B30); the sprint is not green until both close.
 
 ## Acceptance (all tickets)
 
