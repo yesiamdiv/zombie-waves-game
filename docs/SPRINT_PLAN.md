@@ -10,15 +10,46 @@ Raised: 2026-10-09 (PM onboarding; replaces Sprint 3, which is closed — see
 Source of truth for scope: the two KT answers of 2026-10-09. **Every task below
 was named by the developer who owns it.** The PM invented none of them.
 
-> **STATUS 2026-11-16 — sprint scope COMPLETE on `main` (unpushed).**
-> The owner directed finishing without the human-only checks: all owner-gated
-> items are recorded as **conditionally passed, NOT human-tested**
-> (`docs/knowledge/conditional-verification-2026-11-12.md`,
-> `docs/PENDING_VERIFICATION.md`). AN6 and effects E1-E6 are now integrated and
-> gate-green on `main` (final: `zombie_tests` 2075/0, ctest 3/3, both SP
-> references byte-identical). Remaining: the owner's on-screen/on-ear look, then
-> push. Everything else (net N1–N5, H1–H4, gameplay knife/ammo, animation
-> P1–P5, audio A1–A10, B46, effects E1–E6) is landed.
+> **STATUS 2026-11-18 — Sprint 4/5 scope complete and PUSHED.**
+> `main` was pushed to `origin/main` (`9b26d50..e7e28ee`) on owner instruction.
+> All owner-gated items were recorded as **conditionally passed, NOT
+> human-tested** (`docs/knowledge/conditional-verification-2026-11-12.md`,
+> `docs/PENDING_VERIFICATION.md`). Final gate: `zombie_tests` 2075/0, ctest 3/3,
+> both SP references byte-identical. Sprint 6 is below.
+
+---
+
+# Sprint 6 — Deferred ranking items (2026-11-18)
+
+Owner directive 2026-11-18: "main could be pushed... plan a sprint and do it."
+`main` is pushed. Scope = the only two items the owner ranked **DO LATER** in
+`docs/knowledge/owner-ranking-ideation-2026-10-27.md`, now promoted, plus a QA
+functional pass on both. Both were named by their owning devs (no PM-invented
+tasks).
+
+| ID | Task | Owner | Status |
+|---|---|---|---|
+| S6-1 | **H5** — themed menu backdrop. Render-only; no sim/wire change. Texture count may move only with a declared re-baseline in the same commit. | assets | todo |
+| S6-2 | **N3 phase 1** — relay overflow visibility. Client-local counter/visibility only; **no wire change**, host stays source of truth. | net | todo |
+| S6-3 | **Q6** — QA functional pass on H5 + N3 after both land; findings untracked per policy. | qa | todo (blocked on S6-1/S6-2) |
+
+## Acceptance (all tickets)
+
+1. `cmake --build build` clean in project sources; `ctest --test-dir build` 3/3.
+2. `./build/zombie_tests` green; current numbers in `knowledge/gate-baseline.md`.
+3. Two same-seed SP runs byte-identical: unlimited **125938/1603**, limited
+   **129504/1648**; wave 1 unchanged. `gen_assets.py --verify` when assets are
+   touched (note the Pillow NEAREST env bug in `knowledge/pillow-nearest-env-bug.md`).
+4. One commit per slice; decisions recorded in `docs/knowledge/` in the same
+   commit; visuals are `unproven` until a human actually looks.
+5. No wire/sim change without an explicit decision and a wire-version bump where
+   required (`docs/VERSIONING.md`). Multiplayer-only behaviour stays behind
+   `player_count > 1`.
+
+## Not in scope
+
+Windows build, zombie speed variants, the ECS/health-bar/beacon hardening ideas
+in `docs/FUTURE_IDEAS.md`, any new effects work (E1-E6 are landed).
 
 ---
 
