@@ -1211,6 +1211,16 @@ static HudPlayerState client_self_state(void) {
     return hs;
 }
 
+/* H5: full-screen menus follow the map currently highlighted in the picker;
+ * in-game menus follow the world actually being played (host or client). */
+static ThemeID menu_theme_for_state(GameState state) {
+    if (state == GAME_STATE_MENU || state == GAME_STATE_MAP_SELECT) {
+        const MapDef *m = map_registry_get(game.map_select.selected_option);
+        return m ? m->theme : THEME_GRASSLAND;
+    }
+    return game.world.theme;
+}
+
 static void render(void) {
     if (game.headless) return;
 
@@ -1224,11 +1234,15 @@ static void render(void) {
 
     switch (game.state) {
         case GAME_STATE_MENU:
-            menu_draw(game.renderer, &game.main_menu, win_w, win_h, game.font_large);
+            menu_draw(game.renderer, &game.main_menu,
+                      menu_theme_for_state(game.state),
+                      win_w, win_h, game.font_large);
             break;
 
         case GAME_STATE_MAP_SELECT:
-            map_select_draw(game.renderer, &game.map_select, win_w, win_h, game.font_large);
+            map_select_draw(game.renderer, &game.map_select,
+                            menu_theme_for_state(game.state),
+                            win_w, win_h, game.font_large);
             break;
 
         case GAME_STATE_CONNECTING:
@@ -1287,17 +1301,22 @@ static void render(void) {
             wave_banner_draw(game.renderer, game.font_large, win_w, win_h);
 
             if (game.state == GAME_STATE_PAUSED) {
-                pause_menu_draw(game.renderer, &game.pause_menu, win_w, win_h, game.font_large);
+                pause_menu_draw(game.renderer, &game.pause_menu,
+                                menu_theme_for_state(game.state),
+                                win_w, win_h, game.font_large);
             } else if (game.state == GAME_STATE_SHOP) {
                 /* B33: draw the same view the update path decided with. */
                 PlayerInventory shop_view = shop_display_inventory();
                 shop_menu_draw(game.renderer, &game.shop_menu, &shop_view,
+                               menu_theme_for_state(game.state),
                                win_w, win_h, game.font_large);
             }
             break;
 
         case GAME_STATE_GAME_OVER:
-            gameover_draw(game.renderer, &game.gameover_screen, win_w, win_h, game.font_large);
+            gameover_draw(game.renderer, &game.gameover_screen,
+                          menu_theme_for_state(game.state),
+                          win_w, win_h, game.font_large);
             break;
     }
 

@@ -1,4 +1,5 @@
 #include "ui/menu.h"
+#include "ui/menu_backdrop.h"
 #include "core/log.h"
 #include "net/net.h"
 #include "world/map_registry.h"
@@ -275,10 +276,10 @@ void menu_draw_text_centered(SDL_Renderer *renderer, TTF_Font *font,
     draw_text_centered(renderer, font, text, x, y, color);
 }
 
-void menu_draw(SDL_Renderer *renderer, MainMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
-    /* Dark background */
-    SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
-    SDL_RenderClear(renderer);
+void menu_draw(SDL_Renderer *renderer, MainMenu *menu, ThemeID theme,
+               int screen_w, int screen_h, TTF_Font *font) {
+    /* H5: themed backdrop replaces the flat dark clear. Render-only. */
+    menu_backdrop_draw(renderer, theme, menu->menu_timer, screen_w, screen_h, 0.0f);
 
     const float lh = (float)TTF_GetFontHeight(font);
 
@@ -383,10 +384,10 @@ static SDL_FColor tile_preview_color(TileType t, ThemeID theme) {
     }
 }
 
-void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
-    /* Dark background */
-    SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.05f, 0.08f, 1.0f);
-    SDL_RenderClear(renderer);
+void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, ThemeID theme,
+                     int screen_w, int screen_h, TTF_Font *font) {
+    /* H5: the highlighted map's theme drives the backdrop. */
+    menu_backdrop_draw(renderer, theme, menu->title_pulse, screen_w, screen_h, 0.0f);
 
     const float lh = (float)TTF_GetFontHeight(font);
 
@@ -460,10 +461,10 @@ void map_select_draw(SDL_Renderer *renderer, MapSelectMenu *menu, int screen_w, 
     }
 }
 
-void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int screen_h, TTF_Font *font) {
-    /* Dim overlay */
-    SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.0f, 0.6f);
-    SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
+void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, ThemeID theme,
+                     int screen_w, int screen_h, TTF_Font *font) {
+    /* H5: themed dim over the frozen world, same readability as before. */
+    menu_backdrop_overlay(renderer, theme, screen_w, screen_h, 0.6f);
 
     const float lh = (float)TTF_GetFontHeight(font);
 
@@ -491,9 +492,10 @@ void pause_menu_draw(SDL_Renderer *renderer, PauseMenu *menu, int screen_w, int 
     }
 }
 
-void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, int screen_w, int screen_h, TTF_Font *font) {
-    SDL_SetRenderDrawColorFloat(renderer, 0.1f, 0.02f, 0.02f, 1.0f);
-    SDL_RenderClear(renderer);
+void gameover_draw(SDL_Renderer *renderer, GameOverScreen *go, ThemeID theme,
+                   int screen_w, int screen_h, TTF_Font *font) {
+    /* H5: keep the danger tint, but derive the dark base from the map theme. */
+    menu_backdrop_draw(renderer, theme, go->display_timer, screen_w, screen_h, 0.28f);
 
     const float lh = (float)TTF_GetFontHeight(font);
     const float row_h = lh + 14.0f;
@@ -643,10 +645,9 @@ GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *i
 }
 
 void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventory *inv,
-                    int screen_w, int screen_h, TTF_Font *font) {
-    /* Dim overlay so the frozen world reads as "menu mode". */
-    SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.05f, 0.72f);
-    SDL_RenderFillRect(renderer, &(SDL_FRect){0, 0, (float)screen_w, (float)screen_h});
+                    ThemeID theme, int screen_w, int screen_h, TTF_Font *font) {
+    /* H5: themed dim so the frozen world still reads as "menu mode". */
+    menu_backdrop_overlay(renderer, theme, screen_w, screen_h, 0.72f);
 
     const float lh = (float)TTF_GetFontHeight(font);
 
