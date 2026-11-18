@@ -499,3 +499,20 @@ a green headless gate says nothing about whether any of it looks right.
 (a7947da) additionally could **not** run the two single-player byte-identity
 runs in its session — the integrator's gate is the first proof of SP
 invariance for it.
+
+### Unproven on screen — S6-1 H5 themed menu backdrop (render-only)
+
+The backdrop is drawn only on the render path, which `--headless` skips, so the
+green gate proves nothing about legibility or theme matching.
+
+- [ ] **H5 full-screen menus**: main menu, map select and Game Over each pick
+      up the theme of the highlighted/last-played map (grassland green, desert
+      sand, snow blue-white, city grey-red), with Game Over keeping its danger
+      tint.
+- [ ] **H5 in-game menus**: pause and shop dims are themed but still dark
+      enough to read every menu row over the frozen world.
+- [ ] **H5 contrast and motion**: no text loses contrast on any of the four
+      themes at 1280x720 and 1920x1080, windowed and fullscreen; the faint
+      grid drifts slowly without becoming busy or flickering.
+
+**Status:** all `unproven`, not `fixed`, until a human looks.

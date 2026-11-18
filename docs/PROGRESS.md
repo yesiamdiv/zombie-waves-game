@@ -1089,6 +1089,34 @@ value.
 - Sprint scope is complete on main (unpushed, for owner). Remaining: owner's
   on-screen look at the conditionally-passed visuals/audio; then push.
 
+## Session 2026-11-18 — S6-1 H5 themed menu backdrop (assets lane)
+
+### PM standup — planned
+- Sprint 6 H5: render-only themed menu backdrop behind main/map-select/pause/
+  shop/game-over. No sim or wire change; texture count may move only with a
+  declared re-baseline. Decision in docs/knowledge in the same commit.
+
+### Assets DEV — done
+- Synced lane to main `7634ac1` (effects E1-E6) clean, no conflict markers.
+- Decided a **procedural** backdrop instead of a +1 texture: no asset count
+  move, no `NET_ASSET_VERSION` bump, no gate re-baseline, and no dependence on
+  the Pillow NEAREST bug. Decision recorded in `knowledge/h5-menu-backdrop`.
+- New render-only `src/ui/menu_backdrop.{c,h}`: theme-derived vertical gradient,
+  faint drifting grid from the caller's menu timer, red wash for Game Over,
+  and a semi-transparent variant for pause/shop dims.
+- `menu_theme_for_state()` in `main.c` chooses the highlighted map's theme for
+  full-screen menus and the live world's theme for in-game menus.
+- Gate on the lane tip: build clean, ctest 3/3, **2075/0**, `gen_assets.py
+  --verify` **verified 50 textures** (Pillow bug not reproducing today), SP
+  unlimited **125938/1603** + limited **129504/1648**, both two-run
+  byte-identical.
+
+### Assets DEV — next
+- PM review/integration; owner on-screen pass across all four themes at
+  windowed and fullscreen sizes. Visual result remains `unproven`.
+
+### Blocked
+- Only the on-screen look; no code blocker. Headless runs never render menus.
 ---
 
 ## Session 2026-11-18 — Sprint 6, S6-2 / N3 phase 1: relay overflow visibility
