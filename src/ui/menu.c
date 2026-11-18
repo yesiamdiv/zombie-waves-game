@@ -644,6 +644,16 @@ GameState shop_menu_update(ShopMenu *menu, InputState *input, PlayerInventory *i
     return GAME_STATE_SHOP;
 }
 
+GameState shop_update_wired(ShopMenu *menu, InputState *input,
+                            PlayerInventory *client_view,
+                            PlayerInventory *local_inventory,
+                            bool render_only, uint8_t *request_out) {
+    if (render_only) {
+        return shop_menu_update(menu, input, client_view, request_out);
+    }
+    return shop_menu_update(menu, input, local_inventory, NULL);
+}
+
 void shop_menu_draw(SDL_Renderer *renderer, ShopMenu *menu, const PlayerInventory *inv,
                     ThemeID theme, int screen_w, int screen_h, TTF_Font *font) {
     /* H5: themed dim so the frozen world still reads as "menu mode". */
