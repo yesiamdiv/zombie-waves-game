@@ -1015,13 +1015,13 @@ Found 2026-10-22 by the owner, playing (follow-up to B41).
   simulation or event). **On-screen result is UNPROVEN until the owner looks**
   (`i5-unverified-on-screen`) — no gate can see banding.
 | B46 | Weapon keys 1-4 do nothing in single-player (input routed to net-client queue) | `3ac2528` (main) | FIXED; UNPROVEN on screen until owner confirms |
-| B47 | Shop purchases silently discarded for the local/host slot (single-player included); buying never unlocks or equips anything | — | OPEN (found on main `2723e06`, 2026-11-18) |
+| B47 | Shop purchases silently discarded for the local/host slot (single-player included); buying never unlocks or equips anything | `30c2a57` (assets lane, main `c2c2dd3`) | FIXED; wiring-level test + headless grenade repro; UNPROVEN on screen until owner confirms |
 | B48 | Docs: `--script=FILE` is documented but rejected by the parser (only `--script FILE` works); `--player-hp`/`--player-damage-mult` semantics are also misleading | — | OPEN (doc fix, found on main `2723e06`, 2026-11-18) |
 
 ## B47. Local shop purchases are silently discarded (SP and the host's own player)
 
-Found by QA on main `2723e06` (Q6/S6-2 probe), 2026-11-18. **OPEN** — no fix
-commit yet.
+Found by QA on main `2723e06` (Q6/S6-2 probe), 2026-11-18. **FIXED** in
+`30c2a57` (assets lane); decision in `knowledge/b47-shop-wiring`.
 
 - **Symptom**: in single-player (and for the host's own player in a co-op
   session), buying anything in the shop (B) does nothing that sticks. The
@@ -1044,9 +1044,17 @@ commit yet.
   closes, clicks once; `--points=1000`. Log shows `SHOP_PURCHASE` (a=2, b=75)
   and then `PLAYER_SHOT k=bullet` — expected `k=grenade`. Full script and
   command in `playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
-- **Fix sketch**: use the snapshot view only for `render_only_client()`;
-  otherwise pass the real `&game.players[0].inventory` (or copy `view` back
-  before leaving the state). Add a wiring-level regression test.
+- **Fix applied (`30c2a57`)**: `shop_display_inventory()` is now render-only.
+  `main.c` calls `shop_update_wired()`, which hands the real
+  `game.players[0].inventory` to every local/host shop update and keeps
+  `request_out` client-only. The wiring test drives that exact helper, so a
+  return to the discarded-copy design fails the suite. Remote slots are
+  unchanged.
+- **Post-fix headless repro**: same script on the fix produced
+  `EVT=SHOP_PURCHASE ... a=2.00 b=75.00` followed by
+  `EVT=PLAYER_SHOT ... k=grenade` (previously `k=bullet`). The script uses
+  `shop down/up`, two `key S` pulses, `key SPACE`, `shop down/up`, then
+  `click 1`; only W/S/SPACE/B/click are forwarded by `ai_apply_controls()`.
 - **Impact**: the pistol is the only usable weapon in SP; the economy is dead.
   Also blocks the N3 forced-overflow QA probe (grenades/sword/launcher are
   shop-only).

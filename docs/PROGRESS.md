@@ -1142,3 +1142,36 @@ value.
   batches) is deliberately not in this slice.
 - Blocked: nothing. HUD notice and overflow warn are `unproven` on screen until
   a human sees a real overflow (no deterministic way to force one yet).
+
+## Session 2026-11-18 — S6-4 B47 local shop wiring (assets lane)
+
+### PM standup — planned
+- Critical regression from Q6: SP/host shop purchases discarded. Sync to main
+  `d8e82a8`, fix wiring, add a wiring-level regression test, headless repro,
+  decision in docs/knowledge in the same commit, full gate.
+
+### Assets DEV — done
+- Root cause confirmed: B30's `shop_display_inventory()` copy was passed to
+  `shop_menu_update()` for non-clients and never written back.
+- `30c2a57` routes all local/host updates through the new `shop_update_wired()`
+  (`src/ui/menu.c`): real `game.players[0].inventory` for locals, snapshot view
+  + request for render-only clients. Remote slots still use
+  `apply_net_shop_requests()`. Decision in `knowledge/b47-shop-wiring`.
+- `tests/tests.c` gained a state-level test with separate view/real inventories:
+  locals buy grenades into the real slot and raise no request; clients raise
+  `NET_SHOP_GRENADES` and mutate nothing. Suite is now **2091/0**.
+- Headless repro (script in `build/logs/b47_shop_grenade.script`):
+  `SHOP_PURCHASE a=2 b=75` followed by `PLAYER_SHOT k=grenade` (was `k=bullet`).
+  Script must use W/S/SPACE/shop/click — `ai_apply_controls()` only forwards
+  those keys, not arrow/Return scancodes.
+- `docs/BUGS.md` B47 row/section updated to FIXED with `30c2a57`.
+- Full lane gate: build clean, ctest 3/3, **2091/0**, `gen_assets.py --verify`
+  50 textures, SP unlimited **125938/1603** + limited **129504/1648**, both
+  two-run byte-identical.
+
+### Assets DEV — next
+- PM integration on main; QA N3 forced-overflow re-run is unblocked.
+
+### Blocked
+- On-screen shop confirmation remains unproven; headless proves state + events,
+  not the menu's appearance.
