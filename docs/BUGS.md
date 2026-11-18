@@ -1016,6 +1016,7 @@ Found 2026-10-22 by the owner, playing (follow-up to B41).
   (`i5-unverified-on-screen`) — no gate can see banding.
 | B46 | Weapon keys 1-4 do nothing in single-player (input routed to net-client queue) | `3ac2528` (main) | FIXED; UNPROVEN on screen until owner confirms |
 | B47 | Shop purchases silently discarded for the local/host slot (single-player included); buying never unlocks or equips anything | — | OPEN (found on main `2723e06`, 2026-11-18) |
+| B48 | Docs: `--script=FILE` is documented but rejected by the parser (only `--script FILE` works); `--player-hp`/`--player-damage-mult` semantics are also misleading | — | OPEN (doc fix, found on main `2723e06`, 2026-11-18) |
 
 ## B47. Local shop purchases are silently discarded (SP and the host's own player)
 
@@ -1049,3 +1050,24 @@ commit yet.
 - **Impact**: the pistol is the only usable weapon in SP; the economy is dead.
   Also blocks the N3 forced-overflow QA probe (grenades/sword/launcher are
   shop-only).
+
+## B48. Run-harness doc drift (`--script=FILE`, hp/damage flags)
+
+Found by QA while building the Q6/S6-2 probes on main `2723e06`. **OPEN** (docs
+only; no code change needed unless we prefer to accept the `=` form).
+
+- `docs/DEV_PLAN.md:131` documents `--script=FILE.script`, but
+  `src/main.c:1813` only accepts `strcmp(arg, "--script") == 0` + the next
+  argv, so the `=` form is rejected with "Unknown argument" and the AI silently
+  falls back to `AI_MODE_NONE` (only a `LOG_WARN` says so). Symptom: a scripted
+  probe runs with a motionless player and looks like a logic bug.
+- `--player-hp=<pct>` is a percentage clamped to 0-100, not absolute HP
+  (help text says "start player at pct% HP"; easy to misread as absolute).
+- `--player-damage-mult` is the *zombie melee* damage multiplier despite the
+  name (help text is correct, the flag name invites the wrong reading).
+- The script player injects only W/A/S/D/SPACE/B, mouse buttons and weapon keys
+  1-4; `key <name>` actions for any other key parse successfully but do nothing
+  (no warning), and the shop must be driven via the `shop` verb / `S` / `SPACE`.
+- **Fix**: correct DEV_PLAN (or accept both forms) and note the injectable-key
+  limitation next to the script grammar. Repro/notes in
+  `playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
