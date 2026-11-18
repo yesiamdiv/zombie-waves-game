@@ -417,3 +417,17 @@ agent's session could not launch the binary). Re-verified on merged main:
   unchanged since the last green verify (50 textures).
 
 Effects E1-E6 are now all on main. Same numbers hold: 50 textures, 13 sounds.
+
+## 2026-11-18 - merge by pm: S6-1 H5 themed menu backdrop integrated; count stays 2075/0
+
+Merged `feature/assets-maps` H5 (`5fb55b2`, procedural themed menu backdrop,
+render-only, no texture/wire/sim change) into `main` (`9c2fdae`). Re-verified on
+merged main:
+
+- `./build/zombie_tests` -> **2075 passed / 0 failed** (no test count change).
+- `ctest --test-dir build` -> 3/3.
+- `python3 tools/gen_assets.py --verify` -> **50 textures** (Pillow NEAREST bug
+  did NOT reproduce on this run; see the 2026-11-18 addendum in
+  knowledge/pillow-nearest-env-bug).
+- Unlimited SP **125938 / 1603**, limited SP **129504 / 1648**, both two-run
+  byte-identical. Wave 1 unchanged.
