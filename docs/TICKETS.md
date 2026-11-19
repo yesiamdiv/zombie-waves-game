@@ -161,3 +161,63 @@ B55 (snapshot flat-shape diameter ignores scale — open), B60, B61, B62.
   display**.
 - The cross-platform determinism divergence above needs a decision once W7
   reports.
+
+---
+
+## Sprint 7 CLOSED (2026-11-20) — final integrated state on `main`
+
+All of lane W and lane A are merged. Measured on merged `main`, Windows,
+MSVC x64 Debug:
+
+| Gate | Result |
+|---|---|
+| build, project sources | **0 errors, 0 warnings** under a real `/W4 /WX` gate |
+| `zombie_tests.exe` | **2114 passed / 0 failed** |
+| `ctest -C Debug` | **3/3** |
+| `gen_assets.py --verify` | clean, **68 textures** |
+| Two same-seed SP runs (Windows) | **byte-identical**, 142341 bytes / 1829 lines |
+| CRLF in the events log | **gone** (B52 `"wb"` fix confirmed) |
+| Runtime | **screenshot-verified**: menu, world and both HUD panels render |
+
+### LINUX IS UNVERIFIED — the one thing to do first
+
+Nothing in this sprint was run on Linux; there is no Linux toolchain on this
+machine. Every change touching a file Linux compiles was audited and argued to
+be a no-op there (GCC/Clang warning flags byte-for-byte unchanged; `ZW_UNUSED`
+expands to the original attribute; the POSIX branches of `portable_time.h` and
+`ZW_MKDIR` hold the original calls verbatim; `"wb"` == `"w"` on POSIX; the
+narrowing casts make explicit what the compiler already inserted implicitly).
+**That is reasoning, not measurement.** Re-run the Linux gate before trusting
+this merge, and expect the seed-42 references to be unchanged there.
+
+### B63 — the decision waiting for the owner
+
+Cross-platform determinism is **structurally impossible today** and no platform
+`#ifdef` can fix it. The simulation draws from libc `rand()` at 34 sites across
+13 files. Its sequence is implementation-defined and was measured diverging at
+the very first spawn: MSVC `srand(42)` -> 175, 400, 17869 (`RAND_MAX` 32767)
+versus glibc -> 71876166, 708592740 (`RAND_MAX` 2147483647).
+
+Same-platform determinism is unaffected and passes on both platforms; Debug and
+Release are byte-identical to each other, which rules out optimisation level
+and float codegen. Multiplayer is unaffected **today** because the host is the
+single source of truth and a client runs no `rand()` simulation of its own —
+the risk is latent until lockstep or client-side prediction.
+
+The only fix is a project-owned PRNG, which re-baselines **both** Linux
+references (125938/1603 and 129504/1648). That is a deliberate announced
+re-baseline and an owner call, so it was filed, not shipped.
+
+### Still unproven by a human
+
+B49 (enrage) and B50 (art) are implemented, tested and reviewed from contact
+sheets and screenshots — and **nobody has watched the game move**. A clean
+`--verify` proves the pipeline, not the art; a screenshot proves a frame, not
+an animation. Both stay OPEN.
+
+### Not done
+
+Lane Q (QA automation, Q1-Q5) was **never started** — dropped on owner
+instruction to limit token spend. W8's release-zip CI is **untested**: the YAML
+is validated locally but has never executed, and the Linux zip ships no font,
+which is the mirror image of B64 and a licensing decision.
