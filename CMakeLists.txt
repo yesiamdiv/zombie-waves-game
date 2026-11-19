@@ -112,7 +112,29 @@ FetchContent_MakeAvailable(SDL_image)
 # anywhere in this file, so the build had been "clean" while saying nothing.
 # Applied to project targets only - SDL3 is fetched from a third-party repo and
 # has its own (many) unused parameters and sign-compare warnings.
-set(PROJECT_WARNINGS -Wall -Wextra -Werror)
+# W1: the flag set must be compiler-aware. MSVC does not understand
+# "-Wextra" at all - cl reports "Command line error D8021: invalid numeric
+# argument '/Wextra'" and exits before compiling a single file, so on Windows
+# this line did not weaken the gate, it broke every project target. MSVC also
+# maps "-Wall" to its own /Wall, which is the whole-system-header firehose
+# rather than GCC's -Wall. Keep the GCC/Clang flags byte-for-byte identical so
+# Linux behaviour cannot move, and give MSVC the equivalent intent: /W4 /WX,
+# a real zero-warning gate.
+if(MSVC)
+  set(PROJECT_WARNINGS /W4 /WX
+      # C4996: MSVC deprecates the ISO C names (snprintf/strdup/fopen) in
+      # favour of its _s variants. The code is standard C; the "safe"
+      # alternatives are MSVC-only and would be the non-portable choice.
+      /wd4996
+      # C4200: zero-sized array in a struct - a documented C99 flexible array
+      # member, used deliberately in the wire structs.
+      /wd4200)
+  # The ISO names again, this time via the CRT's own deprecation macros, so
+  # third-party headers stop pre-empting the diagnostic too.
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+else()
+  set(PROJECT_WARNINGS -Wall -Wextra -Werror)
+endif()
 
 # N2: sanitizer flags. They must be added BEFORE the project targets are
 # created - add_compile_options/add_link_options only affect targets created
