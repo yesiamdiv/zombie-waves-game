@@ -12,6 +12,11 @@ static float g_spawn_first_t[ECS_MAX_ENTITIES];
 static uint8_t g_spawn_first_t_set[ECS_MAX_ENTITIES];
 #define SPAWN_IN_DURATION 0.15f
 
+/* B49: how far an enraged straggler is pushed toward red by
+ * sprite_hit_tint(). Deliberately below the hit flash's own range so being
+ * shot still reads as a distinct, brighter event on an already-red zombie. */
+#define ENRAGE_TINT 0.55f
+
 /* P3: muzzle flash from relayed/shoot events (procedural, no PNG). */
 #define MUZZLE_MAX 32
 __attribute__((unused)) static struct { float x,y,ang,life,ttl; } g_muzzle[MUZZLE_MAX];
@@ -127,9 +132,19 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         Sprite hit_sprite;
         const Sprite *draw_sprite = &spr->sprite;
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
+            /* B49: an enraged straggler is permanently red-tinted, so the
+             * wave timeout reads as "these ones came for you" rather than as
+             * zombies silently vanishing. Applied before the hit flash so a
+             * hit on an enraged zombie still flashes brighter than its
+             * baseline and stays readable. */
+            if (ecs_get_zombie_tag(ecs, i)->enraged) {
+                hit_sprite = spr->sprite;
+                hit_sprite.color = sprite_hit_tint(hit_sprite.color, ENRAGE_TINT);
+                draw_sprite = &hit_sprite;
+            }
             float flash = damage_feedback_hit_flash(i);
             if (flash > 0.0f) {
-                hit_sprite = spr->sprite;
+                hit_sprite = *draw_sprite;
                 hit_sprite.color = sprite_hit_tint(hit_sprite.color, flash);
                 draw_sprite = &hit_sprite;
             }

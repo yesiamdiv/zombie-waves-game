@@ -84,6 +84,13 @@ typedef struct {
      * to credit the correct player's inventory for the kill (multiplayer). */
     Entity last_hit_by;
     float sword_hit_timer;  /* per-zombie re-hit cooldown for the sword sweep */
+    /* B49: set by waves_update() when a wave outlives WAVE_MAX_DURATION. An
+     * enraged zombie hunts the player from anywhere on the map and renders
+     * with a red tint, so the wave resolves through gameplay instead of the
+     * stragglers being silently deleted. Host-side only: it is NOT on the
+     * wire, so a joined client's mirror shows no tint (see
+     * docs/TICKETS.md, deferred net ticket). */
+    bool enraged;
 } CZombieTag;
 
 typedef struct {

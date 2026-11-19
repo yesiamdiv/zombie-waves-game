@@ -20,6 +20,10 @@ typedef struct {
     float wave_elapsed;        /* seconds since the current wave started */
     bool wave_active;
     bool between_waves;
+    /* B49: true once the current wave's stragglers have been enraged, so the
+     * enrage is applied exactly once per wave. Cleared by
+     * waves_start_next_wave(). */
+    bool enrage_applied;
     int total_kills;
     float difficulty_multiplier;
     Vec2 spawn_points[8];

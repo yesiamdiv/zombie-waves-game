@@ -779,6 +779,92 @@ static void test_wave_completion(void) {
     CHECK(waves.wave_active == false);
 }
 
+/* B49: a wave that outlives WAVE_MAX_DURATION (60s) used to force-destroy every
+ * surviving zombie with no feedback, so from the player's seat the zombies
+ * simply vanished and the next wave began -- which is how the owner reported it
+ * after the 2026-11-19 playtest. They are now enraged instead: faster, hunting
+ * from anywhere, red-tinted.
+ *
+ * This test pins the three things that can regress: the stragglers must still
+ * be ALIVE after the timeout (the old code deleted them), they must actually be
+ * enraged (flag + speed + detection range), and the enrage must be applied
+ * exactly once per wave rather than every frame -- a per-frame re-apply would
+ * multiply max_speed without bound and fling zombies across the map. */
+static void test_wave_timeout_enrages(void) {
+    LOG_INFO("--- Test: B49 wave timeout enrages stragglers ---");
+    World ecs;
+    GameWorld world = {0};
+    WaveSystem waves;
+
+    ecs_init(&ecs);
+    world_init(&world);
+    waves_init(&waves, &world);
+
+    Entity player = spawn_player(&ecs, vec2(world.world_pixel_w * 0.5f,
+                                            world.world_pixel_h * 0.5f));
+    CHECK(player != ECS_NULL_ENTITY);
+
+    /* A wave whose spawns are all done, with survivors left alive, which is
+     * exactly the precondition the timeout branch tests for. */
+    waves_start_next_wave(&waves, 1);
+    waves.zombies_to_spawn = 2;
+    waves.zombies_spawned = 2;
+    waves.zombies_alive = 2;
+
+    Entity z1 = waves_spawn_zombie(&ecs, vec2(300, 300), THEME_GRASSLAND);
+    Entity z2 = waves_spawn_zombie(&ecs, vec2(400, 400), THEME_GRASSLAND);
+    CHECK(z1 != ECS_NULL_ENTITY);
+    CHECK(z2 != ECS_NULL_ENTITY);
+
+    float base_speed = ecs_get_velocity(&ecs, z1)->max_speed;
+    CHECK(base_speed > 0.0f);
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->enraged == false);
+
+    /* Just short of the timeout: nothing may have happened yet. */
+    waves.wave_elapsed = 59.0f;
+    waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->enraged == false);
+    CHECK(waves.enrage_applied == false);
+
+    /* Cross the timeout. */
+    waves.wave_elapsed = 60.0f;
+    waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+
+    /* The regression that matters: they are still here. */
+    CHECK(ecs.alive[ecs_get_entity_index(&ecs, z1)]);
+    CHECK(ecs.alive[ecs_get_entity_index(&ecs, z2)]);
+    CHECK(waves.zombies_alive == 2);
+
+    CHECK(waves.enrage_applied);
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->enraged);
+    CHECK(ecs_get_zombie_tag(&ecs, z2)->enraged);
+
+    float enraged_speed = ecs_get_velocity(&ecs, z1)->max_speed;
+    CHECK(enraged_speed > base_speed);
+    /* Detection range must exceed any plausible map diagonal, otherwise an
+     * enraged zombie can still fall into zombie_ai.c's wander branch. */
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->detection_range >
+          (world.world_pixel_w + world.world_pixel_h));
+
+    /* Idempotence: 120 more frames past the timeout must not compound it. */
+    for (int i = 0; i < 120; i++) {
+        waves.wave_elapsed = 61.0f;
+        waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+    }
+    CHECK(ecs_get_velocity(&ecs, z1)->max_speed == enraged_speed);
+    CHECK(ecs.alive[ecs_get_entity_index(&ecs, z1)]);
+
+    /* The B1 soft-lock guarantee must survive: past the hard backstop, a wave
+     * the enrage failed to resolve is still force-ended. */
+    waves.wave_elapsed = 121.0f;
+    waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+    CHECK(waves.zombies_alive == 0);
+
+    /* And a fresh wave starts un-enraged. */
+    waves_start_next_wave(&waves, 1);
+    CHECK(waves.enrage_applied == false);
+}
+
 static void test_script_aim_shot(void) {
     LOG_INFO("--- Test: Scripted AI aim/shoot ---");
     const char *path = test_tmp_path("script_test_shoot.script");
@@ -4061,6 +4147,7 @@ int tests_run_all(void) {
     test_camera_clamp_world();
     test_entity_limit();
     test_wave_completion();
+    test_wave_timeout_enrages();
     test_script_aim_shot();
     test_event_stream();
     test_deterministic_seed();

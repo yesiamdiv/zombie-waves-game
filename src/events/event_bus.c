@@ -23,6 +23,7 @@ static const char *event_type_names[GE_COUNT] = {
     [GE_SHOP_PURCHASE]   = "SHOP_PURCHASE",
     [GE_HOST_PAUSE]      = "HOST_PAUSE",
     [GE_EXPLOSION]       = "EXPLOSION",
+    [GE_WAVE_ENRAGE]     = "WAVE_ENRAGE",
 };
 
 static const char *event_kind_names[GEK_COUNT] = {
