@@ -139,7 +139,13 @@ if(MSVC)
       /wd4996
       # C4200: zero-sized array in a struct - a documented C99 flexible array
       # member, used deliberately in the wire structs.
-      /wd4200)
+      /wd4200
+      # C4127: "conditional expression is constant". The test suite asserts
+      # compile-time constants on purpose - CHECK(NET_PLAYER_STATE_BYTES == 25)
+      # is a deliberate literal so a layout change forces someone to read the
+      # test next to the version bump - and the CHECK/do-while(0) idiom trips it
+      # too. Nothing here is a mistake MSVC could be pointing at.
+      /wd4127)
   # The ISO names again, this time via the CRT's own deprecation macros, so
   # third-party headers stop pre-empting the diagnostic too.
   add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
