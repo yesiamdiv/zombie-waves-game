@@ -1017,6 +1017,8 @@ Found 2026-10-22 by the owner, playing (follow-up to B41).
 | B46 | Weapon keys 1-4 do nothing in single-player (input routed to net-client queue) | `3ac2528` (main) | FIXED; UNPROVEN on screen until owner confirms |
 | B47 | Shop purchases silently discarded for the local/host slot (single-player included); buying never unlocks or equips anything | `30c2a57` (assets lane, main `c2c2dd3`) | FIXED; wiring-level test + headless grenade repro; UNPROVEN on screen until owner confirms |
 | B48 | Docs: `--script=FILE` is documented but rejected by the parser (only `--script FILE` works); `--player-hp`/`--player-damage-mult` semantics are also misleading | — | OPEN (doc fix, found on main `2723e06`, 2026-11-18) |
+| B49 | Wave timeout silently force-destroys leftover zombies; looks like they vanish and the next wave starts | — | OPEN (owner playtest, main `7ea287c`, 2026-11-19) — decision pending |
+| B50 | Player/zombie walk animation and art read as static/weak; owner attributes root cause to the art | — | OPEN (owner playtest, main `7ea287c`, 2026-11-19) — art direction pending |
 
 ## B47. Local shop purchases are silently discarded (SP and the host's own player)
 
@@ -1079,3 +1081,32 @@ only; no code change needed unless we prefer to accept the `=` form).
 - **Fix**: correct DEV_PLAN (or accept both forms) and note the injectable-key
   limitation next to the script grammar. Repro/notes in
   `playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
+
+## B49. Wave timeout silently force-destroys leftover zombies
+
+Found by the owner playing `main` `7ea287c` on 2026-11-19: after surviving long
+enough, "all the zombies just vanish and next wave starts". **OPEN — decision
+pending**, not yet a code defect.
+
+- **Cause (by design)**: `src/world/waves.c:19` `WAVE_MAX_DURATION 60.0f`;
+  `waves_update()` (`:243-253`) force-destroys every zombie once all spawns are
+  done, the wave is older than 60 s and any zombie is still alive. This is the
+  B1 soft-lock safety net, not random despawning.
+- **Why it reads as a bug**: there is no HUD/log feedback to the player at the
+  moment of the force-end, so a deliberate safety net looks like broken waves.
+- **Decision needed from owner**: keep the rule and add a visible warning /
+  countdown, or change the timeout/gameplay. Any gameplay change needs a fresh
+  gameplay reference and must preserve the SP determinism gate.
+
+## B50. Player/zombie walk animation and art read as weak
+
+Found by the owner playing `main` `7ea287c` on 2026-11-19: "we are lacking in
+player and zombie animations... doesn't feel like walking or anything", with the
+root cause identified as the art itself. **OPEN — art direction pending.**
+
+- This is a visual finding from a human on a real display; it overrides the
+  earlier conditional, headless-only sign-off for animation P1-P5.
+- The animation transport/frame code exists (`knowledge/animation-transport.md`,
+  design A), so the issue is the source frames/sprites, not (yet) a wiring bug.
+- Owner has not yet chosen: improve the existing pixel art / walk frames, or
+  bring in a different art source/style, and which subject to fix first.
