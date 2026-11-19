@@ -412,7 +412,7 @@ void system_cleanup(World *ecs, WaveSystem *waves, Player *players, int player_c
                 ecs_add_component(ecs, particle, COMP_SPRITE);
                 ecs_add_component(ecs, particle, COMP_PARTICLE);
 
-                float angle = (float)p / 8.0f * 2.0f * M_PI;
+                float angle = (float)((float)p / 8.0f * 2.0f * M_PI);
                 *ecs_get_position(ecs, particle) = (CPosition){{pos->pos.x, pos->pos.y}};
                 *ecs_get_particle(ecs, particle) = (CParticle){
                     .lifetime = 0.5f + (float)(rand() % 5) * 0.1f,

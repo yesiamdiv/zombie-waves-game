@@ -157,7 +157,7 @@ static bool spawn_point_near_player(World *ecs, GameWorld *world,
     if (!player_found) return false;
 
     for (int attempt = 0; attempt < 10; attempt++) {
-        float angle = (float)(rand() % 360) * M_PI / 180.0f;
+        float angle = (float)((float)(rand() % 360) * M_PI / 180.0f);
         float radius = SPAWN_RING_MIN +
                        (float)(rand() % (int)(SPAWN_RING_MAX - SPAWN_RING_MIN));
         Vec2 candidate = vec2_add(player_pos, vec2_from_angle(angle, radius));

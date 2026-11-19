@@ -64,7 +64,7 @@ static void explode_grenade(World *ecs, Entity grenade) {
         ecs_add_component(ecs, particle, COMP_SPRITE);
         ecs_add_component(ecs, particle, COMP_PARTICLE);
 
-        float angle = (float)(rand() % 360) * M_PI / 180.0f;
+        float angle = (float)((float)(rand() % 360) * M_PI / 180.0f);
         *ecs_get_position(ecs, particle) = (CPosition){{gpos.x, gpos.y}};
         *ecs_get_particle(ecs, particle) = (CParticle){
             .lifetime = 0.4f + (float)(rand() % 4) * 0.1f,
