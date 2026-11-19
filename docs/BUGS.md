@@ -1138,7 +1138,14 @@ Found 2026-11-20 on `main` `80d153d` while establishing the Windows baseline
 - **Not a regression** and not caused by this sprint. It predates it; this is
   the first time it has been written down.
 
-## B53. ENet links `winmm`/`ws2_32` only under MinGW, so MSVC cannot link it
+<!-- Id allocation note (2026-11-20, Sprint 7): the W lane's findings were
+     first filed as B53-B55, but the PM was concurrently filing its own B54
+     (player hitbox 1.75x the sprite) and B55 from the `main` worktree, which
+     collided. The W lane's three Windows build findings were moved to
+     B60-B62 to leave the contended range to the PM. B56-B59 are deliberately
+     unused; the gap is this collision, not a lost bug. -->
+
+## B60. ENet links `winmm`/`ws2_32` only under MinGW, so MSVC cannot link it
 
 Found 2026-11-20 on `feature/windows-port` (Sprint 7 W3) building
 `zombie_net_spike` with MSVC x64. **FIXED** — see commit below.
