@@ -71,6 +71,17 @@ set(ENET_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ENET_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(ENET_BUILTIN_NAT OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(ENet)
+
+# B53: ENet 1.3.18's own CMakeLists links the Windows socket and multimedia
+# timer libraries only under "if (MINGW)", so an MSVC consumer of the static
+# enet target gets neither and every ENet symbol that touches a socket or
+# timeGetTime fails at link time (LNK2019 __imp_timeGetTime, __imp_socket,
+# __WSAFDIsSet, ...). Upstream gap, not ours; patch it on the imported target
+# rather than vendoring a fork. Plain signature to match upstream's own call,
+# which also propagates to consumers of the static library. No-op off Windows.
+if(WIN32)
+  target_link_libraries(enet winmm ws2_32)
+endif()
 # SDL_image is used for exactly one thing: IMG_LoadTexture() on our own PNGs
 # (src/assets/asset_manager.c:85). Left at its defaults it is wildly more than
 # that, and on Windows it was fatal:

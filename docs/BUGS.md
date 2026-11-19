@@ -1137,3 +1137,37 @@ Found 2026-11-20 on `main` `80d153d` while establishing the Windows baseline
   `--verify` is for.
 - **Not a regression** and not caused by this sprint. It predates it; this is
   the first time it has been written down.
+
+## B53. ENet links `winmm`/`ws2_32` only under MinGW, so MSVC cannot link it
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W3) building
+`zombie_net_spike` with MSVC x64. **FIXED** — see commit below.
+
+- **Symptom**: every project target that links ENet failed at link time with
+  dozens of `LNK2019 unresolved external symbol`:
+  `__imp_timeGetTime`, `__imp_timeBeginPeriod`, `__imp_timeEndPeriod`,
+  `__WSAFDIsSet`, `__imp_socket`, `__imp_bind`, `__imp_sendto`, `__imp_htons`
+  and the rest of the Winsock surface. The compile was clean; only the link
+  failed.
+- **Root cause**: upstream. ENet 1.3.18's own `CMakeLists.txt` wraps its
+  Windows library dependencies in `if (MINGW)`:
+
+  ```cmake
+  if (MINGW)
+      target_link_libraries(enet winmm ws2_32)
+  endif()
+  ```
+
+  MinGW is the only Windows toolchain it considers, so an MSVC consumer of the
+  static `enet` target inherits no link libraries at all, even though
+  `win32.c` is compiled into it and calls straight into Winsock and the
+  multimedia timer.
+- **Not our bug, but ours to work around.** Fixed in our own
+  `CMakeLists.txt` immediately after `FetchContent_MakeAvailable(ENet)`:
+  `if(WIN32) target_link_libraries(enet winmm ws2_32) endif()`. Plain
+  signature, matching upstream's own call, which also propagates the
+  dependency to consumers of the static library. Guarded by `WIN32`, so it is
+  a no-op on Linux and the Linux link line does not move.
+- **Why it had never been seen**: this repository has never been linked with
+  MSVC since ENet was introduced. The last Windows build predates the
+  networking work entirely.
