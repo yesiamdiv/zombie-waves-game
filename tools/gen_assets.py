@@ -173,18 +173,6 @@ def rect(grid, x0, y0, x1, y1, ch):
             grid[y][x] = ch
 
 
-def body_any(w, h, seed, outline="K", base="w"):
-    g = canvas(w, h)
-    rng = random.Random(seed)
-    disc(g, w // 2, h // 2, w * 0.34, h * 0.42, base)
-    for _ in range(seed):
-        x = w // 2 + rng.randint(-int(w * 0.3), int(w * 0.3))
-        y = h // 2 + rng.randint(-int(h * 0.3), int(h * 0.3))
-        if g[y][x] == base:
-            g[y][x] = outline if rng.random() < 0.5 else "s"
-    return g
-
-
 def make_entity(name, grid, palette, scale=DEFAULT_SCALE):
     img = render(grid, palette, scale)
     path = os.path.join(ENT_DIR, name + ".png")
@@ -193,117 +181,228 @@ def make_entity(name, grid, palette, scale=DEFAULT_SCALE):
     return path
 
 
-def entity_player():
-    g = body_any(32, 32, 7)
-    # head + shoulders read at small scale
-    rect(g, 11, 5, 20, 11, "w")     # head
-    rect(g, 13, 7, 18, 9, "K")      # visor
-    rect(g, 9, 12, 22, 15, "w")     # shoulders
-    rect(g, 10, 18, 14, 27, "w")    # left arm
-    rect(g, 17, 18, 21, 27, "w")    # right arm
-    rect(g, 3, 12, 8, 24, "w")      # held rifle
-    rect(g, 4, 13, 7, 23, "K")      # rifle barrel
-    return g, {".": (0, 0, 0), "K": (34, 34, 38), "w": (232, 232, 238),
-               "s": (150, 152, 160)}
-
-
-def entity_zombie():
-    g = body_any(32, 32, 11)
-    disc(g, 16, 12, 5, 6, "w")     # head, slumped
-    disc(g, 14, 12, 2, 2, "K")     # eye hole
-    rect(g, 9, 6, 20, 8, "w")      # arms reaching up
-    rect(g, 12, 9, 17, 10, "K")    # open mouth
-    rect(g, 23, 14, 25, 27, "w")   # right arm
-    return g, {".": (0, 0, 0), "K": (30, 30, 34), "w": (215, 210, 205),
-               "s": (140, 140, 150)}
-
-
-# --- animation cycles -------------------------------------------------------
-# One walk cycle is WALK_FRAMES frames, and each frame is its OWN PNG.
+# ---- the 16x16 logical grid (docs/knowledge/art-overhaul-plan.md) ----------
 #
-# Why one file per frame: the frame travels to the client as an art id, and
-# an art id is resolved from a texture's PATH. Every frame of a sprite sheet
-# shares one path, so a sheet cannot be named and the frame identity never
-# reaches the wire. One file per frame keeps the path, the art id and the
-# frame one-to-one. See docs/knowledge/animation-transport.md.
+# Entity PNGs are 32x32 because net_art.c says `base_px = 32`, but NOTHING
+# draws them at 32px: the player is CSprite.scale 0.5 -> 16x16 on screen
+# (src/players.c), a zombie is size/16 with size = 10 + rand()%6 -> 20..30 px
+# (src/world/waves.c), and the asset manager sets SDL_SCALEMODE_NEAREST. A
+# 32 -> 16 nearest downscale throws away every odd-aligned row and column, so
+# half of a 32px design never reaches the screen and a 1px motion becomes a
+# coin flip. That is most of B50.
 #
-# The frame RATE is not here: the generator draws the poses, the game decides
-# how fast they play (ANIM_FRAME_DURATION in the C code). The rule that rate
-# must obey is in the same topic: a frame period of at least 67 ms (<= 15 fps),
-# or the 20 Hz snapshot starts skipping frames on the client.
+# So entity art is AUTHORED on a 16x16 grid and emitted at 2x into the same
+# 32x32 PNG. Nothing in C changes. The player's on-screen downscale now
+# reproduces the authored pixels exactly, and because every logical pixel is a
+# 2x2 block it survives ANY downscale >= 0.5 - which also stabilises the
+# zombie's non-integer 0.625..0.94 range.
+#
+# One logical pixel is therefore worth two source pixels, which is why the
+# motion amplitudes below (1-2 logical px) read when the old ones (1-2 source
+# px) did not.
+ENT_BASE = 16
+ENT_EMIT = 2
+
+
+def upscale(grid, factor=ENT_EMIT):
+    """Nearest-neighbour blow-up of a character grid. Pixel art, so no blur."""
+    out = []
+    for row in grid:
+        wide = [ch for ch in row for _ in range(factor)]
+        for _ in range(factor):
+            out.append(list(wide))
+    return out
+
+
+def outline(grid, ch="K", over="."):
+    """Put a 1px dark edge around every drawn pixel.
+
+    A readable silhouette at gameplay size is A1's actual requirement, and at
+    16 logical pixels a dark contour is what delivers it: the figures are
+    colour-modulated at draw time (the player by its slot colour, a zombie by
+    one of three theme tints), so internal tones shift with the tint while a
+    near-black edge stays near-black whatever it is multiplied by."""
+    h, w = len(grid), len(grid[0])
+    edge = []
+    for y in range(h):
+        for x in range(w):
+            if grid[y][x] != over:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h and grid[ny][nx] not in (over, ch):
+                    edge.append((x, y))
+                    break
+    for x, y in edge:
+        grid[y][x] = ch
+    return grid
+
+
+def emit_entity(name, grid16, palette):
+    """Save a 16x16 logical grid as the 32x32 PNG the art table expects."""
+    assert len(grid16) == ENT_BASE and len(grid16[0]) == ENT_BASE, \
+        "%s: entity art is authored on a %dx%d grid" % (name, ENT_BASE, ENT_BASE)
+    return make_entity(name, upscale(grid16), palette, 1)
+
+
+# Three tones plus a near-black edge, and no more. Colour mod is a MULTIPLY
+# (the player by COLOR_BLUE {0.30,0.40,1.00}, a zombie by a theme tint whose
+# components run 0.20..0.80), so the art has to stay light and desaturated or
+# it multiplies to mud - and a five-tone ramp would not survive the multiply
+# with its steps still distinguishable. See docs/knowledge/art-overhaul-plan.md.
+PLAYER_PAL = {
+    ".": (0, 0, 0),
+    "K": (26, 27, 32),       # edge
+    "D": (134, 138, 150),    # shadow tone
+    "M": (196, 200, 212),    # base tone
+    "L": (244, 246, 252),    # highlight tone
+    "V": (58, 64, 82),       # visor
+    "G": (74, 78, 88),       # gun metal
+}
+
+ZOMBIE_PAL = {
+    ".": (0, 0, 0),
+    "K": (24, 24, 28),       # edge
+    # Pushed brighter than they look on a contact sheet on purpose: a theme
+    # tint multiplies every component by 0.20..0.80, so what reads as "a bit
+    # washed out" here is what reads at all on the ground in game.
+    "D": (160, 154, 144),    # shadow tone
+    "M": (218, 215, 203),    # base tone
+    "L": (252, 251, 242),    # highlight tone
+    "E": (36, 30, 32),       # eye socket / open jaw
+    "W": (116, 92, 92),      # wound
+}
+
+
+# ---- the player ------------------------------------------------------------
+
+def _player_pose(body_dy=0, arm_l=0, arm_r=0,
+                 leg_l=(0, 3), leg_r=(0, 3)):
+    """One player pose on the 16x16 grid.
+
+    The figure is drawn FRONT-FACING, towards the camera, because facing
+    cannot come from rotation: render.c passes draw_rot = 0.0f for every
+    entity, so there is exactly one facing and it has to be in the pixels.
+    What makes it read as a front view is the ordering of the parts top to
+    bottom - helmet crown, visor band, shoulders wider than the hips, two legs
+    - plus the rifle carried on one side, which also gives the silhouette a
+    handedness so it is never mistaken for a symmetric blob.
+
+    THE VERTICAL BUDGET IS EXACTLY 16 AND IT IS TIGHT. The body occupies rows
+    2..13 (head 3, shoulders 2, torso 4, legs 3); the bob moves it +-1; and
+    the outline needs one row above and below. 3 + 2 + 4 + 3 + 2 + 2 = 16.
+    Grow any part and a boot or a helmet loses its outline against the frame
+    edge, which at gameplay size reads as a clipped sprite.
+
+    Light comes from the upper left, consistently: left columns take the
+    highlight tone, right columns the shadow tone. Adjacent body parts are
+    separated by TONE rather than by a gap, because outline() only draws into
+    transparent pixels - two touching parts in the same tone merge into one
+    slab, which is precisely what made the old sprite a featureless egg."""
+    g = canvas(ENT_BASE, ENT_BASE)
+    dy = body_dy
+
+    # helmet. The crown is the single most useful pixel group in the sprite:
+    # at 16px it is what says "this end is the head".
+    rect(g, 7, 2 + dy, 10, 2 + dy, "L")
+    rect(g, 6, 3 + dy, 11, 3 + dy, "M")          # helmet rim, wider than the crown
+    rect(g, 6, 3 + dy, 7, 3 + dy, "L")
+    rect(g, 10, 3 + dy, 11, 3 + dy, "D")
+    rect(g, 7, 4 + dy, 10, 4 + dy, "V")          # visor band
+
+    # shoulders, wider than the hips: the second silhouette cue for a front view
+    rect(g, 5, 5 + dy, 12, 6 + dy, "M")
+    rect(g, 5, 5 + dy, 5, 6 + dy, "L")
+    rect(g, 12, 5 + dy, 12, 6 + dy, "D")
+
+    # torso, with a sling strap so the chest is not one flat slab of one tone
+    rect(g, 7, 7 + dy, 10, 10 + dy, "M")
+    rect(g, 7, 7 + dy, 7, 10 + dy, "L")
+    rect(g, 10, 7 + dy, 10, 10 + dy, "D")
+    rect(g, 8, 7 + dy, 8, 9 + dy, "D")           # strap
+
+    # arms, swinging in opposition. In a front view a swing reads vertically:
+    # the forward arm rides up, the trailing arm hangs lower. Each arm is a
+    # shadow column plus a mid column, so it reads against the torso beside it.
+    al = 6 + dy + arm_l
+    rect(g, 5, al, 6, al + 3, "M")
+    rect(g, 5, al, 5, al + 3, "D")
+    rect(g, 5, al + 3, 6, al + 3, "L")           # glove
+    ar = 6 + dy + arm_r
+    rect(g, 11, ar, 12, ar + 3, "M")
+    rect(g, 12, ar, 12, ar + 3, "D")
+    rect(g, 11, ar + 3, 12, ar + 3, "L")         # glove
+
+    # the rifle, carried on the left and travelling with the left arm. It is
+    # the darkest tone on the sprite, which is what separates it from the arm
+    # beside it - and it touches the glove, so it reads as HELD rather than as
+    # a second object floating next to the figure.
+    rect(g, 3, 5 + dy + arm_l, 4, 10 + dy + arm_l, "G")
+    rect(g, 3, 5 + dy + arm_l, 3, 6 + dy + arm_l, "D")    # stock
+    rect(g, 4, 10 + dy + arm_l, 4, 10 + dy + arm_l, "L")  # muzzle
+    rect(g, 4, 9 + dy + arm_l, 4, 9 + dy + arm_l, "L")    # hand on the grip
+
+    # THE LEGS ARE THE WALK. The old player had none at all, which is why its
+    # cycle read as a wobbling egg: only the arms moved, by one screen pixel.
+    # The two legs touch, so the right leg's shadow column is what separates
+    # them when they are together.
+    for (dx, length), x0, shade in ((leg_l, 7, "L"), (leg_r, 9, "D")):
+        x = x0 + dx
+        top = 11 + dy
+        rect(g, x, top, x + 1, top + length - 1, "M")
+        rect(g, x, top, x, top + length - 1, shade)
+        rect(g, x, top + length - 1, x + 1, top + length - 1, "D")   # boot
+
+    return outline(g, "K")
+
+
+# One cycle is WALK_FRAMES frames and each frame is its OWN PNG, because a
+# frame travels to a client as an art id and an art id is resolved from a
+# texture PATH - every frame of a sprite sheet shares one path, so a sheet
+# cannot name a frame at all (docs/knowledge/animation-transport.md).
+#
+# The frame COUNT is not ours to change: NET_ART_PLAYER_WALK_COUNT and
+# NET_ART_ZOMBIE_WALK_COUNT are 8 in src/net/net_art.h and the per-frame ids
+# are a contiguous appended block in the shared art table, so 8 is a protocol
+# number, not a drawing choice. The frame RATE is not here either: the game
+# plays the cycle at ANIM_FRAME_PERIOD = 0.1 s (10 fps, a 0.8 s stride), under
+# the 15 fps ceiling the 20 Hz snapshot stream imposes.
 WALK_FRAMES = 8
 
-
-def _zombie_walk_grid(i, n=WALK_FRAMES):
-    """One frame of the zombie walk cycle. n frames make one full cycle.
-
-    The body is the same blob as the idle zombie, so the frames read as the
-    same creature; the pose changes with the phase: the trailing arm swings
-    fore and aft, the reaching arm the opposite way, the body bobs twice per
-    cycle and the head lolls down over the second half of it (a limp, and the
-    term that makes all n frames differ from each other). Frame 0 is the idle
-    pose exactly, so a zombie that starts walking does not pop."""
-    g = body_any(32, 32, 11)
-    phase = 2.0 * math.pi * i / n
-    trail = int(round(3.0 * math.sin(phase)))              # trailing arm
-    lead = int(round(3.0 * math.sin(phase + math.pi)))     # reaching arm
-    bob = 1 if math.sin(2.0 * phase) > 0.0 else 0          # twice a cycle
-    dip = int(round(1.5 * math.cos(phase))) - 2            # the limp
-
-    disc(g, 16, 12 - bob - dip, 5, 6, "w")                 # head, slumped
-    disc(g, 14, 12 - bob - dip, 2, 2, "K")                 # eye hole
-    rect(g, 12, 9 - bob - dip, 17, 10 - bob - dip, "K")    # open mouth
-    rect(g, 9 + lead, 6 - bob - dip, 20 + lead, 8 - bob - dip, "w")  # reach
-    rect(g, 23 + trail, 14 - bob - dip, 25 + trail, 27 - bob - dip, "w")
-    return g, {".": (0, 0, 0), "K": (30, 30, 34), "w": (215, 210, 205),
-               "s": (140, 140, 150)}
-
-
-def entity_zombie_walk(n=WALK_FRAMES):
-    """The zombie walk cycle: n frames, one PNG each."""
-    paths = []
-    for i in range(n):
-        g, p = _zombie_walk_grid(i, n)
-        paths.append(make_entity("zombie_walk%d" % i, g, p, 1))
-    assert len(paths) == n, "walk cycle must have exactly n frames"
-    return paths
+# The player stride, as a TABLE rather than a sine, for the two reasons the
+# original gave and which still hold: a pure sine makes frame 0 and frame n/2
+# the same pose, and a table is where a human can read the stride at a glance.
+#
+#    (body_dy, left arm, right arm, left leg (dx, len), right leg (dx, len))
+#
+# Phrasing of the cycle: frame 0 is the NEUTRAL STANDING pose (it has to be -
+# the game holds frame 0 whenever the player is not moving, and player.png is
+# the same picture, so a player who stops must not pop). Frames 1-3 are the
+# left step, 4 is the opposite pass, 5-7 the right step. The body bobs twice
+# per cycle - up on the lift, down on the plant - and the arms swing against
+# the legs. Frame 4 is deliberately NOT a repeat of frame 0: the right leg is
+# still lifted there, so all eight frames differ from one another.
+PLAYER_STRIDE = [
+    (0,   0,  0, (0, 3), (0, 3)),    # 0 neutral - the standing pose
+    (-1,  1, -1, (-1, 2), (0, 3)),   # 1 left leg lifts, body rises
+    (0,   2, -2, (-2, 3), (0, 3)),   # 2 left foot out, full stride
+    (1,   1, -1, (-1, 3), (0, 2)),   # 3 weight plants, body sinks
+    (0,   0,  0, (0, 3), (0, 2)),    # 4 pass - right leg still lifted
+    (-1, -1,  1, (0, 3), (1, 2)),    # 5 right leg lifts, body rises
+    (0,  -2,  2, (0, 3), (2, 3)),    # 6 right foot out, full stride
+    (1,  -1,  1, (0, 2), (1, 3)),    # 7 weight plants, body sinks
+]
 
 
 def _player_walk_grid(i, n=WALK_FRAMES):
-    """One frame of the player walk cycle. n frames make one cycle.
+    """One frame of the player walk cycle. n frames make one full cycle."""
+    body_dy, arm_l, arm_r, leg_l, leg_r = PLAYER_STRIDE[i % len(PLAYER_STRIDE)]
+    return _player_pose(body_dy, arm_l, arm_r, leg_l, leg_r), PLAYER_PAL
 
-    The player is a 32px top-down figure with a rifle and no legs, so the walk
-    is read from what the art does have: the arms swing fore and aft in
-    opposite phase (the rifle follows the left arm), the figure lifts 1 px on
-    each step, and it sags 1 px between steps. Frame 0 is the standing pose
-    EXACTLY (lift/swing/sag all zero), so starting and stopping does not pop.
 
-    The eight poses are a TABLE, not a formula, for two reasons: a pure sine
-    swing makes frame 0 and frame n/2 identical (both are "arms neutral"), and
-    a table is where a human can see the stride at a glance."""
-    # (lift, swing, sag) per frame: a four-beat stride, mirrored for step two.
-    stride = [
-        (0,  0, 0),   # 0 standing - the idle pose
-        (1,  1, 0),   # 1 left arm forward, lifted
-        (0,  2, 0),   # 2 left arm furthest forward
-        (0,  1, 1),   # 3 step down
-        (0,  0, 1),   # 4 passing, weapon sags
-        (1, -1, 0),   # 5 right arm forward, lifted
-        (0, -2, 0),   # 6 right arm furthest forward
-        (0, -1, 1),   # 7 step down
-    ]
-    lift, swing, sag = stride[i % len(stride)]
-    dy = -lift + sag
-    g = body_any(32, 32, 7)
-    rect(g, 11, 5 + dy, 20, 11 + dy, "w")                    # head
-    rect(g, 13, 7 + dy, 18, 9 + dy, "K")                     # visor
-    rect(g, 9, 12 + dy, 22, 15 + dy, "w")                    # shoulders
-    rect(g, 10 + swing, 18 + dy, 14 + swing, 27 + dy, "w")   # left arm
-    rect(g, 17 - swing, 18 + dy, 21 - swing, 27 + dy, "w")   # right arm
-    rect(g, 3 + swing, 12 + dy, 8 + swing, 24 + dy, "w")     # rifle
-    rect(g, 4 + swing, 13 + dy, 7 + swing, 23 + dy, "K")     # barrel
-    return g, {".": (0, 0, 0), "K": (34, 34, 38), "w": (232, 232, 238),
-               "s": (150, 152, 160)}
+def entity_player():
+    """The standing player. Identical to walk frame 0, by construction."""
+    return _player_walk_grid(0)
 
 
 def entity_player_walk(n=WALK_FRAMES):
@@ -311,10 +410,187 @@ def entity_player_walk(n=WALK_FRAMES):
     paths = []
     for i in range(n):
         g, p = _player_walk_grid(i, n)
-        paths.append(make_entity("player_walk%d" % i, g, p, 1))
+        paths.append(emit_entity("player_walk%d" % i, g, p))
     assert len(paths) == n, "player walk cycle must have exactly n frames"
-    idle, _ = entity_player()
-    assert _player_walk_grid(0)[0] == idle, "player walk frame 0 must be idle"
+    assert _player_walk_grid(0)[0] == entity_player()[0], \
+        "player walk frame 0 must be the idle pose"
+    poses = {tuple(tuple(r) for r in _player_walk_grid(i, n)[0]) for i in range(n)}
+    assert len(poses) == n, "every player walk frame must be a distinct pose"
+    return paths
+
+
+# ---- the zombies -----------------------------------------------------------
+
+# A horde used to read as one repeated blob for a reason that is visible in the
+# old art: every zombie was the same symmetric disc, and the only variation was
+# a tint and a random size. Three builds fix the silhouette half of that.
+#
+#   walker  the baseline shambler - head lolled to one side, one arm reaching
+#   brute   squat and wide, heavy shoulders, short legs, both arms hanging
+#   runner  lean and low, head thrust forward, long thin limbs, wide stride
+#
+# They are deliberately different WIDTHS and HEIGHTS inside the same 16x16
+# frame, because at 20-30 drawn pixels the silhouette is the only thing that
+# survives; colour does not distinguish them (the theme tint overrides it).
+#
+# NOTE FOR THE INTEGRATOR: only `walker` is wired. All zombies share
+# zombie_walk0..7 because anim_walk_texture() maps frame -> art id with no
+# per-entity variant input. The brute and runner art is a drop-in for the
+# wiring described in docs/knowledge/art-overhaul-plan.md; until that lands it
+# is unreferenced art, which is why it arrives in its own commit.
+ZOMBIE_BUILDS = {
+    # sh    hunched shoulder span (x0, x1) and its top row
+    # head  (x0, width) and its top row - x0 is LEFT of centre: the loll
+    # torso (x0, x1) and (y0, y1); the legs hang from y1 + 1
+    # legs  (length, width); arms are placed relative to the torso
+    # head_y is ABOVE sh_y on purpose: the skull crown has to break the
+    # shoulder line or the head merges into the hunch and the creature reads
+    # as a torso with a notch in it - which is exactly what the old one was.
+    "walker": dict(sh=(5, 11), sh_y=3, head=(4, 4), head_y=2,
+                   torso=(6, 10), torso_y=(5, 10), legs=(3, 2)),
+    "brute":  dict(sh=(3, 13), sh_y=3, head=(5, 5), head_y=2,
+                   torso=(5, 11), torso_y=(5, 10), legs=(3, 3)),
+    "runner": dict(sh=(6, 11), sh_y=3, head=(4, 4), head_y=3,
+                   torso=(7, 10), torso_y=(5, 9), legs=(4, 2)),
+}
+
+
+# The zombie cycle. Same phrasing as the player's, plus two things a human
+# walk does not have:
+#
+#   the LIMP - `head_dy` and `drag` make the second half of the cycle unequal
+#   to the first, so a zombie does not march; and
+#   the REACH - `reach` extends the leading arm, PEAKING ON FRAME 6.
+#
+# Frame 6 is load-bearing: ANIM_ATTACK_FRAME in src/graphics/anim.h is 6, and
+# the animation system HOLDS frame 6 while a zombie is attacking, so frame 6
+# must be the furthest reach of the cycle or an attacking zombie looks like it
+# is walking in place while hitting you (AN5). Do not reorder this table
+# without changing that constant in the same commit; entity_zombie_walk()
+# asserts the two agree.
+#
+#    (body_dy, head_dy, reach, drag, left leg (dx, dlen), right leg (dx, dlen))
+ZOMBIE_STRIDE = [
+    (0,  0, 0, 0, (0, 0), (0, 0)),    # 0 neutral - the spawn/idle pose
+    (-1, 0, 1, 0, (-1, -1), (0, 0)),  # 1 left foot lifts
+    (0,  1, 1, 1, (-2, 0), (0, 0)),   # 2 left foot out, head lolls
+    (1,  1, 2, 1, (-1, 0), (0, -1)),  # 3 plant, the bad leg drags
+    (0,  0, 2, 0, (0, 0), (0, -1)),   # 4 pass
+    (-1, 0, 3, 0, (0, 0), (1, -1)),   # 5 right foot lifts
+    (0,  1, 4, 1, (0, 0), (2, 0)),    # 6 FURTHEST REACH - ANIM_ATTACK_FRAME
+    (1,  1, 2, 1, (0, -1), (1, 0)),   # 7 plant, head still lolled
+]
+
+
+def _zombie_pose(build, body_dy=0, head_dy=0, reach=0, drag=0,
+                 leg_l=(0, 0), leg_r=(0, 0)):
+    """One zombie pose on the 16x16 grid, for one of the three builds.
+
+    ASYMMETRY IS THE WHOLE DESIGN. The old zombie was a symmetric disc with a
+    dark notch in it, so a wave of them was one picture repeated: that is the
+    "crowd reads as a blob" half of B50, and a tint and a random size do not
+    fix it. Here the head sits off centre and sunk forward over the chest (the
+    hunch and the loll), one arm reaches while the other dangles, and the two
+    legs are different lengths, so the creature has a direction and a gait
+    before it has moved at all.
+
+    Same vertical budget as the player: the body lives in rows 2..13, the bob
+    moves it +-1, the outline takes the row above and below."""
+    b = ZOMBIE_BUILDS[build]
+    g = canvas(ENT_BASE, ENT_BASE)
+    dy = body_dy
+    tx0, tx1 = b["torso"]
+    ty0, ty1 = b["torso_y"]
+
+    # hunched shoulders, drawn high and first
+    sx0, sx1 = b["sh"]
+    rect(g, sx0, b["sh_y"] + dy, sx1, b["sh_y"] + 1 + dy, "M")
+    rect(g, sx0, b["sh_y"] + dy, sx0, b["sh_y"] + 1 + dy, "L")
+    rect(g, sx1, b["sh_y"] + dy, sx1, b["sh_y"] + 1 + dy, "D")
+
+    # torso, with a torn gash down one side - the one piece of internal
+    # detail that still reads after the theme tint multiplies everything
+    rect(g, tx0, ty0 + dy, tx1, ty1 + dy, "M")
+    # the highlight is the TOP ROW, not the left column: a lit column beside
+    # the reaching arm turns the creature into three vertical bars at
+    # gameplay size, where a lit shelf under the shoulders just reads as a
+    # chest catching the light.
+    rect(g, tx0, ty0 + dy, tx1 - 1, ty0 + dy, "L")
+    rect(g, tx1, ty0 + dy, tx1, ty1 + dy, "D")
+    rect(g, tx1 - 1, ty0 + 2 + dy, tx1 - 1, ty1 - 1 + dy, "W")
+
+    # the head: drawn LAST of the body parts so it sits over the chest rather
+    # than on top of a neck. No neck is the point - it is sunk into the
+    # shoulders and lolled to one side, and the loll changes with the cycle.
+    hx0, hw = b["head"]
+    hx = hx0 + (1 if head_dy else 0)
+    hy = b["head_y"] + dy + head_dy
+    rect(g, hx, hy, hx + hw - 1, hy, "L")                     # skull crown
+    rect(g, hx, hy + 1, hx + hw - 1, hy + 2, "M")
+    rect(g, hx, hy + 2, hx, hy + 2, "D")                      # cheek shadow
+    rect(g, hx + 1, hy + 1, hx + 1, hy + 1, "E")              # eye socket
+    rect(g, hx + hw - 2, hy + 2, hx + hw - 1, hy + 2, "E")    # slack jaw
+
+    # the reaching arm, on the viewer's left, extending with `reach`
+    ay = ty0 + dy
+    alen = 3 + min(reach, 4)
+    rect(g, tx0 - 4, ay, tx0 - 3, ay + alen, "M")
+    rect(g, tx0 - 4, ay, tx0 - 4, ay + alen, "D")
+    rect(g, tx0 - 4, ay + alen, tx0 - 3, ay + alen, "L")      # clawed hand
+
+    # the dangling arm, on the viewer's right, which only sways
+    by = ty0 + 1 + dy + drag
+    rect(g, tx1 + 1, by, tx1 + 2, by + 4, "M")
+    rect(g, tx1 + 2, by, tx1 + 2, by + 4, "D")
+    rect(g, tx1 + 1, by + 4, tx1 + 2, by + 4, "D")
+
+    # the legs. The right one is a pixel longer than the left whatever the
+    # stride table says, so the creature limps even standing still; the two
+    # touch when together, so the right leg's shadow column separates them.
+    base, lw = b["legs"]
+    for (dx, dlen), x0, longer, shade in ((leg_l, tx0, 0, "L"),
+                                          (leg_r, tx1 - lw + 1, 1, "D")):
+        length = max(1, base + dlen + longer)
+        x = x0 + dx
+        top = ty1 + 1 + dy
+        rect(g, x, top, x + lw - 1, top + length - 1, "M")
+        rect(g, x, top, x, top + length - 1, shade)
+        rect(g, x, top + length - 1, x + lw - 1, top + length - 1, "D")
+
+    return outline(g, "K")
+
+
+def _zombie_walk_grid(i, build="walker", n=WALK_FRAMES):
+    """One frame of a zombie walk cycle. Frame 0 is the idle/spawn pose."""
+    body_dy, head_dy, reach, drag, leg_l, leg_r = \
+        ZOMBIE_STRIDE[i % len(ZOMBIE_STRIDE)]
+    return (_zombie_pose(build, body_dy, head_dy, reach, drag, leg_l, leg_r),
+            ZOMBIE_PAL)
+
+
+def entity_zombie(build="walker"):
+    """The standing zombie. Identical to walk frame 0, by construction.
+
+    waves.c spawns a zombie on walk frame 0 and falls back to zombie.png only
+    when the cycle is missing, so the two must be the same picture or the
+    fallback would be a different creature."""
+    return _zombie_walk_grid(0, build)
+
+
+def entity_zombie_walk(build="walker", n=WALK_FRAMES):
+    """A zombie walk cycle: n frames, one PNG each."""
+    prefix = "zombie" if build == "walker" else "zombie_%s" % build
+    paths = []
+    for i in range(n):
+        g, p = _zombie_walk_grid(i, build, n)
+        paths.append(emit_entity("%s_walk%d" % (prefix, i), g, p))
+    assert len(paths) == n, "walk cycle must have exactly n frames"
+    assert _zombie_walk_grid(0, build)[0] == entity_zombie(build)[0], \
+        "zombie walk frame 0 must be the idle pose"
+    reach = [ZOMBIE_STRIDE[i][2] for i in range(n)]
+    assert reach.index(max(reach)) == 6, \
+        "frame 6 must be the furthest reach: ANIM_ATTACK_FRAME in " \
+        "src/graphics/anim.h holds frame 6 for the attack pose (AN5)"
     return paths
 
 
@@ -577,14 +853,42 @@ def main():
         ("speed", lambda: entity_pickup(bolt=True)),
         ("sword_blade", entity_blade),
     ]
+    # The player and the zombie are authored on the 16x16 logical grid and go
+    # out through emit_entity, which blows them up 2x to the 32x32 PNG the art
+    # table expects. The props (bullet, pickups, blade) are still authored at
+    # their final pixel size, so they go straight to make_entity. --verify
+    # catches a mix-up either way: it compares every PNG's real width against
+    # net_art's base_px.
     for name, fn in entity_specs:
         g, p = fn()
-        paths.append(make_entity(name, g, p, 1))
+        if len(g) == ENT_BASE and len(g[0]) == ENT_BASE:
+            paths.append(emit_entity(name, g, p))
+        else:
+            paths.append(make_entity(name, g, p, 1))
 
     # The walk cycle is part of the entity set: its frames are textures like
     # any other, and --verify has to open them like any other.
     paths.extend(entity_zombie_walk())
     paths.extend(entity_player_walk())
+
+    # The zombie VARIANTS (A2). These are a different build of the creature,
+    # not a recolour: at 20-30 drawn pixels a theme tint does not distinguish
+    # anything, so what separates a brute from a runner has to be the
+    # silhouette. The brute is squat and wide with short heavy legs, the
+    # runner lean and low with a long stride.
+    #
+    # NOT YET WIRED, deliberately. All zombies currently share
+    # zombie_walk0..7 because anim_walk_texture() maps frame -> art id with no
+    # per-entity variant input, and giving it one means appending art ids in
+    # net_art.h/.c, storing the variant waves.c already rolls (and currently
+    # throws away) on the ECS, and bumping NET_ASSET_VERSION with the codec
+    # test in the same commit - all outside the art lane. The exact wiring is
+    # written down in docs/knowledge/art-overhaul-plan.md. Until it lands this
+    # is unreferenced art, which is why it is one revertible commit.
+    for build in ("brute", "runner"):
+        g, p = entity_zombie(build)
+        paths.append(emit_entity("zombie_%s" % build, g, p))
+        paths.extend(entity_zombie_walk(build))
 
     # ---- ui (screen overlays) ----
     vignette_path = os.path.join(UI_DIR, "vignette.png")

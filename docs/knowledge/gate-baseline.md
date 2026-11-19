@@ -476,3 +476,28 @@ flush (max 48/frame, 10 total)` at wave 5, with `--events` frame 35039 holding
 into wave 6. Measured economics: 3 relayable events per kill + 2 for the blast,
 so the cap needs >=16 kills in one frame. HUD text remains unproven on a real
 display (same branch as the proven log line, `src/main.c:1536-1547`).
+
+## 2026-11-20 - RE-BASELINE: 50 -> 68 textures (Sprint 7 lane A, zombie variants)
+
+Deliberate texture re-baseline, declared in the same commit as the art that
+moves it, per `docs/knowledge/asset-verify-invariants.md` and
+`docs/VERSIONING.md`.
+
+`python tools/gen_assets.py --verify` -> **68 textures**.
+
+The 18 new files are two zombie variant builds, each an idle plus a full
+8-frame walk cycle: `zombie_brute.png` + `zombie_brute_walk0..7.png` and
+`zombie_runner.png` + `zombie_runner_walk0..7.png`. They exist so a horde
+stops reading as one repeated silhouette (B50, ticket A2).
+
+They are **not referenced by `src/net/net_art.c` yet** and nothing draws them:
+every zombie still uses `zombie_walk0..7`. The wiring - appended art ids, a
+per-entity variant stored on the ECS, one (variant, frame) -> art id mapping,
+and a `NET_ASSET_VERSION` bump with the codec test - is outside the art lane
+and is specified in `docs/knowledge/art-overhaul-plan.md`. If the integrator
+chooses not to take the variant commit, dropping it restores **50**.
+
+Nothing else moves: no `.c`/`.h` file is touched by this lane, no existing PNG
+changes size, every `base_px` still matches, so the single-player seed-42
+references (unlimited **125938 / 1603**, limited **129504 / 1648**) and the
+test counts are unaffected.
