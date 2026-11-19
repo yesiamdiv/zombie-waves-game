@@ -871,6 +871,25 @@ def main():
     paths.extend(entity_zombie_walk())
     paths.extend(entity_player_walk())
 
+    # The zombie VARIANTS (A2). These are a different build of the creature,
+    # not a recolour: at 20-30 drawn pixels a theme tint does not distinguish
+    # anything, so what separates a brute from a runner has to be the
+    # silhouette. The brute is squat and wide with short heavy legs, the
+    # runner lean and low with a long stride.
+    #
+    # NOT YET WIRED, deliberately. All zombies currently share
+    # zombie_walk0..7 because anim_walk_texture() maps frame -> art id with no
+    # per-entity variant input, and giving it one means appending art ids in
+    # net_art.h/.c, storing the variant waves.c already rolls (and currently
+    # throws away) on the ECS, and bumping NET_ASSET_VERSION with the codec
+    # test in the same commit - all outside the art lane. The exact wiring is
+    # written down in docs/knowledge/art-overhaul-plan.md. Until it lands this
+    # is unreferenced art, which is why it is one revertible commit.
+    for build in ("brute", "runner"):
+        g, p = entity_zombie(build)
+        paths.append(emit_entity("zombie_%s" % build, g, p))
+        paths.extend(entity_zombie_walk(build))
+
     # ---- ui (screen overlays) ----
     vignette_path = os.path.join(UI_DIR, "vignette.png")
     ui_vignette().save(vignette_path)
