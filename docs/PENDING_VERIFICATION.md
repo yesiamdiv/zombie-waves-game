@@ -60,6 +60,21 @@ Do **not** extend this to the animation walk cycle (M10/M11) or NT4 mirrored
 sword (M9): the owner was checking the four fixes above, and those two remain
 unproven, so their checklists below still stand.
 
+## Owner playtest 2026-11-19 (`main` `7ea287c`, launched from the main directory)
+
+- **VERIFIED on screen**: owner reports "effects and all are good" — a broad
+  visual confirmation of the E1-E6 effects work and overall presentation. Not
+  itemised per effect; do not claim any individual effect was checked in detail.
+- **OPEN (B49)**: the 60s wave timeout force-destroys leftover zombies with no
+  on-screen feedback, so it reads as zombies vanishing and the next wave
+  starting. The code path is intentional (B1 soft-lock safety net); the owner's
+  decision on keeping/changing it is pending.
+- **OPEN (B50)**: player/zombie walk animation and art read as static/weak; the
+  owner identifies the art itself as the root cause. This supersedes the earlier
+  headless-only conditional sign-off for animation P1-P5. Art direction pending.
+- **NOT TESTED by the owner**: the other weapons (only the starter kit was
+  used), so their on-screen feel remains unverified.
+
 ## Verified (safe to close)
 
 Headless-verified, reproducible, in `docs/R13_BUGFIX_TRACKER.md`:
