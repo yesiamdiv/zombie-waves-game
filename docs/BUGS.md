@@ -1171,3 +1171,37 @@ Found 2026-11-20 on `feature/windows-port` (Sprint 7 W3) building
 - **Why it had never been seen**: this repository has never been linked with
   MSVC since ENet was introduced. The last Windows build predates the
   networking work entirely.
+
+## B54. Player hitbox is 1.75x the player sprite; zombies match theirs exactly
+
+Found 2026-11-20 by the PM while reviewing the art lane's gameplay-scale crowd
+contact sheet, which showed the player as the smallest thing on screen.
+Confirmed in code, not from the picture. **OPEN**.
+
+- **Player**: `src/players.c:48` sets the collider to `{14.0f, false}` — radius
+  14, so a **28 px** hitbox diameter. `src/players.c:57-67` loads the 32 px
+  `player.png` at `.scale = 0.5f`, and `sprite_draw()`
+  (`src/graphics/sprite.c:217-221`) draws `src.w * scale` centred, so the
+  player is drawn **16 px** wide. The hitbox is **1.75x the sprite**.
+- **Zombie**: `src/world/waves.c:206` picks `size = 10..15`, sets the collider
+  radius to exactly `size` (`:243`) and the sprite scale to `size / 16.0f`
+  (`:223`) on the same 32 px art, drawing `32 * size/16 = 2 * size` — exactly
+  the collider diameter. Zombies are self-consistent; only the player is not.
+- **Impact**: zombies damage the player from ~6 px outside the player's visible
+  body on every side. In a game whose whole loop is dodging a melee swarm, the
+  player is hit by things that visibly miss. It also makes the protagonist the
+  smallest sprite in their own game, which is what made it visible at all.
+- **Two different fixes, with very different risk**:
+  1. *Render-only* — raise the player's sprite scale to `28/32 = 0.875` so the
+     drawing matches the hitbox it already has. Touches `CSprite.scale`, which
+     `render.c` reads and nothing in the simulation does, so the SP determinism
+     references cannot move. Does not change difficulty by one pixel.
+  2. *Simulation* — shrink the collider to match the 16 px art. This makes the
+     player strictly harder to hit, i.e. it **changes game balance**, and it
+     moves the seed-42 references, so it needs a deliberate re-baseline.
+  Fix 1 is the one taken (ticket G2): it removes the unfairness without
+  touching balance or determinism. If the owner would rather the player stayed
+  physically small, fix 2 is the alternative and the re-baseline is the cost.
+- **Not caused by this sprint.** The two sizing conventions were introduced
+  independently and neither is wrong on its own; they were simply never
+  compared.
