@@ -1178,3 +1178,35 @@ Found 2026-11-20 on `feature/windows-port` (Sprint 7 W3) building
 - **Why it had never been seen**: this repository has never been linked with
   MSVC since ENet was introduced. The last Windows build predates the
   networking work entirely.
+
+## B61. No DLL staging on Windows: every SDL-linked binary died at process start
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
+**FIXED** — see commit below.
+
+- **Symptom**: `ctest -C Debug` reported `net_loopback` and `core_tests` as
+  `Exit code 0xc0000135` with no output whatsoever. `0xc0000135` is
+  `STATUS_DLL_NOT_FOUND`: the processes never reached `main()`. The game
+  binary was in the same state, so this also blocked W6.
+- **Root cause**: on Windows SDL3, SDL3_ttf and SDL3_image build as **shared**
+  libraries, and `CMakeLists.txt` had no DLL-staging step at all — the string
+  "dll" did not appear in the file. The existing POST_BUILD step copies
+  `assets/` and nothing else. On Linux the dependencies resolve through rpath,
+  so the gap was invisible and had simply never been written.
+- **Fix**: a POST_BUILD `copy_if_different $<TARGET_RUNTIME_DLLS:tgt>` for
+  each executable target, declared at the end of `CMakeLists.txt` so every
+  target already exists, inside `if(WIN32)`. `$<TARGET_RUNTIME_DLLS:...>` is
+  empty on Linux and `cmake -E copy_if_different` with no sources is an error,
+  so the guard is load-bearing, not cosmetic. `zombie_net_spike` links only
+  static ENet and so has an empty list even on Windows; the command mode is
+  switched to the no-op `cmake -E true` through a generator expression rather
+  than special-casing that target by name, which would rot the day a
+  dependency goes shared.
+- **Also fixed here**: `core_tests` runs with `WORKING_DIRECTORY` set to the
+  source tree so the suite can read `assets/` by relative path. The staged
+  DLLs live beside the `.exe` in the build tree and are not on `PATH`, so the
+  loader could not find them from there. ctest is now handed that directory
+  through the test's `ENVIRONMENT` property instead of copying DLLs into the
+  source tree.
+- **Scope**: Windows-only. Also a prerequisite for W8 — the release zip has to
+  ship these DLLs beside the exe, and this step is what puts them there.

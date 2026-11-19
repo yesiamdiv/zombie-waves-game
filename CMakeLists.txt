@@ -227,3 +227,41 @@ endif()
 enable_testing()
 add_test(NAME core_tests COMMAND zombie_tests)
 set_tests_properties(core_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+# ---------------------------------------------------------------------------
+# B54: on Windows SDL3, SDL3_ttf and SDL3_image build as SHARED libraries, and
+# nothing copied their DLLs next to the executables. Every binary that links
+# zombie_core therefore died at process start with STATUS_DLL_NOT_FOUND
+# (0xc0000135) - including both ctest cases and the game itself. There was no
+# DLL-staging step in this file at all, because it has only ever been built on
+# Linux, where the deps resolve through rpath.
+#
+# $<TARGET_RUNTIME_DLLS:tgt> is the supported way to ask CMake which shared
+# libraries a target actually needs. It is empty on Linux, which is why the
+# whole block is inside if(WIN32): a copy_if_different with an empty source
+# list is an error, so this must not run there. Declared at the end of the
+# file so every executable target already exists.
+if(WIN32)
+    foreach(zw_exe ${PROJECT_NAME} zombie_tests zombie_net_spike zombie_net_test)
+        if(TARGET ${zw_exe})
+            add_custom_command(TARGET ${zw_exe} POST_BUILD
+                # zombie_net_spike links only static ENet, so its runtime-DLL
+                # list is empty, and "cmake -E copy_if_different <dir>" with no
+                # sources is an error. Swap the mode to the no-op "true" in
+                # that case rather than special-casing the target by name,
+                # which would rot the day a dependency goes shared.
+                COMMAND ${CMAKE_COMMAND} -E
+                        $<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${zw_exe}>>,copy_if_different,true>
+                        $<TARGET_RUNTIME_DLLS:${zw_exe}> $<TARGET_FILE_DIR:${zw_exe}>
+                COMMAND_EXPAND_LISTS)
+        endif()
+    endforeach()
+
+    # core_tests runs with WORKING_DIRECTORY set to the source tree so the
+    # suite can read assets/ by relative path. On Linux that is harmless; on
+    # Windows the DLLs live beside the .exe in the build tree and are not on
+    # PATH, so the loader cannot find them from there. Hand ctest the
+    # directory explicitly instead of copying DLLs into the source tree.
+    set_tests_properties(core_tests PROPERTIES
+        ENVIRONMENT "PATH=$<SHELL_PATH:$<TARGET_FILE_DIR:zombie_tests>>;$ENV{PATH}")
+endif()
