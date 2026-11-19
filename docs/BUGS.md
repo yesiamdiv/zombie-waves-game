@@ -1328,3 +1328,61 @@ re-baselines the Linux reference.
   joining a Linux host never runs its own `rand()`-driven simulation. The risk
   is latent, not live: it would become real the moment anything moves to
   lockstep or client-side prediction of a `rand()`-driven system.
+
+## B64. No text renders anywhere on Windows: the font chain is Linux-only absolute paths
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W6), reproduced on a real
+windowed run before any fix. **FIXED, screenshot-verified** — see commit below.
+
+- **Symptom**: the window opens and the themed backdrop draws, but the main
+  menu is otherwise **empty** — no title, no "Solo / Host Co-op / Join Co-op /
+  Quit", no controls hint. This is the 2026-10-06 owner report ("nothing
+  visible on the menu screen") reproduced exactly, now on current code. The
+  same defect also made the HUD, wave banner, damage numbers and every points
+  or pickup popup invisible in-game; the menu is simply where it is most
+  obvious, because the menu is *only* text.
+- **Root cause**: not the renderer. `src/main.c:472-479` hardcoded two
+  absolute **Linux** font paths —
+  `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` and a
+  `/usr/share/fonts/truetype/liberation/...` fallback. Neither exists on
+  Windows, `TTF_OpenFont` returned NULL for all three faces, and the game ran
+  on with no font at all. The warning was in the log the whole time —
+  `main.c:482: No font loaded, text will not render` — it had simply never
+  been read on Windows. No font is shipped in `assets/`, so there was nothing
+  to fall back to.
+- **Fix**: the candidate list is now a small platform-selected table of
+  regular/bold pairs. Windows gets Segoe UI, then Arial, then Tahoma, all
+  shipped with every supported Windows. The **Linux list is unchanged** —
+  same two families, same order, same files, same sizes — and selection is on
+  the regular face only, exactly as the old code's `!game.font` fallback gate
+  was, so Linux takes the branch it always took.
+- **Verified**: screenshot-verified, not owner-verified
+  (`docs/SYSTEM_DESIGN_RULES.md` §4). Before:
+  `build/logs/w6_menu.png`. After: `build/logs/w6_menu_fixed.png` (full menu,
+  title, all four options, the `>` selector and the controls line) and
+  `build/logs/w6_world_full.png` (world, sprites, road, both HUD panels
+  showing HP 200/200, Wave 2, Zombies 11, Kills 8, Score 1300, Points 120,
+  weapon and ammo). Log now reads `Font loaded: C:/Windows/Fonts/segoeui.ttf`.
+
+### Suspects from `docs/FUTURE_IDEAS.md` discarded by this investigation
+
+The 2026-10-06 note ranked four suspects. Measured on current code, three are
+**not** defects, and that is worth recording so nobody re-investigates them:
+
+- **Renderer creation flags** — not a defect. The backdrop, world tiles, road,
+  sprites and HUD panels all drew correctly even while no text rendered, which
+  is what proved the renderer was healthy and isolated the fault to the font.
+- **Colour channel order** — not a defect. Red title, yellow selection, green
+  HP bar, green grass, red health cross and the road's yellow markings all
+  appear in their intended colours. A BGR/RGB swap would be unmistakable.
+- **High-DPI** — not a defect. Measured rather than assumed: `GetClientRect`
+  on the running window reports a client area of exactly the configured
+  `WINDOW_W x WINDOW_H` once the DPI scale factor is accounted for, and the
+  HUD is laid out correctly against the window edges. SDL3 is DPI-aware on
+  Windows by default and needed no help. (An apparent right-HUD clip in the
+  first capture was an artifact of a DPI-unaware screen-capture process, not
+  the game; moving the window to the origin showed the panel complete.)
+- **Asset path separators and cwd** — half right. Textures, maps and audio all
+  load correctly through the asset manager with forward slashes, so the
+  general concern was unfounded; it was specifically the *font* paths, which
+  bypass the asset manager entirely, that were wrong.

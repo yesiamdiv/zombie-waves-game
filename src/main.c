@@ -469,14 +469,44 @@ static bool init(void) {
                      SDL_GetError());
         }
 
-        game.font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18);
-        game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22);
-        game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36);
-        if (!game.font) {
-            LOG_WARN("Failed to load DejaVu font, trying fallback...");
-            game.font = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 18);
-            game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 22);
-            game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 36);
+        /* W6: the font search list is platform-specific because the paths
+         * are. Both entries here used to be absolute Linux paths, so on
+         * Windows neither existed, TTF_OpenFont returned NULL three times and
+         * the game ran with no font at all - which is why the menu came up as
+         * a bare backdrop with no title, no buttons and no text anywhere, and
+         * why the HUD, wave banner and damage numbers were invisible too.
+         * There is no font shipped in assets/, so the only portable answer is
+         * to look where each platform actually keeps its fonts.
+         *
+         * The Linux list is unchanged: same two families, same order, same
+         * files, same sizes - DejaVu first, Liberation second. Selection is
+         * on the regular face only, exactly as the old code was (its fallback
+         * was gated on !game.font), so Linux takes the same branch it always
+         * did. */
+        static const struct { const char *regular; const char *bold; } font_candidates[] = {
+#if defined(_WIN32)
+            /* Shipped with every supported Windows; Segoe UI is the system
+             * UI face, Arial and Tahoma are the belt-and-braces fallbacks. */
+            { "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/segoeuib.ttf" },
+            { "C:/Windows/Fonts/arial.ttf",   "C:/Windows/Fonts/arialbd.ttf"  },
+            { "C:/Windows/Fonts/tahoma.ttf",  "C:/Windows/Fonts/tahomabd.ttf" },
+#else
+            { "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" },
+            { "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" },
+#endif
+        };
+        for (size_t fi = 0; fi < sizeof(font_candidates) / sizeof(font_candidates[0]); fi++) {
+            game.font = TTF_OpenFont(font_candidates[fi].regular, 18);
+            if (!game.font) {
+                LOG_WARN("Font '%s' unavailable, trying next...", font_candidates[fi].regular);
+                continue;
+            }
+            game.font_medium = TTF_OpenFont(font_candidates[fi].regular, 22);
+            game.font_large = TTF_OpenFont(font_candidates[fi].bold, 36);
+            LOG_INFO("Font loaded: %s", font_candidates[fi].regular);
+            break;
         }
         if (!game.font) {
             LOG_WARN("No font loaded, text will not render");
