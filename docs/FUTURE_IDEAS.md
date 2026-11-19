@@ -151,3 +151,16 @@ a window opens showing the world and HUD; and **none of this may change Linux
 behaviour** — same `-Werror` clean build, `ctest` 3/3, and the byte-identical
 seed-42 gate still pass. If any fix is platform-specific, it must be behind a
 platform ifdef rather than a behavioural branch the sim can observe.
+
+## Distribution / release zips (requested 2026-11-19)
+
+Owner asked for a zip folder containing **Linux and Windows builds** so other
+people can play. Plain zips do not need an installer, so this repository can
+publish them from a GitHub Actions workflow that builds on `ubuntu-latest` and
+`windows-latest` and attaches both archives to a release/tag; a separate repo or
+branch is only warranted if we later add a real installer.
+
+There is no local mingw toolchain here (`x86_64-w64-mingw32-gcc` absent), so the
+Windows half needs a Windows runner. The old Windows symptoms above are still in
+scope: the CI job is not a real Windows build until the menu visibly renders and
+the game/HUD open. Linux behaviour must stay byte-identical (seed-42 gate).
