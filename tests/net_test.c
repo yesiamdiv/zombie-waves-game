@@ -298,7 +298,7 @@ int main(void) {
          * cares about per-slot player state, not wave counters. */
         World ecs;
         Player hplayers[MAX_PLAYERS];
-        NetSnapshot snap;
+        NetSnapshot hsnap;
 
         ecs_init(&ecs);
         players_reset(hplayers, MAX_PLAYERS);
@@ -320,14 +320,14 @@ int main(void) {
         /* (Wave state is set after the build below: net_snapshot_build starts
          * from a zeroed struct, and it was handed waves == NULL.) */
         CHECK(net_snapshot_build(&ecs, hplayers, MAX_PLAYERS, 1.0f, NULL,
-                                 &snap) >= 0);
+                                 &hsnap) >= 0);
         /* Wave state the client HUD needs (B26). Set after the build because
          * net_snapshot_build zeroes its output and got waves == NULL. */
-        snap.wave_number = 5;
-        snap.wave_active = 1;
-        snap.zombies_alive = 9;
-        snap.total_kills = 21;
-        net_server_broadcast_snapshot(&server, &snap);
+        hsnap.wave_number = 5;
+        hsnap.wave_active = 1;
+        hsnap.zombies_alive = 9;
+        hsnap.total_kills = 21;
+        net_server_broadcast_snapshot(&server, &hsnap);
 
         /* Only clients still connected at this point in the test: earlier
          * sections deliberately disconnect one. */
