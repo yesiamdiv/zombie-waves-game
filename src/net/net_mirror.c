@@ -51,7 +51,7 @@ void net_mirror_push_removing(NetMirror *m, const NetSnapshot *snap,
             }
             if (!drop) s->entities[w++] = s->entities[i];
         }
-        s->count = w;
+        s->count = (uint16_t)w;
 
         /* v9/NT4: attributes are keyed by the same entity id, so a dead id's
          * attribute must go with it. Leaving it behind would hand a recycled

@@ -351,8 +351,8 @@ static void test_world_valid(void) {
     int walkable = 0;
     for (int y = 1; y < world.height - 1; y++) {
         for (int x = 1; x < world.width - 1; x++) {
-            if (world_is_walkable(&world, x * WORLD_GRID_SIZE + 32,
-                                           y * WORLD_GRID_SIZE + 32)) {
+            if (world_is_walkable(&world, (float)(x * WORLD_GRID_SIZE + 32),
+                                           (float)(y * WORLD_GRID_SIZE + 32))) {
                 walkable++;
             }
         }
@@ -1382,8 +1382,8 @@ static void test_map_registry_loads(void) {
         for (int y = 0; y < w.height; y++) {
             for (int x = 0; x < w.width; x++) {
                 total++;
-                if (world_is_walkable(&w, x * WORLD_GRID_SIZE + 32,
-                                             y * WORLD_GRID_SIZE + 32)) {
+                if (world_is_walkable(&w, (float)(x * WORLD_GRID_SIZE + 32),
+                                             (float)(y * WORLD_GRID_SIZE + 32))) {
                     walkable++;
                 }
             }
