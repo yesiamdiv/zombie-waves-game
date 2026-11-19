@@ -15,6 +15,7 @@
  * ========================================================================== */
 
 #include <enet/enet.h>
+#include "portable_time.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -47,16 +48,12 @@ static int g_failed = 0;
         }                                                                \
     } while (0)
 
-static double now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
-}
+static double now_ms(void) { return zw_now_ms(); }
 
 static void service(NetServer *server, NetClient *clients, int nclients) {
     net_server_update(server);
     for (int i = 0; i < nclients; i++) net_client_update(&clients[i]);
-    nanosleep(&(struct timespec){0, 500000L}, NULL); /* pace the handshake */
+    zw_sleep_ns(500000L); /* pace the handshake */
 }
 
 static bool all_connected(NetClient *clients, int nclients) {
@@ -349,7 +346,7 @@ int main(void) {
                 if (!c[i].snap_valid) all_have = false;
             }
             if (all_have) break;
-            nanosleep(&(struct timespec){0, 500000L}, NULL);
+            zw_sleep_ns(500000L);
         }
         for (int i = 0; i < 3; i++) {
             if (c[i].state != NET_CLIENT_CONNECTED) continue;

@@ -25,6 +25,7 @@
  * ========================================================================== */
 
 #include <enet/enet.h>
+#include "portable_time.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -126,11 +127,7 @@ static bool gpk_echo_matches(const GamePacket *p) {
 
 /* ----------------------------------------------------------------------- */
 
-static double now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
-}
+static double now_ms(void) { return zw_now_ms(); }
 
 static void peer_addr_str(const ENetPeer *p, char *out, size_t n) {
     char ip[16] = "?";
@@ -400,10 +397,7 @@ int main(int argc, char *argv[]) {
         }
         tick++;
         /* ~1kHz pacing; keeps the loop from pegging a core. */
-        {
-            struct timespec ts = {0, 1000000L};
-            nanosleep(&ts, NULL);
-        }
+        zw_sleep_ns(1000000L);
     }
     printf("\n----------------------- summary -----------------------------\n");
 
@@ -460,7 +454,7 @@ int main(int argc, char *argv[]) {
     while (now_ms() < dis_deadline) {
         host_service(&sv);
         for (int i = 0; i < nclients; i++) client_service(&clients[i]);
-        nanosleep(&(struct timespec){0, 1000000L}, NULL);
+        zw_sleep_ns(1000000L);
     }
     for (int i = 0; i < nclients; i++) {
         if (clients[i].host) enet_host_destroy(clients[i].host);

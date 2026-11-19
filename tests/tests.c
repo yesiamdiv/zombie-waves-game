@@ -3,7 +3,16 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+/* W4: creating the scratch directory is spelled differently per platform.
+ * POSIX takes mkdir(path, mode) from <sys/stat.h>; MSVC has no <sys/stat.h>
+ * mkdir at all, only _mkdir(path) from <direct.h>, with no mode argument. */
+#if defined(_WIN32)
+#include <direct.h>
+#define ZW_MKDIR(path) _mkdir(path)
+#else
 #include <sys/stat.h>
+#define ZW_MKDIR(path) mkdir((path), 0755)
+#endif
 
 #include "core/log.h"
 #include "ecs/ecs.h"
@@ -47,7 +56,7 @@ static int tests_failed = 0;
  * TEST_TMP_DIR to ${CMAKE_BINARY_DIR}/test-tmp; the fallback keeps a direct
  * build usable. */
 static void test_tmp_init(void) {
-    (void)mkdir(TEST_TMP_DIR, 0755);
+    (void)ZW_MKDIR(TEST_TMP_DIR);
 }
 
 static const char *test_tmp_path(const char *name) {

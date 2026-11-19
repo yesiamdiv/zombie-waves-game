@@ -1,5 +1,6 @@
 #include <SDL3/SDL_blendmode.h>
 #include <SDL3/SDL.h>
+#include "core/compiler.h"
 #include "systems/systems.h"
 #include "net/net_mirror.h"
 #include "events/event_bus.h"
@@ -19,15 +20,15 @@ static uint8_t g_spawn_first_t_set[ECS_MAX_ENTITIES];
 
 /* P3: muzzle flash from relayed/shoot events (procedural, no PNG). */
 #define MUZZLE_MAX 32
-__attribute__((unused)) static struct { float x,y,ang,life,ttl; } g_muzzle[MUZZLE_MAX];
+ZW_UNUSED static struct { float x,y,ang,life,ttl; } g_muzzle[MUZZLE_MAX];
 
 /* P5: sword trail history (render-only). */
 #define SWORD_TRAIL_LEN 8
-__attribute__((unused)) static struct { Entity sword; float ang[SWORD_TRAIL_LEN]; int count; int idx; float len[SWORD_TRAIL_LEN]; float w[SWORD_TRAIL_LEN]; float ox[SWORD_TRAIL_LEN]; float oy[SWORD_TRAIL_LEN]; } g_trail[SWORD_TRAIL_LEN];
+ZW_UNUSED static struct { Entity sword; float ang[SWORD_TRAIL_LEN]; int count; int idx; float len[SWORD_TRAIL_LEN]; float w[SWORD_TRAIL_LEN]; float ox[SWORD_TRAIL_LEN]; float oy[SWORD_TRAIL_LEN]; } g_trail[SWORD_TRAIL_LEN];
 static float now_seconds(void) {
     return (float)(SDL_GetTicks()) / 1000.0f;
 }
-__attribute__((unused)) static float entity_spawn_age_host(uint32_t idx) {
+ZW_UNUSED static float entity_spawn_age_host(uint32_t idx) {
     if (idx >= ECS_MAX_ENTITIES) return 1e9f;
     if (!g_spawn_first_t_set[idx]) {
         g_spawn_first_t[idx] = now_seconds();
