@@ -1208,3 +1208,33 @@ value.
 ### Blocked
 - Nothing. On-screen checks are `unproven`, not blocking, under the owner's
   2026-11-12 conditional sign-off.
+
+---
+
+## 2026-11-19 — PM: owner playtest signal on merged `main` (`7ea287c`)
+
+### Planned
+- Launch the merged main-directory build for the owner and capture real
+  on-screen feedback; record findings instead of trusting the headless gate.
+
+### Done
+- Built (no-op) and launched `./build/open_world_zombie_waves` detached from
+  the main directory, PID 1612856, log `build/logs/owner_playtest.log`; controls
+  sent over Intercom.
+- Owner verified on screen: "effects and all are good" — first broad visual
+  confirmation of the E1-E6 work (`b90a904`).
+- Owner findings: B49 — the 60s wave-timeout safety net silently force-destroys
+  leftovers, so it looks like zombies vanish; B50 — player/zombie walk animation
+  and art read as weak, with art identified as the root cause (`41d0b88`).
+- Owner also requested Linux + Windows release zips; no installer needed for
+  plain zips, so this repo can publish them via GitHub Actions. Asked owner to
+  decide B49 behaviour, art direction, and packaging location before planning
+  the next sprint.
+
+### Next
+- Await owner decisions on B49 (keep + visible warning vs change), B50 (art
+  direction and priority), and release packaging; then write Sprint 7 scope.
+
+### Blocked
+- Sprint 7 scope is blocked on those three owner answers. Other weapons remain
+  untested by the owner.
