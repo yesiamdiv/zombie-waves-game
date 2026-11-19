@@ -98,3 +98,66 @@ dependencies are small and enumerated in W2/W3/W4.
 The single-player byte-identity gate in `AGENTS.md` still applies, and on
 Windows it is a *new* measurement, not an assumption. Anything visual or audible
 is `unproven` until a human looks or listens — write `unproven`, not `fixed`.
+
+---
+
+## Sprint 7 status at wind-down (2026-11-20)
+
+**The game builds, tests and runs on Windows for the first time.** Measured on
+`main` after integrating lanes A and W:
+
+| Gate | Result |
+|---|---|
+| `cmake --build build --config Debug` | **0 errors, 0 warnings** in project sources, under a real `/W4 /WX` gate |
+| `zombie_tests.exe` | **2114 passed / 0 failed** |
+| `ctest -C Debug` | **3/3** (net_spike, net_loopback, core_tests) |
+| `gen_assets.py --verify` | clean, **68 textures** (re-baselined from 50) |
+| Two same-seed SP runs, Windows | **byte-identical** to each other |
+
+### Cross-platform determinism: NOT established, and that is a finding
+
+The Windows seed-42 unlimited run is **144170 bytes / 1829 lines**; the Linux
+reference is **125938 / 1603**. Two separate causes, and only the first is
+cosmetic:
+
+1. **CRLF translation** — confirmed present. `src/events/event_bus.c:58` opens
+   the recorder with `fopen(path, "w")`, i.e. text mode, so every `\n` becomes
+   `\r\n`: +1829 bytes. Mechanical, fixable with `"wb"`.
+2. **A real simulation divergence** — the line count itself moved, +226 events.
+   Line endings cannot do that. The prime suspect is `rand()`: `src/world/waves.c`
+   uses libc `rand()` for spawn placement and zombie size, and its sequence is
+   implementation-defined, so MSVC's CRT and glibc produce different games from
+   the same seed. **Same-platform determinism holds; cross-platform does not.**
+   Owned by W7. If confirmed, the fix is the project's own small PRNG rather
+   than libc's, which is a determinism-surface change and needs its own ticket.
+
+### Lane results
+
+- **Lane A (art)** — complete, all **unproven** pending a human look. Found the
+  real cause of B50 and it was worse than "weak art": entity features were drawn
+  in the *same palette tone* as the body beneath them (an invisible-by-
+  construction sprite), and the stride was authored at 32px but drawn at 16px
+  through a NEAREST downscale that discards every odd row, so a +-2px arm swing
+  became +-1 screen px and neither figure had legs at all. Re-authored on a
+  16x16 logical grid emitted 2x. A4 blocked by the art-id transport (not
+  skipped). Variants are unreferenced art pending wiring.
+- **Lane W (winport)** — W1-W5 done and integrated; W6-W8 still in progress at
+  wind-down. Found B60 (ENet links winmm/ws2_32 only under MinGW), B61 (no DLL
+  staging: every SDL binary died with STATUS_DLL_NOT_FOUND before `main()`),
+  B62 (Windows' 1 MiB default stack overflows in net_test).
+- **Lane Q (qa)** — **not started.** Deliberately dropped at the owner's
+  instruction to limit token spend. The tickets stand for a later sprint.
+
+### Bugs filed this sprint
+
+B51 (PNG byte churn), B54 (player hitbox 1.75x its sprite — **fixed**, G2),
+B55 (snapshot flat-shape diameter ignores scale — open), B60, B61, B62.
+
+### Still open for the owner
+
+- **B50** stays OPEN/unproven: a clean `--verify` proves the pipeline, not the
+  art. Contact sheets are the best available review and are not a sign-off.
+- **B49** behaviour is implemented and tested but has **never been seen on a
+  display**.
+- The cross-platform determinism divergence above needs a decision once W7
+  reports.
