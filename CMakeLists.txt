@@ -257,6 +257,25 @@ if(WIN32)
         endif()
     endforeach()
 
+    # B55: Windows defaults the main thread's stack reserve to 1 MiB; Linux
+    # gives 8 MiB. This codebase was written against the Linux figure and puts
+    # large aggregates on the stack by habit - tests/net_test.c main() alone
+    # holds a NetServer, five NetClients, a World, a Player array and two
+    # NetSnapshots as locals. On Windows that overflows before main() runs a
+    # single statement: zombie_net_test produced no output at all and ctest
+    # reported it as a SegFault in 0.07 s.
+    #
+    # Reserving 8 MiB makes the Windows stack match the platform the code was
+    # written against, rather than shrinking the code to fit Windows. This is
+    # a reserve, not a commit: pages are committed on use, so it costs address
+    # space, not memory. Linux is untouched - /STACK is MSVC-only and this
+    # whole block is inside if(WIN32).
+    foreach(zw_exe ${PROJECT_NAME} zombie_tests zombie_net_spike zombie_net_test)
+        if(TARGET ${zw_exe})
+            target_link_options(${zw_exe} PRIVATE /STACK:8388608)
+        endif()
+    endforeach()
+
     # core_tests runs with WORKING_DIRECTORY set to the source tree so the
     # suite can read assets/ by relative path. On Linux that is harmless; on
     # Windows the DLLs live beside the .exe in the build tree and are not on

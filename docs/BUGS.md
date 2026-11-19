@@ -1210,3 +1210,38 @@ Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
   source tree.
 - **Scope**: Windows-only. Also a prerequisite for W8 — the release zip has to
   ship these DLLs beside the exe, and this step is what puts them there.
+
+## B62. Windows' 1 MiB default stack overflows before `main()` in net_test
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
+**FIXED** — see commit below.
+
+- **Symptom**: with the DLLs staged (B61), `zombie_net_test` still failed —
+  ctest reported `***Exception: SegFault` after 0.07 s and the process emitted
+  **zero** output, not even the logger's "Logger initialized" line, which is
+  the first statement to produce any. Run by hand it exited without printing
+  anything. `zombie_tests` and `zombie_net_spike` both passed.
+- **Root cause**: Windows reserves **1 MiB** for the main thread's stack;
+  Linux reserves **8 MiB**. This codebase was written against the Linux figure
+  and puts large aggregates on the stack as a matter of habit. `main()` in
+  `tests/net_test.c` alone declares a `NetServer`, five `NetClient`s (`c[3]`,
+  `bad`, `oldart`), a `World`, a `Player[MAX_PLAYERS]` and two `NetSnapshot`s
+  as locals. The frame is built on function entry, so the guard page is hit
+  before the function runs a single statement — which is exactly why there was
+  no output to diagnose from, and why it presented as an instant segfault
+  rather than a crash partway through a named test.
+- **Fix**: `target_link_options(<exe> PRIVATE /STACK:8388608)` for the Windows
+  executables, so the Windows reserve matches the platform the code was written
+  against instead of the code being shrunk to fit Windows. It is a *reserve*:
+  pages are committed on use, so the cost is address space, not memory.
+  `/STACK` is MSVC-only and the block is inside `if(WIN32)`, so the Linux link
+  line does not move.
+- **Why not restructure the locals**: that would be a real change to shared
+  test code to satisfy a platform-specific limit, and it would have to be
+  redone every time someone adds a local. The stack reserve *is* the platform
+  difference, so that is where the fix belongs.
+- **Carry-forward risk**: this covers the main thread only. Any *new* thread
+  created on Windows gets the same 1 MiB default unless its creation call says
+  otherwise, so the same class of failure can return the first time this
+  project spawns a thread that holds a `World` or a `NetSnapshot`.
+- **After the fix**: `ctest -C Debug` 3/3 on Windows.
