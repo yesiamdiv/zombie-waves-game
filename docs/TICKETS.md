@@ -79,11 +79,19 @@ dependencies are small and enumerated in W2/W3/W4.
 | Q4 | Adversarial bug hunt across the merged systems (net, shop/economy, waves, items, effects). Prefer reproducible headless repros; findings policy per `docs/knowledge/qa-findings-policy.md`. | TODO | |
 | Q5 | B49 enrage behaviour (owner decision above) — verify the wave timeout no longer silently deletes zombies, and that the SP seed-42 references are **unchanged** (the gate runs are 25s, the timeout is at 60s, so a correct change cannot move them). | TODO | |
 
-## Gameplay tickets owned by the PM/integrator
+## Gameplay / infrastructure tickets owned by the PM/integrator
 
 | ID | Task | Status | Commit |
 |---|---|---|---|
-| G1 | B49 implementation: replace the silent force-destroy in `src/world/waves.c` (`WAVE_MAX_DURATION`, `waves_update()`) with the enrage behaviour the owner chose. Keep the soft-lock guarantee: the wave must still be able to end. | TODO | |
+| G0 | **Blocking**: SDL_image was fetched at its defaults, dragging in its whole vendored codec tree (aom, dav1d, libavif, libjxl + its own 9 submodules, libtiff, libwebp) for one `IMG_LoadTexture()` call. On Windows the nested paths exceed `MAX_PATH` and the configure could never complete — this is *why* there was no Windows build. Narrowed the fetch. | **done** — configure 99s, `sdl_image-src` gigabytes -> 78 MB. Decision: `knowledge/sdl-image-dependency-scope.md` | `c968dbd` |
+| G1 | B49 implementation: replace the silent force-destroy in `src/world/waves.c` with the enrage behaviour the owner chose. Keep the soft-lock guarantee: the wave must still be able to end. | **implemented, runtime-unverified** — compile-clean under `gcc -fsyntax-only -Wall -Wextra`; `test_wave_timeout_enrages()` added but **not yet run**, because no Windows binary can be produced until W1 lands | `bee8286` |
+
+## Deferred — raised this sprint, deliberately not done
+
+| ID | Task | Why deferred |
+|---|---|---|
+| D1 | Enraged zombies render untinted on a **joined client**. The `enraged` flag is host-side only and not on the wire, so the client's snapshot mirror cannot know. | Fixing it means a `NET_WIRE_VERSION` bump for a purely cosmetic bit. `docs/SYSTEM_DESIGN_RULES.md` says a client may add computation only if it is cosmetic *and* deterministic across machines — this is cosmetic but **not** derivable client-side, so it needs a real wire field. Not worth a protocol bump mid-sprint with no net agent staffed. The host/single-player tint is correct. |
+| D2 | B51 — `gen_assets.py` dirties all 50 PNGs with no pixel change (PNG encoding is not reproducible across Pillow versions; pixels verified identical). | Filed in `docs/BUGS.md`. Cosmetic-to-git, but it makes the asset gate dirty the tree it guards, which can hide a real art change inside 50 files of noise. Fix options recorded; none chosen. |
 
 ## Non-negotiable for every lane
 
