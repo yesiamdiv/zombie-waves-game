@@ -1110,3 +1110,30 @@ root cause identified as the art itself. **OPEN — art direction pending.**
   design A), so the issue is the source frames/sprites, not (yet) a wiring bug.
 - Owner has not yet chosen: improve the existing pixel art / walk frames, or
   bring in a different art source/style, and which subject to fix first.
+
+## B51. `gen_assets.py` dirties all 50 PNGs in git with no pixel change
+
+Found 2026-11-20 on `main` `80d153d` while establishing the Windows baseline
+(Sprint 7). **OPEN** — low severity, but it misleads every agent and reviewer.
+
+- **Symptom**: running `python tools/gen_assets.py` or
+  `python tools/gen_assets.py --verify` leaves all 50 texture PNGs listed as
+  modified by `git status`, on a tree with no source change whatsoever.
+- **Root cause**: the *art* is deterministic but the *PNG encoding* is not.
+  Pillow (12.0.0 here) picks different zlib settings/metadata than the Pillow
+  that produced the committed bytes, so every file re-encodes to a different
+  byte stream carrying identical pixels. Verified directly:
+  `assets/textures/entities/player.png` went 261 -> 247 bytes with
+  `PIXELS_IDENTICAL`, same for `zombie_walk3.png`.
+- **Why it matters**: `--verify` is the gate that guards the asset pipeline, and
+  running the gate is itself what dirties the tree. Any agent on a different
+  Pillow produces a 50-file diff that looks like an art change and reviews as
+  noise, which is a good way to hide a real art change inside it.
+- **Fix options** (not yet chosen): pin the PNG encoder settings explicitly in
+  `make()`/`render()` (`optimize`, `compress_level`) so output is byte-stable
+  across Pillow versions; or make `--verify` compare *pixels* and not touch the
+  files at all when they already match; or stop committing generated PNGs and
+  generate them at build time. The second is the smallest and matches what
+  `--verify` is for.
+- **Not a regression** and not caused by this sprint. It predates it; this is
+  the first time it has been written down.
