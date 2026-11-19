@@ -1138,7 +1138,14 @@ Found 2026-11-20 on `main` `80d153d` while establishing the Windows baseline
 - **Not a regression** and not caused by this sprint. It predates it; this is
   the first time it has been written down.
 
-## B53. ENet links `winmm`/`ws2_32` only under MinGW, so MSVC cannot link it
+<!-- Id allocation note (2026-11-20, Sprint 7): the W lane's findings were
+     first filed as B53-B55, but the PM was concurrently filing its own B54
+     (player hitbox 1.75x the sprite) and B55 from the `main` worktree, which
+     collided. The W lane's three Windows build findings were moved to
+     B60-B62 to leave the contended range to the PM. B56-B59 are deliberately
+     unused; the gap is this collision, not a lost bug. -->
+
+## B60. ENet links `winmm`/`ws2_32` only under MinGW, so MSVC cannot link it
 
 Found 2026-11-20 on `feature/windows-port` (Sprint 7 W3) building
 `zombie_net_spike` with MSVC x64. **FIXED** — see commit below.
@@ -1231,3 +1238,69 @@ purpose; see below.
 - **When fixed**: `tests/tests.c` pins `player_e.size_q == 32` from exactly
   this path; that assertion becomes `2 * 16 * scale` and must move in the same
   commit.
+## B61. No DLL staging on Windows: every SDL-linked binary died at process start
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
+**FIXED** — see commit below.
+
+- **Symptom**: `ctest -C Debug` reported `net_loopback` and `core_tests` as
+  `Exit code 0xc0000135` with no output whatsoever. `0xc0000135` is
+  `STATUS_DLL_NOT_FOUND`: the processes never reached `main()`. The game
+  binary was in the same state, so this also blocked W6.
+- **Root cause**: on Windows SDL3, SDL3_ttf and SDL3_image build as **shared**
+  libraries, and `CMakeLists.txt` had no DLL-staging step at all — the string
+  "dll" did not appear in the file. The existing POST_BUILD step copies
+  `assets/` and nothing else. On Linux the dependencies resolve through rpath,
+  so the gap was invisible and had simply never been written.
+- **Fix**: a POST_BUILD `copy_if_different $<TARGET_RUNTIME_DLLS:tgt>` for
+  each executable target, declared at the end of `CMakeLists.txt` so every
+  target already exists, inside `if(WIN32)`. `$<TARGET_RUNTIME_DLLS:...>` is
+  empty on Linux and `cmake -E copy_if_different` with no sources is an error,
+  so the guard is load-bearing, not cosmetic. `zombie_net_spike` links only
+  static ENet and so has an empty list even on Windows; the command mode is
+  switched to the no-op `cmake -E true` through a generator expression rather
+  than special-casing that target by name, which would rot the day a
+  dependency goes shared.
+- **Also fixed here**: `core_tests` runs with `WORKING_DIRECTORY` set to the
+  source tree so the suite can read `assets/` by relative path. The staged
+  DLLs live beside the `.exe` in the build tree and are not on `PATH`, so the
+  loader could not find them from there. ctest is now handed that directory
+  through the test's `ENVIRONMENT` property instead of copying DLLs into the
+  source tree.
+- **Scope**: Windows-only. Also a prerequisite for W8 — the release zip has to
+  ship these DLLs beside the exe, and this step is what puts them there.
+
+## B62. Windows' 1 MiB default stack overflows before `main()` in net_test
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
+**FIXED** — see commit below.
+
+- **Symptom**: with the DLLs staged (B61), `zombie_net_test` still failed —
+  ctest reported `***Exception: SegFault` after 0.07 s and the process emitted
+  **zero** output, not even the logger's "Logger initialized" line, which is
+  the first statement to produce any. Run by hand it exited without printing
+  anything. `zombie_tests` and `zombie_net_spike` both passed.
+- **Root cause**: Windows reserves **1 MiB** for the main thread's stack;
+  Linux reserves **8 MiB**. This codebase was written against the Linux figure
+  and puts large aggregates on the stack as a matter of habit. `main()` in
+  `tests/net_test.c` alone declares a `NetServer`, five `NetClient`s (`c[3]`,
+  `bad`, `oldart`), a `World`, a `Player[MAX_PLAYERS]` and two `NetSnapshot`s
+  as locals. The frame is built on function entry, so the guard page is hit
+  before the function runs a single statement — which is exactly why there was
+  no output to diagnose from, and why it presented as an instant segfault
+  rather than a crash partway through a named test.
+- **Fix**: `target_link_options(<exe> PRIVATE /STACK:8388608)` for the Windows
+  executables, so the Windows reserve matches the platform the code was written
+  against instead of the code being shrunk to fit Windows. It is a *reserve*:
+  pages are committed on use, so the cost is address space, not memory.
+  `/STACK` is MSVC-only and the block is inside `if(WIN32)`, so the Linux link
+  line does not move.
+- **Why not restructure the locals**: that would be a real change to shared
+  test code to satisfy a platform-specific limit, and it would have to be
+  redone every time someone adds a local. The stack reserve *is* the platform
+  difference, so that is where the fix belongs.
+- **Carry-forward risk**: this covers the main thread only. Any *new* thread
+  created on Windows gets the same 1 MiB default unless its creation call says
+  otherwise, so the same class of failure can return the first time this
+  project spawns a thread that holds a `World` or a `NetSnapshot`.
+- **After the fix**: `ctest -C Debug` 3/3 on Windows.

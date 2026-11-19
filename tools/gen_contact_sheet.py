@@ -204,7 +204,10 @@ def crowd(out_dir, theme="city", zoom=1, seed=42):
     """Player + horde at TRUE gameplay scale, then the whole shot upscaled.
 
     Sizes and placements come from the real draw path: the player sprite is
-    CSprite.scale 0.5 on 32px art -> 16x16, and a zombie is size/16 with
+    CSprite.scale (PLAYER_COLLIDER_RADIUS*2)/32 = 0.875 on 32px art -> 28x28
+    (B54/G2: it was 0.5 -> 16x16, a sprite 1.75x smaller than the player's own
+    28px hitbox, which is why the player used to be the smallest thing here),
+    and a zombie is size/16 with
     size = 10 + rand()%6 -> 20..30 px. Zombies also start on a hashed walk
     frame (P1a stagger in waves.c), which is reproduced here because a horde
     all on frame 0 is exactly the "one repeated blob" the owner complained
@@ -242,8 +245,8 @@ def crowd(out_dir, theme="city", zoom=1, seed=42):
 
     pf = cycle("player_walk") or [load("player")]
     if pf and pf[0] is not None:
-        p = tint(pf[2 % len(pf)], PLAYER_TINT).resize((16, 16), Image.NEAREST)
-        scene.alpha_composite(p, (W // 2 - 8, H // 2 - 8))
+        p = tint(pf[2 % len(pf)], PLAYER_TINT).resize((28, 28), Image.NEAREST)
+        scene.alpha_composite(p, (W // 2 - 14, H // 2 - 14))
 
     up = 3
     big = scene.resize((W * up, H * up), Image.NEAREST)
@@ -251,7 +254,7 @@ def crowd(out_dir, theme="city", zoom=1, seed=42):
     sheet = Image.new("RGBA", (big.width + pad * 2, big.height + pad + head), BG)
     label(sheet, (pad, pad), "Crowd shot - TRUE gameplay scale, %s theme" % theme, 22)
     label(sheet, (pad, pad + 32),
-          "Player drawn 16x16 (scale 0.5), zombies 20..30px (size/16); whole "
+          "Player drawn 28x28 (scale 0.875 = its hitbox, B54), zombies 20..30px; whole "
           "shot then upscaled %dx with NEAREST." % up, 14, DIM)
     label(sheet, (pad, pad + 54),
           "Real per-theme tints, real random sizes, and the real P1a hashed "
