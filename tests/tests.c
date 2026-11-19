@@ -938,27 +938,50 @@ static void test_wave_timeout(void) {
                                             world.world_pixel_h * 0.5f));
     CHECK(player != ECS_NULL_ENTITY);
 
-    /* A single zombie that is never killed (no collision/cleanup run) must
-     * not stall the wave forever: the 60s WAVE_MAX_DURATION safety net
-     * force-ends it (playtest B1). */
+    /* A single zombie that is never killed (no collision/cleanup run) must not
+     * stall the wave forever. That is playtest B1's guarantee and it still
+     * holds -- but B49 changed WHEN and HOW it is honoured, so this test was
+     * rewritten rather than deleted.
+     *
+     * Before B49: WAVE_MAX_DURATION (60s) force-destroyed the zombie and the
+     * wave ended there. After B49 the owner's chosen behaviour is to ENRAGE
+     * the straggler at 60s and let the wave resolve through gameplay; the
+     * force-destroy survives only as the WAVE_HARD_TIMEOUT (120s) backstop.
+     *
+     * This test drives the pathological case the backstop exists for: nothing
+     * ever kills the zombie, so the enrage cannot possibly resolve the wave
+     * and the hard timeout MUST fire. The old 75s budget was below the new
+     * deadline, which is why the unmodified test failed - the contract moved,
+     * not the safety property. */
     waves_start_next_wave(&waves, 1);
     waves.zombies_to_spawn = 1;
     waves.spawn_interval = 0.01f;
 
     float dt = 1.0f / 120.0f;
     int frames_ran = 0;
-    int max_frames = (int)(75.0f / dt);
+    int max_frames = (int)(135.0f / dt);
+    bool saw_enrage = false;
     while (!waves.between_waves && frames_ran < max_frames) {
         waves_update(&waves, &ecs, &world, NULL, 0, dt);
         frames_ran++;
+        /* The wave must still be running, with the zombie alive, immediately
+         * after the 60s mark: the enrage replaced the deletion, it did not
+         * merely postpone it. */
+        if (!saw_enrage && waves.enrage_applied) {
+            saw_enrage = true;
+            CHECK(waves.wave_elapsed >= 60.0f);
+            CHECK(waves.zombies_alive == 1);
+            CHECK(waves.between_waves == false);
+        }
     }
 
+    CHECK(saw_enrage);                      /* B49: enraged, not deleted, at 60s */
     CHECK(waves.between_waves);
     CHECK(waves.wave_active == false);
     CHECK(waves.zombies_alive == 0);
     CHECK(waves.total_kills == 0);          /* nothing was actually killed */
-    CHECK(frames_ran < max_frames);         /* ended before the hard cap */
-    CHECK(waves.wave_elapsed > 59.0f);      /* took ~the 60s timeout */
+    CHECK(frames_ran < max_frames);         /* B1 still holds: it cannot stall */
+    CHECK(waves.wave_elapsed > 119.0f);     /* ended at the 120s hard backstop */
 }
 
 static void test_event_stream(void) {
