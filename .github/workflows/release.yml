@@ -1,0 +1,205 @@
+# Release packaging for Open World Zombie Waves (W8, Sprint 7).
+#
+# Builds the game on Linux and Windows and attaches one zip per platform to a
+# tag's GitHub Release, so people can play it without a toolchain.
+#
+# UNTESTED CI: this workflow has never been executed. It was written and
+# YAML-validated on a developer machine; GitHub Actions cannot be run from
+# there. Treat the first tagged run as the real test, and expect to iterate on
+# the Linux system-dependency list in particular.
+#
+# Trigger: push a tag like v0.1.0, or run it by hand from the Actions tab
+# (workflow_dispatch) to exercise the build and collect the zips as artifacts
+# without cutting a release.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write          # needed to create and attach to a Release
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false     # one platform failing must not hide the other's result
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x86_64
+          - os: windows-latest
+            name: windows-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # SDL3, SDL3_ttf, SDL3_image and ENet are all built from source by
+      # FetchContent, so the Linux runner needs the X11/Wayland/audio
+      # development headers SDL3 configures against. Without them SDL3 still
+      # builds, but with no video backend, and the result cannot open a window.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ninja-build \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxfixes-dev libxss-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+            libfreetype6-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      # The gate, as far as a headless runner can run it. The windowed checks
+      # (W6) cannot run here: there is no display, and --headless returns from
+      # render() immediately, so CI can never prove anything visual.
+      - name: Test
+        run: ctest --test-dir build -C ${{ env.BUILD_TYPE }} --output-on-failure
+
+      # ---------------- packaging ----------------
+      #
+      # The payload is the executable, the assets tree and the shared
+      # libraries. On Windows, CMakeLists.txt already stages the SDL DLLs
+      # beside the exe (B61), so the staging directory is simply what the build
+      # produced. On Linux the .so files live in the FetchContent build tree and
+      # have to be gathered, and the loader has to be told to look beside the
+      # binary - hence the launcher script.
+
+      - name: Stage (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="dist/open-world-zombie-waves-${{ matrix.name }}"
+          mkdir -p "$stage/lib"
+          cp build/open_world_zombie_waves "$stage/"
+          cp -r assets "$stage/assets"
+          find build \( -name 'libSDL3*.so*' \) -exec cp -P {} "$stage/lib/" \;
+          printf '%s\n' \
+            '#!/bin/sh' \
+            '# Run the game with the bundled SDL libraries, from any directory.' \
+            'here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)' \
+            'LD_LIBRARY_PATH="$here/lib:${LD_LIBRARY_PATH:-}" \' \
+            '  exec "$here/open_world_zombie_waves" "$@"' \
+            > "$stage/open-world-zombie-waves.sh"
+          chmod +x "$stage/open-world-zombie-waves.sh" "$stage/open_world_zombie_waves"
+          # The Linux build looks for DejaVu, then Liberation, under
+          # /usr/share/fonts (src/main.c). Neither is bundled - shipping a font
+          # is a licensing decision nobody has taken - so say so, rather than
+          # let a player meet a textless menu, which is exactly the defect B64
+          # fixed on Windows.
+          printf '%s\n' \
+            'Open World Zombie Waves' \
+            '=======================' \
+            'Run ./open-world-zombie-waves.sh' \
+            '' \
+            'The bundled SDL libraries are in lib/ and the launcher points the' \
+            'loader at them, so no system SDL3 is required.' \
+            '' \
+            'Text rendering needs a system font: DejaVu Sans, or Liberation' \
+            'Sans as a fallback. Both ship with most desktop distributions.' \
+            'If the menu appears empty, install one, e.g.' \
+            '    sudo apt install fonts-dejavu-core' \
+            > "$stage/README.txt"
+
+      - name: Stage (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="dist/open-world-zombie-waves-${{ matrix.name }}"
+          mkdir -p "$stage"
+          # CMake stages the exe, assets/ and the SDL DLLs together here (B61).
+          cp "build/${BUILD_TYPE}/open_world_zombie_waves.exe" "$stage/"
+          cp "build/${BUILD_TYPE}"/*.dll "$stage/"
+          cp -r assets "$stage/assets"
+          printf '%s\n' \
+            'Open World Zombie Waves' \
+            '=======================' \
+            'Run open_world_zombie_waves.exe' \
+            '' \
+            'The SDL3 DLLs must stay in the same folder as the executable.' \
+            'Fonts come from C:\Windows\Fonts and need no installation.' \
+            > "$stage/README.txt"
+
+      # Fail loudly here rather than publish an archive that cannot run.
+      - name: Verify the staged payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="dist/open-world-zombie-waves-${{ matrix.name }}"
+          for d in textures maps audio; do
+            test -d "$stage/assets/$d" || { echo "missing assets/$d"; exit 1; }
+          done
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            for f in SDL3.dll SDL3_ttf.dll SDL3_image.dll open_world_zombie_waves.exe; do
+              test -f "$stage/$f" || { echo "missing $f"; exit 1; }
+            done
+          else
+            test -f "$stage/open_world_zombie_waves" || { echo "missing binary"; exit 1; }
+            ls "$stage/lib/"libSDL3.so* >/dev/null || { echo "missing libSDL3"; exit 1; }
+          fi
+          echo "staged payload OK:"
+          find "$stage" -maxdepth 1
+
+      - name: Archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          name="open-world-zombie-waves-${{ matrix.name }}"
+          # Prefer a real zip; fall back to CMake's portable archiver, which is
+          # always present because the build needs it anyway.
+          if command -v zip >/dev/null 2>&1; then
+            zip -r "$name.zip" "$name"
+          else
+            cmake -E tar cf "$name.zip" --format=zip "$name"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-world-zombie-waves-${{ matrix.name }}
+          path: dist/open-world-zombie-waves-${{ matrix.name }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Attach both zips to the release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only a tag push publishes. A manual run still produces the two artifacts
+    # above, which is how to rehearse this workflow without cutting a release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          # gh is preinstalled on GitHub runners, so the release step needs no
+          # third-party action and adds no supply-chain surface.
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/*.zip

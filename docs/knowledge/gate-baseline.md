@@ -477,6 +477,76 @@ into wave 6. Measured economics: 3 relayable events per kill + 2 for the blast,
 so the cap needs >=16 kills in one frame. HUD text remains unproven on a real
 display (same branch as the proven log line, `src/main.c:1536-1547`).
 
+## 2026-11-20 - note by winport: FIRST WINDOWS PLATFORM SECTION (Sprint 7, W5/W7)
+
+**This is a separate platform, not a re-baseline.** Every number above is the
+Linux reference and is untouched. Nothing in this section replaces anything in
+it. Measured on `feature/windows-port` after W1-W4 and the B52/B61/B62/B64
+fixes, on Windows 11, MSVC Visual Studio 17 2022 Community, x64.
+
+Measured in **both** configurations, because `build/Debug/` and
+`build/Release/` are separate trees on a multi-config generator and the Linux
+gate has only ever had one:
+
+- `cmake --build build --config Debug` and `--config Release` -> **zero
+  warnings in project sources**, all five targets. MSVC is now gated at
+  `/W4 /WX` (W1); the only warnings anywhere in a build log come from
+  third-party sources (ENet's `win32.c` deprecation warnings, harfbuzz), the
+  same way SDL3's noise is ignored on Linux.
+- `ctest --test-dir build -C Debug` -> **3/3**, and `-C Release` -> **3/3**:
+  `net_spike`, `net_loopback`, `core_tests`.
+- `build/Debug/zombie_tests.exe` -> **2091 passed / 0 failed**, and
+  `build/Release/zombie_tests.exe` -> **2091 passed / 0 failed**. This matches
+  the merged-`main` Linux count of 2091 exactly, which is the useful signal:
+  the W lane's portability fixes changed no test outcome.
+- `python tools/gen_assets.py --verify` -> clean, exit 0. **Texture count: as
+  declared in the entries above; this section deliberately does not restate
+  the number.** `declared_texture_count()` reads the *last* declaration in
+  this file, so a count restated here would silently override a later lane's
+  re-baseline on the merged tree - a conflict git does not report. One number,
+  declared once (`docs/VERSIONING.md`).
+- Note `python`, not `python3`, on this machine.
+
+### Windows paths differ from every path written in the docs
+
+Binaries land in **`build/Debug/`** or **`build/Release/`**, not `build/`.
+Every `./build/zombie_tests` in `AGENTS.md` and the docs is a Linux path and
+does not exist here. `ctest` needs `-C <config>` or it finds no tests at all.
+
+### Windows single-player determinism (W7)
+
+Command, from `build/Debug/` or `build/Release/`:
+
+```
+open_world_zombie_waves.exe --headless --ai=bot --run-seconds=25     --events=a.log --seed=42 --unlimited-ammo
+```
+
+- **Same-platform determinism: PASS.** Two sequential same-seed runs are
+  byte-identical at **142341 bytes / 1829 lines**.
+- **Debug and Release are byte-identical to each other**, which is worth more
+  than it looks: it rules out optimisation level and float codegen as a source
+  of divergence on this platform.
+- **Cross-platform byte-identity with the Linux reference: FAILS, and cannot
+  currently succeed.** Decomposed honestly, against Linux's 125938 bytes /
+  1603 lines:
+  - **1829 bytes** were line-ending translation. The recorder opened the log
+    in text mode, so Windows wrote CRLF into a byte-compared artifact. Fixed
+    (B52, `fopen(path, "wb")`); the pre-fix figure was 144170 bytes / 1829
+    lines and 144170 - 1829 = 142341 accounts for it exactly.
+  - **The residual +16403 bytes / +226 lines is a real simulation
+    divergence**, and it is not fixable by a platform `#ifdef`. The sim draws
+    from libc `rand()` at 34 sites across 13 files, seeded by `srand()`.
+    `rand()` is implementation-defined: MSVC's `RAND_MAX` is **32767** against
+    glibc's **2147483647**, and the two generators produce entirely different
+    sequences from the same seed. The simulations diverge at the first zombie
+    spawn's `rand() % 360`. Full analysis and the measured sequences are in
+    **B63** (`docs/BUGS.md`).
+
+So the Linux byte/line references stay **exactly as declared above** and the
+Windows figure is a *parallel platform measurement*, not a competing one.
+Closing the gap means the project owning its generator, which would re-baseline
+both Linux references and is therefore an owner/PM decision, not a lane fix.
+
 ## 2026-11-20 - RE-BASELINE: 50 -> 68 textures (Sprint 7 lane A, zombie variants)
 
 Deliberate texture re-baseline, declared in the same commit as the art that

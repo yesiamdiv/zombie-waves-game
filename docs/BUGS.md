@@ -1179,65 +1179,6 @@ Found 2026-11-20 on `feature/windows-port` (Sprint 7 W3) building
   MSVC since ENet was introduced. The last Windows build predates the
   networking work entirely.
 
-## B54. Player hitbox is 1.75x the player sprite; zombies match theirs exactly
-
-Found 2026-11-20 by the PM while reviewing the art lane's gameplay-scale crowd
-contact sheet, which showed the player as the smallest thing on screen.
-Confirmed in code, not from the picture. **OPEN**.
-
-- **Player**: `src/players.c:48` sets the collider to `{14.0f, false}` — radius
-  14, so a **28 px** hitbox diameter. `src/players.c:57-67` loads the 32 px
-  `player.png` at `.scale = 0.5f`, and `sprite_draw()`
-  (`src/graphics/sprite.c:217-221`) draws `src.w * scale` centred, so the
-  player is drawn **16 px** wide. The hitbox is **1.75x the sprite**.
-- **Zombie**: `src/world/waves.c:206` picks `size = 10..15`, sets the collider
-  radius to exactly `size` (`:243`) and the sprite scale to `size / 16.0f`
-  (`:223`) on the same 32 px art, drawing `32 * size/16 = 2 * size` — exactly
-  the collider diameter. Zombies are self-consistent; only the player is not.
-- **Impact**: zombies damage the player from ~6 px outside the player's visible
-  body on every side. In a game whose whole loop is dodging a melee swarm, the
-  player is hit by things that visibly miss. It also makes the protagonist the
-  smallest sprite in their own game, which is what made it visible at all.
-- **Two different fixes, with very different risk**:
-  1. *Render-only* — raise the player's sprite scale to `28/32 = 0.875` so the
-     drawing matches the hitbox it already has. Touches `CSprite.scale`, which
-     `render.c` reads and nothing in the simulation does, so the SP determinism
-     references cannot move. Does not change difficulty by one pixel.
-  2. *Simulation* — shrink the collider to match the 16 px art. This makes the
-     player strictly harder to hit, i.e. it **changes game balance**, and it
-     moves the seed-42 references, so it needs a deliberate re-baseline.
-  Fix 1 is the one taken (ticket G2): it removes the unfairness without
-  touching balance or determinism. If the owner would rather the player stayed
-  physically small, fix 2 is the alternative and the re-baseline is the cost.
-- **Not caused by this sprint.** The two sizing conventions were introduced
-  independently and neither is wrong on its own; they were simply never
-  compared.
-
-## B55. Snapshot flat-shape diameter ignores `CSprite.scale`
-
-Found 2026-11-20 by the PM while fixing B54. **OPEN** — not fixed with B54 on
-purpose; see below.
-
-- `src/net/net_snapshot.c:175-205` computes the wire diameter two different
-  ways. The **textured** branch is correct: `diam = cs->scale * base_px`, with
-  a comment explaining that scale is texture-relative while the diameter is
-  not. The **flat-shape** branch (`:198-203`) takes `rect.w` (or
-  `circle.radius * 2`) **raw, with no `* cs->scale`** — yet `sprite_draw()`
-  draws flat shapes at `rect.w * scale` (`src/graphics/sprite.c:147-148`).
-- **Consequence**: for any flat-shape entity whose `CSprite.scale != 1.0`, the
-  host draws one size and tells the client another. The player is exactly such
-  an entity whenever its texture is missing: the host draws
-  `16 * scale` px and puts `16` on the wire.
-- **Why it was not fixed alongside B54**: the flat branch is the fallback for
-  *every* entity type, so correcting it moves the wire `size_q` for bullets,
-  items and anything else untextured. That is a replication-surface change and
-  wants the two-instance `--host`/`--join` check that `AGENTS.md` requires,
-  which no one is staffed to run this sprint. It is also invisible in practice
-  today: the flat path is taken when assets fail to load, and headless draws
-  nothing at all.
-- **When fixed**: `tests/tests.c` pins `player_e.size_q == 32` from exactly
-  this path; that assertion becomes `2 * 16 * scale` and must move in the same
-  commit.
 ## B61. No DLL staging on Windows: every SDL-linked binary died at process start
 
 Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
@@ -1304,3 +1245,204 @@ Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
   otherwise, so the same class of failure can return the first time this
   project spawns a thread that holds a `World` or a `NetSnapshot`.
 - **After the fix**: `ctest -C Debug` 3/3 on Windows.
+
+## B52. The events log is opened in text mode, so Windows writes CRLF into a byte-compared artifact
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7); predicted by the PM
+and then measured. **FIXED** — see commit below.
+
+- **Symptom**: the single-player events log written on Windows was exactly one
+  byte per line larger than the same simulation's log written on Linux, so no
+  cross-platform byte comparison could ever succeed. Measured:
+  **144170 bytes / 1829 lines**, with CRLF on all 1829 lines.
+- **Root cause**: `src/events/event_bus.c:58` opened the recorder with
+  `fopen(path, "w")`. On Windows that is *text* mode and the CRT translates
+  every `'
+'` the recorder writes into `"
+"`. The events log is not prose:
+  the invariance gate diffs two runs of it byte for byte and
+  `docs/knowledge/gate-baseline.md` declares a byte count for it, so a
+  translation layer in the middle is a correctness problem, not a cosmetic one.
+- **Fix**: `fopen(path, "wb")`. On POSIX `"w"` and `"wb"` are identical — there
+  is no translation layer to turn off — so the Linux output cannot move, which
+  is exactly why the fix is safe. Measured after the fix:
+  **142341 bytes / 1829 lines**, zero CRLF, and two same-seed runs still
+  byte-identical to each other. The 1829-byte delta is accounted for exactly:
+  144170 − 1829 = 142341.
+- **Deliberately NOT changed**: `src/core/log.c:30` opens the human-readable
+  log the same way. That file is prose, is not part of any gate, is never
+  byte-compared, and CRLF is the friendlier choice for a Windows user opening
+  it in an editor. Left as text mode on purpose.
+- **What this does NOT fix**: the residual **+16403 bytes / +226 lines** gap
+  against the Linux reference. That is a genuine simulation divergence with a
+  different cause — see B63.
+
+## B63. Cross-platform determinism is structurally impossible: the simulation draws from libc `rand()`
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7). **OPEN** — not
+fixable in this lane; it needs an owner/PM design decision because any fix
+re-baselines the Linux reference.
+
+- **Symptom**: after B52 removed line-ending translation, the seed-42
+  unlimited-ammo single-player events log still differs from the Linux
+  reference by **+16403 bytes / +226 lines** (Windows **142341 / 1829**, Linux
+  **125938 / 1603**). Two Windows runs remain byte-identical *to each other*,
+  so same-platform determinism is intact; it is the *cross-platform* identity
+  that cannot hold.
+- **Root cause**: `--seed=N` calls `srand()` (`src/main.c:1820,1822`) and the
+  simulation then draws from `rand()` at **34 sites across 13 files**,
+  including `src/ai/bot.c` (the bot's strafe cadence), `src/world/waves.c`
+  (spawn ring angle, radius, zombie variant and size, spawn-point choice) and
+  `src/items/items.c` (loot type). `rand()` and `srand()` are
+  **implementation-defined**: the standard fixes neither the algorithm nor
+  `RAND_MAX`. Measured directly on this machine with a standalone probe:
+
+  | | `RAND_MAX` | `srand(42)`, first values |
+  |---|---|---|
+  | MSVC CRT (x64) | `32767` | 175, 400, 17869, 30056, 16083, … |
+  | glibc | `2147483647` | 71876166, 708592740, 1483128881, … |
+
+  Different algorithm, different period, and a `RAND_MAX` four orders of
+  magnitude apart. `rand() % 360` therefore yields a different angle on the
+  very first zombie spawn, and the two simulations diverge from that spawn
+  onward. The observed +226 lines is the downstream consequence: a different
+  bot strafe cadence means a different number of `PLAYER_SHOT`s (68 on
+  Windows), each of which adds its own `ENTITY_SPAWN` and
+  `POSITION_SAMPLE` lines.
+- **Why this was never visible**: the project has only ever had one libc.
+  `src/items/items.c:13` already carries the comment "rand() order is
+  load-bearing for single-player determinism" — the *order* was understood to
+  matter, but the *values* being implementation-defined was not, because there
+  was nothing to compare against.
+- **Not a platform `#ifdef` matter.** There is no Windows-side fix: MSVC's
+  `rand()` is conforming. The only real fix is for the project to own its
+  generator — a small explicit PRNG (xorshift / PCG) seeded by `--seed`,
+  replacing `rand()` at the 34 sites — which would make the log identical on
+  every platform *and* **re-baseline both Linux references**
+  (125938/1603 unlimited, 129504/1648 limited). Per `AGENTS.md` that is a
+  deliberate, announced re-baseline, so the W lane recorded the finding and
+  did not ship it.
+- **Multiplayer impact: none today**, and this is worth stating because it
+  looks alarming. Per `docs/SYSTEM_DESIGN_RULES.md` the host is the single
+  source of truth and a client only consumes host state, so a Windows client
+  joining a Linux host never runs its own `rand()`-driven simulation. The risk
+  is latent, not live: it would become real the moment anything moves to
+  lockstep or client-side prediction of a `rand()`-driven system.
+
+## B64. No text renders anywhere on Windows: the font chain is Linux-only absolute paths
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W6), reproduced on a real
+windowed run before any fix. **FIXED, screenshot-verified** — see commit below.
+
+- **Symptom**: the window opens and the themed backdrop draws, but the main
+  menu is otherwise **empty** — no title, no "Solo / Host Co-op / Join Co-op /
+  Quit", no controls hint. This is the 2026-10-06 owner report ("nothing
+  visible on the menu screen") reproduced exactly, now on current code. The
+  same defect also made the HUD, wave banner, damage numbers and every points
+  or pickup popup invisible in-game; the menu is simply where it is most
+  obvious, because the menu is *only* text.
+- **Root cause**: not the renderer. `src/main.c:472-479` hardcoded two
+  absolute **Linux** font paths —
+  `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` and a
+  `/usr/share/fonts/truetype/liberation/...` fallback. Neither exists on
+  Windows, `TTF_OpenFont` returned NULL for all three faces, and the game ran
+  on with no font at all. The warning was in the log the whole time —
+  `main.c:482: No font loaded, text will not render` — it had simply never
+  been read on Windows. No font is shipped in `assets/`, so there was nothing
+  to fall back to.
+- **Fix**: the candidate list is now a small platform-selected table of
+  regular/bold pairs. Windows gets Segoe UI, then Arial, then Tahoma, all
+  shipped with every supported Windows. The **Linux list is unchanged** —
+  same two families, same order, same files, same sizes — and selection is on
+  the regular face only, exactly as the old code's `!game.font` fallback gate
+  was, so Linux takes the branch it always took.
+- **Verified**: screenshot-verified, not owner-verified
+  (`docs/SYSTEM_DESIGN_RULES.md` §4). Before:
+  `build/logs/w6_menu.png`. After: `build/logs/w6_menu_fixed.png` (full menu,
+  title, all four options, the `>` selector and the controls line) and
+  `build/logs/w6_world_full.png` (world, sprites, road, both HUD panels
+  showing HP 200/200, Wave 2, Zombies 11, Kills 8, Score 1300, Points 120,
+  weapon and ammo). Log now reads `Font loaded: C:/Windows/Fonts/segoeui.ttf`.
+
+### Suspects from `docs/FUTURE_IDEAS.md` discarded by this investigation
+
+The 2026-10-06 note ranked four suspects. Measured on current code, three are
+**not** defects, and that is worth recording so nobody re-investigates them:
+
+- **Renderer creation flags** — not a defect. The backdrop, world tiles, road,
+  sprites and HUD panels all drew correctly even while no text rendered, which
+  is what proved the renderer was healthy and isolated the fault to the font.
+- **Colour channel order** — not a defect. Red title, yellow selection, green
+  HP bar, green grass, red health cross and the road's yellow markings all
+  appear in their intended colours. A BGR/RGB swap would be unmistakable.
+- **High-DPI** — not a defect. Measured rather than assumed: `GetClientRect`
+  on the running window reports a client area of exactly the configured
+  `WINDOW_W x WINDOW_H` once the DPI scale factor is accounted for, and the
+  HUD is laid out correctly against the window edges. SDL3 is DPI-aware on
+  Windows by default and needed no help. (An apparent right-HUD clip in the
+  first capture was an artifact of a DPI-unaware screen-capture process, not
+  the game; moving the window to the origin showed the panel complete.)
+- **Asset path separators and cwd** — half right. Textures, maps and audio all
+  load correctly through the asset manager with forward slashes, so the
+  general concern was unfounded; it was specifically the *font* paths, which
+  bypass the asset manager entirely, that were wrong.
+
+## B54. Player hitbox is 1.75x the player sprite; zombies match theirs exactly
+
+Found 2026-11-20 by the PM while reviewing the art lane's gameplay-scale crowd
+contact sheet, which showed the player as the smallest thing on screen.
+Confirmed in code, not from the picture. **OPEN**.
+
+- **Player**: `src/players.c:48` sets the collider to `{14.0f, false}` — radius
+  14, so a **28 px** hitbox diameter. `src/players.c:57-67` loads the 32 px
+  `player.png` at `.scale = 0.5f`, and `sprite_draw()`
+  (`src/graphics/sprite.c:217-221`) draws `src.w * scale` centred, so the
+  player is drawn **16 px** wide. The hitbox is **1.75x the sprite**.
+- **Zombie**: `src/world/waves.c:206` picks `size = 10..15`, sets the collider
+  radius to exactly `size` (`:243`) and the sprite scale to `size / 16.0f`
+  (`:223`) on the same 32 px art, drawing `32 * size/16 = 2 * size` — exactly
+  the collider diameter. Zombies are self-consistent; only the player is not.
+- **Impact**: zombies damage the player from ~6 px outside the player's visible
+  body on every side. In a game whose whole loop is dodging a melee swarm, the
+  player is hit by things that visibly miss. It also makes the protagonist the
+  smallest sprite in their own game, which is what made it visible at all.
+- **Two different fixes, with very different risk**:
+  1. *Render-only* — raise the player's sprite scale to `28/32 = 0.875` so the
+     drawing matches the hitbox it already has. Touches `CSprite.scale`, which
+     `render.c` reads and nothing in the simulation does, so the SP determinism
+     references cannot move. Does not change difficulty by one pixel.
+  2. *Simulation* — shrink the collider to match the 16 px art. This makes the
+     player strictly harder to hit, i.e. it **changes game balance**, and it
+     moves the seed-42 references, so it needs a deliberate re-baseline.
+  Fix 1 is the one taken (ticket G2): it removes the unfairness without
+  touching balance or determinism. If the owner would rather the player stayed
+  physically small, fix 2 is the alternative and the re-baseline is the cost.
+- **Not caused by this sprint.** The two sizing conventions were introduced
+  independently and neither is wrong on its own; they were simply never
+  compared.
+
+## B55. Snapshot flat-shape diameter ignores `CSprite.scale`
+
+Found 2026-11-20 by the PM while fixing B54. **OPEN** — not fixed with B54 on
+purpose; see below.
+
+- `src/net/net_snapshot.c:175-205` computes the wire diameter two different
+  ways. The **textured** branch is correct: `diam = cs->scale * base_px`, with
+  a comment explaining that scale is texture-relative while the diameter is
+  not. The **flat-shape** branch (`:198-203`) takes `rect.w` (or
+  `circle.radius * 2`) **raw, with no `* cs->scale`** — yet `sprite_draw()`
+  draws flat shapes at `rect.w * scale` (`src/graphics/sprite.c:147-148`).
+- **Consequence**: for any flat-shape entity whose `CSprite.scale != 1.0`, the
+  host draws one size and tells the client another. The player is exactly such
+  an entity whenever its texture is missing: the host draws
+  `16 * scale` px and puts `16` on the wire.
+- **Why it was not fixed alongside B54**: the flat branch is the fallback for
+  *every* entity type, so correcting it moves the wire `size_q` for bullets,
+  items and anything else untextured. That is a replication-surface change and
+  wants the two-instance `--host`/`--join` check that `AGENTS.md` requires,
+  which no one is staffed to run this sprint. It is also invisible in practice
+  today: the flat path is taken when assets fail to load, and headless draws
+  nothing at all.
+- **When fixed**: `tests/tests.c` pins `player_e.size_q == 32` from exactly
+  this path; that assertion becomes `2 * 16 * scale` and must move in the same
+  commit.
