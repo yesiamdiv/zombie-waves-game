@@ -1,0 +1,92 @@
+# TICKETS — Sprint 7: Windows port, art overhaul, QA automation
+
+Raised 2026-11-20 on owner directive: "test it and run it and automate test it",
+"use a different branch and worktree for each of your agents and use ticket
+systems", "find bugs", "make it look good", "make new assets for the player and
+zombies and also better animations".
+
+The owner then went off-shift ("im taking a long nap now, so you'll have to work
+by yourself"), so this sprint runs **autonomously**: no owner questions, every
+decision recorded here or in `docs/knowledge/` rather than asked.
+
+PM/integrator: the owner's main chat (works in the `main` worktree, integrates).
+This file is the board. It is the durable record; the chat is not. Every ticket
+row gets its status and commit SHA updated as it lands. Bugs found along the way
+are filed in `docs/BUGS.md` with a `B<n>` id and cross-referenced here.
+
+## Lanes
+
+| Lane | Agent | Branch | Worktree |
+|---|---|---|---|
+| W — Windows port & distribution | `winport` | `feature/windows-port` | `worktrees/windows` |
+| A — Art & animation overhaul | `art` | `feature/art-overhaul` | `worktrees/art` |
+| Q — QA automation & bug hunt | `qa` | `feature/qa-automation` | `worktrees/qa` |
+
+Coordination is manual (PM <-> agent prompts + this board + `docs/knowledge/`).
+Intercom-AI was considered and **not** used this sprint: this session has no
+`intercom_*` MCP tools wired, and standing them up needs an interactive MCP
+config the owner would have to approve — impossible while the owner is away.
+Decision recorded so it is not re-litigated.
+
+## Platform context (why this sprint exists)
+
+The last Windows build in this repo was `build/` dated **2026-09-18**, a 32-bit
+MSVC configure predating the net, assets, audio, animation and effects work.
+Nothing merged since then has ever been compiled on Windows. The known POSIX
+dependencies are small and enumerated in W2/W3/W4.
+
+## Owner decisions for this sprint (2026-11-20)
+
+- **B50 / art direction**: *richer pixel art in the same style*. Keep the 16px
+  top-down silhouette and the procedural `tools/gen_assets.py` pipeline; raise
+  quality inside it. Do **not** change the base grid size and do **not** hand
+  author PNGs outside the generator — both were offered and declined.
+- **B49 / wave timeout**: *make stragglers hunt the player*. Replace the silent
+  force-destroy with an enrage: at the timeout, surviving zombies get a speed and
+  aggro boost plus a visible tint, and the wave resolves through gameplay.
+
+## W — Windows port & distribution (agent `winport`)
+
+| ID | Task | Status | Commit |
+|---|---|---|---|
+| W1 | `PROJECT_WARNINGS` is GCC-only (`-Wall -Wextra -Werror`). MSVC takes `-Wall` as `/Wall` and silently drops the rest (D9002), so the "zero warnings" gate means nothing on Windows. Make the flag set generator-aware (`/W4 /WX` + targeted disables for MSVC) without changing the GCC/Clang flags. | TODO | |
+| W2 | `__attribute__((unused))` at `src/systems/render.c:17,21,25` is a hard compile break on MSVC. Introduce one portable `ZW_UNUSED` macro in a shared header and use it. | TODO | |
+| W3 | `clock_gettime(CLOCK_MONOTONIC, ...)` and `nanosleep()` in `tests/net_spike.c` (`:131,:405,:463`) and `tests/net_test.c` (`:52,:59,:352`) do not exist in MSVC's CRT. Add a small portable timing shim (monotonic-now + sleep) used by both tests. | TODO | |
+| W4 | `tests/tests.c:6` includes `<sys/stat.h>` and creates its scratch dir with the POSIX `mkdir(path, mode)` two-argument form. Make the scratch-dir creation portable. | TODO | |
+| W5 | Full green Windows gate: configure + build with zero warnings in project sources, `ctest` 3/3 (net_spike, net_loopback, core_tests), `zombie_tests` green, `python tools/gen_assets.py --verify` clean. Record the Windows numbers in `docs/knowledge/gate-baseline.md` as a **separate platform section** — do not overwrite the Linux reference. | TODO | |
+| W6 | Runtime on Windows: a real windowed run must show the menu with visible text, then the world and HUD. `docs/FUTURE_IDEAS.md` already lists the suspect list from the old report (renderer creation flags, colour channel order, asset path/cwd, high-DPI). Reproduce first, then fix; every fix behind a platform `#ifdef`, never a branch the sim can observe. | TODO | |
+| W7 | Determinism parity: the seed-42 SP events log must be byte-identical **between two Windows runs**. Cross-platform byte-identity with Linux is a separate question — measure it and report, do not force it. | TODO | |
+| W8 | Release zips (owner request, `docs/FUTURE_IDEAS.md` 2026-11-19): a GitHub Actions workflow building on `ubuntu-latest` + `windows-latest` and attaching both archives to a tag. Must ship the DLLs and `assets/` beside the exe. | TODO | |
+
+## A — Art & animation overhaul (agent `art`)
+
+| ID | Task | Status | Commit |
+|---|---|---|---|
+| A1 | Player sprite redesign inside `gen_assets.py`: readable silhouette at gameplay size, 3-tone shading, clear facing. Same 16px base grid. | TODO | |
+| A2 | Zombie sprite redesign + visual variants (e.g. walker / brute / fast) so a crowd does not read as one repeated blob. Variants must not change collision or draw size unless re-baselined in the same commit. | TODO | |
+| A3 | Walk cycle overhaul: more frames, real limb swing and body bob, so motion reads as walking. This is the core of B50. | TODO | |
+| A4 | Idle/attack frames if the animation transport supports them (`docs/knowledge/animation-transport.md`, design A) — confirm against the transport before adding frames. | TODO | |
+| A5 | `tools/gen_assets.py --verify` stays clean, and the declared texture count moves only as a deliberate re-baseline **in the same commit**, per `docs/knowledge/asset-verify-invariants.md` and `docs/VERSIONING.md`. | TODO | |
+| A6 | Close B50 as `unproven` until the owner looks at it on screen (`docs/SYSTEM_DESIGN_RULES.md` §4). Headless gates cannot see art. | TODO | |
+
+## Q — QA automation & bug hunt (agent `qa`)
+
+| ID | Task | Status | Commit |
+|---|---|---|---|
+| Q1 | Windows smoke/gate script (PowerShell or Python, runnable from a clean checkout) that runs the whole verification ritual and prints a pass/fail summary. The ritual in `AGENTS.md` is written in `sh` with `./build/...` paths that do not exist on Windows. | TODO | |
+| Q2 | Soak/fuzz headless runs: long runs, many seeds, odd flag combinations, looking for crashes, asserts, leaks and non-termination. File every finding in `docs/BUGS.md`. | TODO | |
+| Q3 | Automated determinism harness: N seeds x 2 runs each, diffed, as a single command — so the invariance gate stops being a hand-run ritual. | TODO | |
+| Q4 | Adversarial bug hunt across the merged systems (net, shop/economy, waves, items, effects). Prefer reproducible headless repros; findings policy per `docs/knowledge/qa-findings-policy.md`. | TODO | |
+| Q5 | B49 enrage behaviour (owner decision above) — verify the wave timeout no longer silently deletes zombies, and that the SP seed-42 references are **unchanged** (the gate runs are 25s, the timeout is at 60s, so a correct change cannot move them). | TODO | |
+
+## Gameplay tickets owned by the PM/integrator
+
+| ID | Task | Status | Commit |
+|---|---|---|---|
+| G1 | B49 implementation: replace the silent force-destroy in `src/world/waves.c` (`WAVE_MAX_DURATION`, `waves_update()`) with the enrage behaviour the owner chose. Keep the soft-lock guarantee: the wave must still be able to end. | TODO | |
+
+## Non-negotiable for every lane
+
+The single-player byte-identity gate in `AGENTS.md` still applies, and on
+Windows it is a *new* measurement, not an assumption. Anything visual or audible
+is `unproven` until a human looks or listens — write `unproven`, not `fixed`.
