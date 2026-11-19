@@ -1205,3 +1205,29 @@ Confirmed in code, not from the picture. **OPEN**.
 - **Not caused by this sprint.** The two sizing conventions were introduced
   independently and neither is wrong on its own; they were simply never
   compared.
+
+## B55. Snapshot flat-shape diameter ignores `CSprite.scale`
+
+Found 2026-11-20 by the PM while fixing B54. **OPEN** — not fixed with B54 on
+purpose; see below.
+
+- `src/net/net_snapshot.c:175-205` computes the wire diameter two different
+  ways. The **textured** branch is correct: `diam = cs->scale * base_px`, with
+  a comment explaining that scale is texture-relative while the diameter is
+  not. The **flat-shape** branch (`:198-203`) takes `rect.w` (or
+  `circle.radius * 2`) **raw, with no `* cs->scale`** — yet `sprite_draw()`
+  draws flat shapes at `rect.w * scale` (`src/graphics/sprite.c:147-148`).
+- **Consequence**: for any flat-shape entity whose `CSprite.scale != 1.0`, the
+  host draws one size and tells the client another. The player is exactly such
+  an entity whenever its texture is missing: the host draws
+  `16 * scale` px and puts `16` on the wire.
+- **Why it was not fixed alongside B54**: the flat branch is the fallback for
+  *every* entity type, so correcting it moves the wire `size_q` for bullets,
+  items and anything else untextured. That is a replication-surface change and
+  wants the two-instance `--host`/`--join` check that `AGENTS.md` requires,
+  which no one is staffed to run this sprint. It is also invisible in practice
+  today: the flat path is taken when assets fail to load, and headless draws
+  nothing at all.
+- **When fixed**: `tests/tests.c` pins `player_e.size_q == 32` from exactly
+  this path; that assertion becomes `2 * 16 * scale` and must move in the same
+  commit.

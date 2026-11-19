@@ -2830,7 +2830,13 @@ static void test_net_snapshot_build(void) {
     /* size_q is a world diameter in half units: 2*size. */
     CHECK(zombie_e.size_q > 0);
     CHECK(zombie_e.size_q / 4.0f >= 10.0f && zombie_e.size_q / 4.0f <= 15.0f);
-    /* The player is drawn as a 16-unit square at scale 0.5 -> diameter 16. */
+    /* The player here is UNTEXTURED: this test runs headless, where the asset
+     * manager never loads, so the sprite stays the flat 16x16 fallback rect
+     * and net_snapshot takes its flat-shape branch -- which reports rect.w
+     * directly and, unlike the textured branch, does NOT multiply by
+     * CSprite.scale (see B55). So this value is 32 and is deliberately
+     * unaffected by the B54/G2 scale fix, which only moves the TEXTURED draw
+     * size. If B55 is ever fixed this becomes 2 * 16 * scale. */
     CHECK(player_e.size_q == 32);
     /* Headless has no asset manager, so nothing is textured and the host must
      * faithfully report NET_ART_NONE (a flat shape) rather than claim art it
