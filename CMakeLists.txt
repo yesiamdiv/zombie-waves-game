@@ -71,13 +71,40 @@ set(ENET_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ENET_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(ENET_BUILTIN_NAT OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(ENet)
+# SDL_image is used for exactly one thing: IMG_LoadTexture() on our own PNGs
+# (src/assets/asset_manager.c:85). Left at its defaults it is wildly more than
+# that, and on Windows it was fatal:
+#
+# FetchContent clones submodules by default, and SDL_image's submodule tree
+# vendors aom, dav1d, libavif, libjxl (which itself pulls brotli, highway,
+# lcms, libpng, sjpeg, skcms, zlib and a testdata repo), libtiff and libwebp.
+# That is gigabytes of AV1 and JPEG-XL codec source for a game that loads flat
+# RGBA sprites, and the nested paths (external/libjxl/third_party/...) blow
+# past Windows' MAX_PATH, so the populate step died with MSB8066 / exit -1 and
+# the Windows configure never completed at all.
+#
+# GIT_SUBMODULES "" fetches none of them, and the format options below keep
+# every decoder that would need an external library switched off.
+# SDLIMAGE_PNG_LIBPNG OFF selects SDL_image's built-in PNG decoder instead of
+# vendored libpng, which is what makes the submodule-free build self-sufficient.
+# This is not a Windows-only workaround: it cuts the same waste on Linux, and
+# PNG decoding of our generated sprites is unchanged either way.
 FetchContent_Declare(
     SDL_image
     GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
     GIT_TAG        main
     GIT_SHALLOW    TRUE
+    GIT_SUBMODULES ""
 )
 set(SDLIMAGE_SAMPLES OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_TESTS OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_INSTALL OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_VENDORED OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_PNG_LIBPNG OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_AVIF OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_JXL OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_TIF OFF CACHE BOOL "" FORCE)
+set(SDLIMAGE_WEBP OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL_image)
 
 # The documented gate ("clean Release build with -Werror, zero warnings in
