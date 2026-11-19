@@ -1245,3 +1245,86 @@ Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
   otherwise, so the same class of failure can return the first time this
   project spawns a thread that holds a `World` or a `NetSnapshot`.
 - **After the fix**: `ctest -C Debug` 3/3 on Windows.
+
+## B52. The events log is opened in text mode, so Windows writes CRLF into a byte-compared artifact
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7); predicted by the PM
+and then measured. **FIXED** — see commit below.
+
+- **Symptom**: the single-player events log written on Windows was exactly one
+  byte per line larger than the same simulation's log written on Linux, so no
+  cross-platform byte comparison could ever succeed. Measured:
+  **144170 bytes / 1829 lines**, with CRLF on all 1829 lines.
+- **Root cause**: `src/events/event_bus.c:58` opened the recorder with
+  `fopen(path, "w")`. On Windows that is *text* mode and the CRT translates
+  every `'
+'` the recorder writes into `"
+"`. The events log is not prose:
+  the invariance gate diffs two runs of it byte for byte and
+  `docs/knowledge/gate-baseline.md` declares a byte count for it, so a
+  translation layer in the middle is a correctness problem, not a cosmetic one.
+- **Fix**: `fopen(path, "wb")`. On POSIX `"w"` and `"wb"` are identical — there
+  is no translation layer to turn off — so the Linux output cannot move, which
+  is exactly why the fix is safe. Measured after the fix:
+  **142341 bytes / 1829 lines**, zero CRLF, and two same-seed runs still
+  byte-identical to each other. The 1829-byte delta is accounted for exactly:
+  144170 − 1829 = 142341.
+- **Deliberately NOT changed**: `src/core/log.c:30` opens the human-readable
+  log the same way. That file is prose, is not part of any gate, is never
+  byte-compared, and CRLF is the friendlier choice for a Windows user opening
+  it in an editor. Left as text mode on purpose.
+- **What this does NOT fix**: the residual **+16403 bytes / +226 lines** gap
+  against the Linux reference. That is a genuine simulation divergence with a
+  different cause — see B63.
+
+## B63. Cross-platform determinism is structurally impossible: the simulation draws from libc `rand()`
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7). **OPEN** — not
+fixable in this lane; it needs an owner/PM design decision because any fix
+re-baselines the Linux reference.
+
+- **Symptom**: after B52 removed line-ending translation, the seed-42
+  unlimited-ammo single-player events log still differs from the Linux
+  reference by **+16403 bytes / +226 lines** (Windows **142341 / 1829**, Linux
+  **125938 / 1603**). Two Windows runs remain byte-identical *to each other*,
+  so same-platform determinism is intact; it is the *cross-platform* identity
+  that cannot hold.
+- **Root cause**: `--seed=N` calls `srand()` (`src/main.c:1820,1822`) and the
+  simulation then draws from `rand()` at **34 sites across 13 files**,
+  including `src/ai/bot.c` (the bot's strafe cadence), `src/world/waves.c`
+  (spawn ring angle, radius, zombie variant and size, spawn-point choice) and
+  `src/items/items.c` (loot type). `rand()` and `srand()` are
+  **implementation-defined**: the standard fixes neither the algorithm nor
+  `RAND_MAX`. Measured directly on this machine with a standalone probe:
+
+  | | `RAND_MAX` | `srand(42)`, first values |
+  |---|---|---|
+  | MSVC CRT (x64) | `32767` | 175, 400, 17869, 30056, 16083, … |
+  | glibc | `2147483647` | 71876166, 708592740, 1483128881, … |
+
+  Different algorithm, different period, and a `RAND_MAX` four orders of
+  magnitude apart. `rand() % 360` therefore yields a different angle on the
+  very first zombie spawn, and the two simulations diverge from that spawn
+  onward. The observed +226 lines is the downstream consequence: a different
+  bot strafe cadence means a different number of `PLAYER_SHOT`s (68 on
+  Windows), each of which adds its own `ENTITY_SPAWN` and
+  `POSITION_SAMPLE` lines.
+- **Why this was never visible**: the project has only ever had one libc.
+  `src/items/items.c:13` already carries the comment "rand() order is
+  load-bearing for single-player determinism" — the *order* was understood to
+  matter, but the *values* being implementation-defined was not, because there
+  was nothing to compare against.
+- **Not a platform `#ifdef` matter.** There is no Windows-side fix: MSVC's
+  `rand()` is conforming. The only real fix is for the project to own its
+  generator — a small explicit PRNG (xorshift / PCG) seeded by `--seed`,
+  replacing `rand()` at the 34 sites — which would make the log identical on
+  every platform *and* **re-baseline both Linux references**
+  (125938/1603 unlimited, 129504/1648 limited). Per `AGENTS.md` that is a
+  deliberate, announced re-baseline, so the W lane recorded the finding and
+  did not ship it.
+- **Multiplayer impact: none today**, and this is worth stating because it
+  looks alarming. Per `docs/SYSTEM_DESIGN_RULES.md` the host is the single
+  source of truth and a client only consumes host state, so a Windows client
+  joining a Linux host never runs its own `rand()`-driven simulation. The risk
+  is latent, not live: it would become real the moment anything moves to
+  lockstep or client-side prediction of a `rand()`-driven system.
