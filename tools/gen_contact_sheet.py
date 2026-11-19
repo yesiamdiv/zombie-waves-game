@@ -120,11 +120,25 @@ def cell_of(frame, px, rgb=None, on_checker=True):
     return base
 
 
-def strip(rows, px, title, notes=()):
-    """`rows` is [(row label, [frames], tint-or-None), ...]."""
+def text_w(text, size):
+    try:
+        return int(ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+                   .textlength(text, font=font(size)))
+    except Exception:
+        return len(text) * size * 6 // 10
+
+
+def strip(rows, px, title, notes=(), col_labels=None):
+    """`rows` is [(row label, [frames], tint-or-None), ...].
+
+    `col_labels` names the columns; by default they are frame numbers. The
+    sheet is widened to fit the title and the notes, because a review sheet
+    whose heading runs off the edge is a review sheet that hides something."""
     pad, gap, head, lab_w = 18, 8, 54, 190
     ncols = max(len(f) for _, f, _ in rows)
     w = pad * 2 + lab_w + ncols * px + (ncols - 1) * gap
+    w = max([w, pad * 2 + text_w(title, 22)]
+            + [pad * 2 + text_w(n, 14) for n in notes])
     note_h = 22 * len(notes) + (10 if notes else 0)
     h = pad * 2 + head + len(rows) * (px + gap) + note_h
     sheet = Image.new("RGBA", (w, h), BG)
@@ -133,7 +147,8 @@ def strip(rows, px, title, notes=()):
     y = pad + head - 24
     for i in range(ncols):
         x = pad + lab_w + i * (px + gap)
-        label(sheet, (x + 2, y), "frame %d" % i, 14, DIM)
+        name = col_labels[i] if col_labels and i < len(col_labels)             else "frame %d" % i
+        label(sheet, (x + 2, y), name, 14, DIM)
 
     y = pad + head
     for name, frames, rgb in rows:
@@ -301,11 +316,12 @@ def main():
         made.append(save(strip(
             [("idle / fallback art", flat, None),
              ("same, tinted", flat, (0.55, 0.50, 0.42))],
-            px, "Idle (non-animated fallback) sprites: " +
-            ", ".join(i[0] for i in idles),
-            ["These are the plain <name>.png files used when the walk cycle is "
-             "missing, and for the player they are byte-identical to walk "
-             "frame 0."]), out, "idles.png"))
+            px, "Idle (non-animated fallback) sprites",
+            ["These are the plain <name>.png files the game falls back to when "
+             "the walk cycle is missing, and each is walk frame 0 exactly.",
+             "Judge: is each one a distinct creature at a glance, and does the "
+             "player read as facing you?"],
+            col_labels=[i[0] for i in idles]), out, "idles.png"))
 
     # ---- before / after against another revision ----
     if args.compare:
