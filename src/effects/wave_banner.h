@@ -19,7 +19,7 @@
  *
  * Cosmetic only, and driven from the host's GE_WAVE_START (relayed to clients
  * verbatim), so both screens announce the same wave at the same moment.
- * Nothing here draws from the global rand() stream: the twinkle directions are
+ * Nothing here draws from the global zw_rand() stream: the twinkle directions are
  * fixed by shard index, so they are also identical on every machine.
  */
 

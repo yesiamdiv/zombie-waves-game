@@ -1,3 +1,4 @@
+#include "core/rng.h"
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <stdbool.h>
@@ -370,7 +371,7 @@ static bool begin_net_session(void) {
     }
 
     if (game.net_host_mode) {
-        uint32_t seed = game.net_seed != 0 ? game.net_seed : (uint32_t)rand();
+        uint32_t seed = game.net_seed != 0 ? game.net_seed : (uint32_t)zw_rand();
         /* Advertise the chosen map so every client builds this exact world
          * (CROSS_BRANCH_CONFLICTS.md 5). */
         uint8_t map_index = (uint8_t)game.map_select.selected_option;
@@ -920,8 +921,8 @@ static void update(float dt) {
                 items_count_alive(&game.ecs) < MAX_ALIVE_ITEMS) {
                 game.item_spawn_timer = 0;
                 Vec2 item_pos;
-                item_pos.x = 200.0f + (float)(rand() % (int)(game.world.world_pixel_w - 400));
-                item_pos.y = 200.0f + (float)(rand() % (int)(game.world.world_pixel_h - 400));
+                item_pos.x = 200.0f + (float)(zw_rand() % (int)(game.world.world_pixel_w - 400));
+                item_pos.y = 200.0f + (float)(zw_rand() % (int)(game.world.world_pixel_h - 400));
                 if (world_is_walkable(&game.world, item_pos.x, item_pos.y)) {
                     items_spawn_random(&game.ecs, item_pos);
                 }
@@ -1847,9 +1848,9 @@ static void parse_args(int argc, char *argv[]) {
         } else if (strncmp(arg, "--events=", 9) == 0) {
             game.event_log_path = arg + 9;
         } else if (strncmp(arg, "--seed=", 7) == 0) {
-            srand((unsigned int)atoi(arg + 7));
+            zw_srand((unsigned int)atoi(arg + 7));
         } else if (strcmp(arg, "--seed") == 0 && i + 1 < argc) {
-            srand((unsigned int)atoi(argv[++i]));
+            zw_srand((unsigned int)atoi(argv[++i]));
         } else if (strncmp(arg, "--mode=", 7) == 0) {
             const char *m = arg + 7;
             if (strcmp(m, "single") == 0) {
@@ -1960,7 +1961,7 @@ static void parse_args(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-    srand((unsigned int)time(NULL));
+    zw_srand((unsigned int)time(NULL));
 
     log_init("game.log", LOG_DEBUG, LOG_TRACE);
     LOG_INFO("========================================");

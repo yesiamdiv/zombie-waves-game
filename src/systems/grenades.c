@@ -1,4 +1,5 @@
 #include "systems/systems.h"
+#include "core/rng.h"
 #include "events/event_bus.h"
 #include "core/log.h"
 #include <stdlib.h>
@@ -64,16 +65,16 @@ static void explode_grenade(World *ecs, Entity grenade) {
         ecs_add_component(ecs, particle, COMP_SPRITE);
         ecs_add_component(ecs, particle, COMP_PARTICLE);
 
-        float angle = (float)((float)(rand() % 360) * M_PI / 180.0f);
+        float angle = (float)((float)(zw_rand() % 360) * M_PI / 180.0f);
         *ecs_get_position(ecs, particle) = (CPosition){{gpos.x, gpos.y}};
         *ecs_get_particle(ecs, particle) = (CParticle){
-            .lifetime = 0.4f + (float)(rand() % 4) * 0.1f,
+            .lifetime = 0.4f + (float)(zw_rand() % 4) * 0.1f,
             .max_lifetime = 0.8f,
-            .vel = vec2_from_angle(angle, 120.0f + (float)(rand() % 120)),
+            .vel = vec2_from_angle(angle, 120.0f + (float)(zw_rand() % 120)),
             .size_decay = 1.0f
         };
         *ecs_get_sprite(ecs, particle) = (CSprite){
-            .sprite = sprite_circle(4.0f + (float)(rand() % 3), COLOR_ORANGE),
+            .sprite = sprite_circle(4.0f + (float)(zw_rand() % 3), COLOR_ORANGE),
             .scale = 1.0f,
             .base_alpha = 1.0f
         };

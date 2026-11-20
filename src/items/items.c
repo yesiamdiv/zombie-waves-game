@@ -1,4 +1,5 @@
 #include "items/items.h"
+#include "core/rng.h"
 #include "events/event_bus.h"
 #include "graphics/sprite.h"
 #include "core/log.h"
@@ -10,7 +11,7 @@
  * Every item used to start its bob at t = 0, so all the drops of a wave bobbed
  * in perfect unison - the same tell as a whole wave marching in step. The
  * offset is taken from the item's own data (type and spawn position), NOT from
- * rand(): rand() order is load-bearing for single-player determinism (the
+ * zw_rand(): zw_rand() order is load-bearing for single-player determinism (the
  * death burst already draws from it), and a display offset must be
  * reproducible rather than random. Same type at the same spot gives the same
  * phase, which also means host and client agree for free - the offset is baked
@@ -97,7 +98,7 @@ Entity items_spawn(World *ecs, Vec2 pos, ItemType type) {
 }
 
 void items_spawn_random(World *ecs, Vec2 pos) {
-    int type = rand() % ITEM_COUNT;
+    int type = zw_rand() % ITEM_COUNT;
     items_spawn(ecs, pos, (ItemType)type);
 }
 

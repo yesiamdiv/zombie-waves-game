@@ -9,7 +9,7 @@ static bool g_initialized = false;
 
 /* --- private RNG -----------------------------------------------------------
  *
- * Deliberately NOT rand(). The simulation draws from the global stream
+ * Deliberately NOT zw_rand(). The simulation draws from the global stream
  * (waves.c spawn angle/ring/variant/size/jitter, items.c type roll, bot.c
  * strafe), so one cosmetic draw from it shifts every later sim draw and two
  * same-seed runs stop matching -- the single-player byte-identity gate fails

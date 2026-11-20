@@ -1,3 +1,4 @@
+#include "core/rng.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1064,10 +1065,96 @@ static void test_event_stream(void) {
     remove(path);
 }
 
+/* B63: the simulation's RNG stream is a cross-platform contract.
+ *
+ * This is the test the whole PRNG change exists for. Before it, the project
+ * had no way to notice that MSVC and glibc hand out different numbers for the
+ * same seed -- the gate compared two runs on ONE machine, which libc rand()
+ * passes happily while being useless across machines.
+ *
+ * The constants below are not "whatever the code produced". They were computed
+ * from the PCG32 specification independently of this implementation, so if the
+ * two disagree it is this implementation that is wrong. Any platform where
+ * these literals do not reproduce cannot play multiplayer with any other
+ * platform, and this test says so out loud instead of letting zombies quietly
+ * spawn somewhere else. */
+static void test_rng_stream_pinned(void) {
+    static const uint32_t expect[8] = {
+        0xc2f57bd6u, 0x6b07c4a9u, 0x72b7b29bu, 0x44215383u,
+        0xf5af5eadu, 0x68beb632u, 0xcbc7312cu, 0xd5efc7d7u
+    };
+
+    zw_srand(42);
+    bool pinned = true;
+    for (int i = 0; i < 8; i++) {
+        if (zw_rand_u32() != expect[i]) pinned = false;
+    }
+    CHECK(pinned);
+
+    /* Same seed, same sequence -- the property the gate leans on. */
+    zw_srand(42);
+    uint32_t first_pass[16];
+    for (int i = 0; i < 16; i++) first_pass[i] = zw_rand_u32();
+    zw_srand(42);
+    bool repeatable = true;
+    for (int i = 0; i < 16; i++) {
+        if (zw_rand_u32() != first_pass[i]) repeatable = false;
+    }
+    CHECK(repeatable);
+
+    /* Nearby seeds must not give nearby streams. A bare `state = seed` LCG
+     * fails this, and the gate's seed is 42, so seed 43 producing a
+     * near-identical first wave would be an easy mistake to ship. */
+    zw_srand(43);
+    CHECK(zw_rand_u32() == 0xccca5e5fu);
+
+    /* zw_rand() is the rand() drop-in: non-negative, within ZW_RAND_MAX. */
+    zw_srand(7);
+    bool in_range = true;
+    for (int i = 0; i < 4096; i++) {
+        int v = zw_rand();
+        if (v < 0 || v > ZW_RAND_MAX) in_range = false;
+    }
+    CHECK(in_range);
+
+    /* zw_rand_below: inside the half-open range, and total coverage of a small
+     * one. A rotation bug that pinned the low bits would show up here as a
+     * bucket that never fills. */
+    bool below_ok = true;
+    bool seen[6] = {false, false, false, false, false, false};
+    for (int i = 0; i < 4096; i++) {
+        int v = zw_rand_below(6);
+        if (v < 0 || v >= 6) below_ok = false;
+        else seen[v] = true;
+    }
+    for (int i = 0; i < 6; i++) {
+        if (!seen[i]) below_ok = false;
+    }
+    CHECK(below_ok);
+
+    /* n <= 0 must not divide by zero. */
+    CHECK(zw_rand_below(0) == 0);
+    CHECK(zw_rand_below(-5) == 0);
+    CHECK(zw_rand_below(1) == 0);
+
+    /* zw_randf is half-open [0,1): 1.0f exactly would break every caller that
+     * indexes an array by it. */
+    bool unit_ok = true;
+    for (int i = 0; i < 4096; i++) {
+        float f = zw_randf();
+        if (!(f >= 0.0f && f < 1.0f)) unit_ok = false;
+    }
+    CHECK(unit_ok);
+
+    /* Restore the seed main() started the suite with, so adding this test
+     * cannot shift any later test's draws. */
+    zw_srand(42);
+}
+
 #define DET_MAX_SPAWNS 64
 
 static int run_spawn_sim(Vec2 *out, int max_out) {
-    srand(2026);
+    zw_srand(2026);
     World ecs;
     GameWorld world = {0};
     WaveSystem waves;
@@ -3760,13 +3847,13 @@ static void test_audio_sfx_2d(void) {
     CHECK(!audio_sfx_is_2d(AUDIO_SFX_NONE));
 }
 
-/* E1: the popup system must not touch the global rand() stream.
+/* E1: the popup system must not touch the global zw_rand() stream.
  *
  * This is the test that matters most in the effects lane, and the one whose
  * failure is hardest to recognise from its symptom. waves.c draws the spawn
  * angle, ring radius, zombie variant, zombie size, spawn-point index and
- * spawn jitter from global rand(); items.c draws the item type; bot.c draws
- * the strafe. One cosmetic rand() call in a popup therefore shifts every
+ * spawn jitter from global zw_rand(); items.c draws the item type; bot.c draws
+ * the strafe. One cosmetic zw_rand() call in a popup therefore shifts every
  * later sim draw, and the single-player byte-identity gate fails with a diff
  * in zombie positions that looks completely unrelated to floating text.
  *
@@ -3776,11 +3863,11 @@ static void test_audio_sfx_2d(void) {
 static void test_text_popup_no_global_rand(void) {
     text_popup_init();
 
-    srand(12345);
+    zw_srand(12345);
     int expect[8];
-    for (int i = 0; i < 8; i++) expect[i] = rand();
+    for (int i = 0; i < 8; i++) expect[i] = zw_rand();
 
-    srand(12345);
+    zw_srand(12345);
     for (int i = 0; i < 64; i++) {
         text_popup_spawn_damage(100.0f + (float)i, 200.0f, 7 + i);
     }
@@ -3788,7 +3875,7 @@ static void test_text_popup_no_global_rand(void) {
 
     bool stream_intact = true;
     for (int i = 0; i < 8; i++) {
-        if (rand() != expect[i]) stream_intact = false;
+        if (zw_rand() != expect[i]) stream_intact = false;
     }
     CHECK(stream_intact);
 
@@ -4238,6 +4325,7 @@ int tests_run_all(void) {
     test_audio_trigger_table();
     test_audio_health_hurt_vs_heal();
     test_audio_sfx_2d();
+    test_rng_stream_pinned();
     test_text_popup_no_global_rand();
     test_text_popup_lifecycle();
     test_damage_feedback_events();
@@ -4246,7 +4334,7 @@ int tests_run_all(void) {
     test_damage_feedback_hit_flash();
     test_wave_banner();
     /* Last on purpose: it installs a fake asset manager and spawns a zombie,
-     * so it must not perturb rand() or the global for any other test. */
+     * so it must not perturb zw_rand() or the global for any other test. */
     test_net_client_animation_phase_d();
 
     LOG_INFO("========================================");
@@ -4259,7 +4347,7 @@ int tests_run_all(void) {
 int main(void) {
     test_tmp_init();
     log_init(NULL, LOG_DEBUG, LOG_TRACE);
-    srand(42);
+    zw_srand(42);
     int result = tests_run_all();
     log_shutdown();
     return result;

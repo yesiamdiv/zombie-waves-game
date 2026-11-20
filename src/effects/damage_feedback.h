@@ -25,7 +25,7 @@
  *     the same reason, so adding an effect never means editing gameplay code.
  *
  * Like the popup system it consumes, this is cosmetic only: it never writes
- * simulation state and never draws from the global rand() stream. main.c does
+ * simulation state and never draws from the global zw_rand() stream. main.c does
  * not tick it in headless mode, so it cannot perturb the single-player
  * byte-identity gate even in principle.
  */

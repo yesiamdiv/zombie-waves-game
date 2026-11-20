@@ -1,3 +1,4 @@
+#include "core/rng.h"
 #include <SDL3/SDL_blendmode.h>
 #include <SDL3/SDL.h>
 #include "core/compiler.h"
@@ -238,9 +239,9 @@ void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
          * saw dots while the host saw sprites. Now that the snapshot carries
          * art/size_q/tint, this function only reproduces them.
          *
-         * Note what is deliberately NOT here: no rand(), no per-kind size table,
+         * Note what is deliberately NOT here: no zw_rand(), no per-kind size table,
          * no theme lookup. Zombie size and colour variant and pickup subtype
-         * are all things the client cannot know (they are rand()'d or live in
+         * are all things the client cannot know (they are zw_rand()'d or live in
          * an unreplicated component), so they must come from the host. */
         float diameter = (float)e.size_q * 0.5f;
         if (diameter <= 0.0f) {
@@ -399,7 +400,7 @@ void system_cleanup(World *ecs, WaveSystem *waves, Player *players, int player_c
             /* Drop a pickup at the kill site (near the action) so the heal
              * economy is actually reachable by the bot/player (B5). Gated by
              * the live-item cap so long survival runs stay bounded (B6). */
-            if ((rand() % 100) < 40 && items_count_alive(ecs) < MAX_ALIVE_ITEMS) {
+            if ((zw_rand() % 100) < 40 && items_count_alive(ecs) < MAX_ALIVE_ITEMS) {
                 items_spawn_random(ecs, pos->pos);
             }
 
@@ -415,13 +416,13 @@ void system_cleanup(World *ecs, WaveSystem *waves, Player *players, int player_c
                 float angle = (float)((float)p / 8.0f * 2.0f * M_PI);
                 *ecs_get_position(ecs, particle) = (CPosition){{pos->pos.x, pos->pos.y}};
                 *ecs_get_particle(ecs, particle) = (CParticle){
-                    .lifetime = 0.5f + (float)(rand() % 5) * 0.1f,
+                    .lifetime = 0.5f + (float)(zw_rand() % 5) * 0.1f,
                     .max_lifetime = 1.0f,
-                    .vel = vec2_from_angle(angle, 80.0f + (float)(rand() % 60)),
+                    .vel = vec2_from_angle(angle, 80.0f + (float)(zw_rand() % 60)),
                     .size_decay = 1.0f
                 };
                 *ecs_get_sprite(ecs, particle) = (CSprite){
-                    .sprite = sprite_circle(3.0f + (float)(rand() % 3), COLOR_DARK_RED),
+                    .sprite = sprite_circle(3.0f + (float)(zw_rand() % 3), COLOR_DARK_RED),
                     .scale = 1.0f,
                     .base_alpha = 1.0f
                 };

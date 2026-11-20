@@ -1,4 +1,5 @@
 #include "world/waves.h"
+#include "core/rng.h"
 #include "events/event_bus.h"
 #include "config.h"
 #include "core/log.h"
@@ -157,9 +158,9 @@ static bool spawn_point_near_player(World *ecs, GameWorld *world,
     if (!player_found) return false;
 
     for (int attempt = 0; attempt < 10; attempt++) {
-        float angle = (float)((float)(rand() % 360) * M_PI / 180.0f);
+        float angle = (float)((float)(zw_rand() % 360) * M_PI / 180.0f);
         float radius = SPAWN_RING_MIN +
-                       (float)(rand() % (int)(SPAWN_RING_MAX - SPAWN_RING_MIN));
+                       (float)(zw_rand() % (int)(SPAWN_RING_MAX - SPAWN_RING_MIN));
         Vec2 candidate = vec2_add(player_pos, vec2_from_angle(angle, radius));
 
         candidate.x = clampf(candidate.x, 32.0f, world->world_pixel_w - 32.0f);
@@ -200,10 +201,10 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
     };
 
     /* Vary zombie colors/sizes; tints resolve through the map's theme. */
-    int variant = rand() % 3;
+    int variant = zw_rand() % 3;
     SDL_FColor color = theme_get(theme)->zombie_tints[variant];
 
-    float size = 10.0f + (float)(rand() % 6);
+    float size = 10.0f + (float)(zw_rand() % 6);
     /* R13 merge fix (B15): the merge dropped the zombie texture, leaving a flat
      * circle. Restore it; the theme tint keeps the per-variant palette. */
     Sprite zs = sprite_circle(size, color);
@@ -228,7 +229,7 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
      * strongest "this is fake" tell in the game. The STARTING FRAME is hashed
      * from the entity's slot; the period is unchanged, so the offset lasts for
      * the zombie's whole life. Display-only: the frame is what the snapshot
-     * names, so a client inherits the stagger without a wire field. No rand() -
+     * names, so a client inherits the stagger without a wire field. No zw_rand() -
      * the seed sequence is load-bearing for single-player determinism. */
     uint32_t phase = e * 2654435761u;
     phase ^= phase >> 15;
@@ -315,10 +316,10 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
             Vec2 spawn_pos;
             if (!spawn_point_near_player(ecs, world, players, player_count, &spawn_pos)) {
                 /* fallback: fixed edge point */
-                int idx = rand() % ws->spawn_point_count;
+                int idx = zw_rand() % ws->spawn_point_count;
                 spawn_pos = ws->spawn_points[idx];
-                spawn_pos.x += (float)(rand() % 100 - 50);
-                spawn_pos.y += (float)(rand() % 100 - 50);
+                spawn_pos.x += (float)(zw_rand() % 100 - 50);
+                spawn_pos.y += (float)(zw_rand() % 100 - 50);
             }
 
             Entity z = waves_spawn_zombie(ecs, spawn_pos, world->theme);

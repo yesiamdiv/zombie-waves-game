@@ -125,7 +125,7 @@ static bool ensure_text_texture(SDL_Renderer *renderer, TTF_Font *font,
 }
 
 /* The twinkle: shards thrown off the banner as it leaves, each on a direction
- * fixed by its index. Deterministic by construction -- no rand() call, so this
+ * fixed by its index. Deterministic by construction -- no zw_rand() call, so this
  * cannot perturb the simulation stream and every machine throws the same
  * shards. */
 static void draw_twinkle(SDL_Renderer *renderer, float cx, float cy,
