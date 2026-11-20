@@ -23,6 +23,7 @@ static const char *event_type_names[GE_COUNT] = {
     [GE_SHOP_PURCHASE]   = "SHOP_PURCHASE",
     [GE_HOST_PAUSE]      = "HOST_PAUSE",
     [GE_EXPLOSION]       = "EXPLOSION",
+    [GE_WAVE_ENRAGE]     = "WAVE_ENRAGE",
 };
 
 static const char *event_kind_names[GEK_COUNT] = {
@@ -54,7 +55,18 @@ EventBus *event_bus_init(const char *path) {
     bus->start_wall_time = SDL_GetTicks() / 1000.0;
 
     if (path) {
-        bus->file = fopen(path, "w");
+        /* B52: binary mode, deliberately. The events log is a machine-compared
+         * artifact - the single-player invariance gate diffs two runs of it
+         * byte for byte, and docs/knowledge/gate-baseline.md declares a byte
+         * count. In text mode a Windows CRT translates every '
+' written
+         * below into "
+", so the same simulation produces a file one byte
+         * per line larger on Windows than anywhere else and no cross-platform
+         * byte comparison can ever succeed. "wb" suppresses that translation.
+         * On POSIX "w" and "wb" are identical - there is no translation layer
+         * to turn off - so this cannot move the Linux output. */
+        bus->file = fopen(path, "wb");
         if (!bus->file) {
             LOG_ERROR("Failed to open event log '%s'", path);
         } else {

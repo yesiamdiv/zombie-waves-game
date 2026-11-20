@@ -5,6 +5,13 @@
 #include "events/event_bus.h"
 #include <string.h>
 
+/* B54/G2: the player's physical size, declared once. The sprite scale in
+ * spawn_player_entity() is derived from this so the drawing and the hitbox
+ * can never drift apart again -- which is exactly how they drifted in the
+ * first place, as two independent literals. Zombies already work this way
+ * (src/world/waves.c derives both from `size`). */
+#define PLAYER_COLLIDER_RADIUS 14.0f
+
 void players_reset(Player *players, int count) {
     for (int i = 0; i < count; i++) {
         memset(&players[i], 0, sizeof(Player));
@@ -45,7 +52,7 @@ static Entity spawn_player_entity(World *ecs, Vec2 pos, const SDL_FColor *color)
     *ecs_get_position(ecs, e) = (CPosition){{pos.x, pos.y}};
     *ecs_get_velocity(ecs, e) = (CVelocity){{0, 0}, 200.0f};
     *ecs_get_health(ecs, e) = (CHealth){200.0f, 200.0f};
-    *ecs_get_collider(ecs, e) = (CCollider){14.0f, false};
+    *ecs_get_collider(ecs, e) = (CCollider){PLAYER_COLLIDER_RADIUS, false};
 
     SDL_FColor pc = color ? *color : COLOR_BLUE;
     /* R13 merge: restore the assets texture path. `feature/multiplayer` had
@@ -57,13 +64,27 @@ static Entity spawn_player_entity(World *ecs, Vec2 pos, const SDL_FColor *color)
     Sprite ps = sprite_rect(16.0f, 16.0f, pc);
     SDL_Texture *player_tex = sprite_tex("textures/entities/player.png");
     if (player_tex) {
-        /* 32px art at scale 0.5 renders as the original 16x16 world unit. */
         ps = sprite_texture(player_tex);
         ps.color = pc;
     }
+    /* B54/G2: the player used to draw at scale 0.5 -- 32px art rendered 16px
+     * wide -- while colliding at radius 14, a 28px hitbox. The player was hit
+     * by zombies that visibly missed by ~6px on every side, and was the
+     * smallest sprite in their own game.
+     *
+     * Zombies have never had this problem: waves.c derives BOTH the collider
+     * radius and the sprite scale from the same `size`, so a zombie's drawing
+     * is exactly its hitbox. This makes the player follow the same rule:
+     * PLAYER_COLLIDER_RADIUS * 2 / 32px art = 0.875.
+     *
+     * Deliberately the render-only half of the fix. CSprite.scale is read by
+     * render.c and by nothing in the simulation, so the SP determinism
+     * references cannot move and the difficulty does not change by one pixel.
+     * Shrinking the collider instead would have been a balance change
+     * requiring a re-baseline (see docs/BUGS.md B54). */
     *ecs_get_sprite(ecs, e) = (CSprite){
         .sprite = ps,
-        .scale = 0.5f,
+        .scale = (PLAYER_COLLIDER_RADIUS * 2.0f) / 32.0f,
         .base_alpha = 1.0f
     };
     return e;

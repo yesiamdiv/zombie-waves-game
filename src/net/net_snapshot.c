@@ -60,7 +60,7 @@ static uint8_t net_clamp_u8(int v) {
  *
  * The comment above used to say "Visuals are reconstructed by the client from
  * `kind` (deterministic factories on both sides)". That was the bug: it was
- * never deterministic, because zombie size is rand()'d and the colour variant
+ * never deterministic, because zombie size is zw_rand()'d and the colour variant
  * is a waves.c local that never reaches the ECS. The host now transmits
  * appearance (R13-I5, docs/NET_PROTOCOL_DESIGN.md). The slot map lets each
  * client pick its own player out of the entity list. */

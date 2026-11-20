@@ -169,7 +169,7 @@ void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y,
             int count = 0;
 
             for (int i = 0; i <= segments; i++) {
-                float angle = (float)i / (float)segments * 2.0f * M_PI + rot;
+                float angle = (float)((float)i / (float)segments * 2.0f * M_PI + rot);
                 points_x[count] = x + cosf(angle) * radius;
                 points_y[count] = y + sinf(angle) * radius;
                 count++;
@@ -184,8 +184,8 @@ void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y,
             /* fill with smaller lines (approximate) */
             for (int r = (int)radius; r > 0; r -= 2) {
                 for (int i = 0; i < segments; i++) {
-                    float angle1 = (float)i / (float)segments * 2.0f * M_PI + rot;
-                    float angle2 = (float)(i + 1) / (float)segments * 2.0f * M_PI + rot;
+                    float angle1 = (float)((float)i / (float)segments * 2.0f * M_PI + rot);
+                    float angle2 = (float)((float)(i + 1) / (float)segments * 2.0f * M_PI + rot);
                     SDL_RenderLine(renderer,
                         x + cosf(angle1) * r, y + sinf(angle1) * r,
                         x + cosf(angle2) * r, y + sinf(angle2) * r);

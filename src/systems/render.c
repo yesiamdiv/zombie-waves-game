@@ -1,5 +1,7 @@
+#include "core/rng.h"
 #include <SDL3/SDL_blendmode.h>
 #include <SDL3/SDL.h>
+#include "core/compiler.h"
 #include "systems/systems.h"
 #include "net/net_mirror.h"
 #include "events/event_bus.h"
@@ -12,17 +14,22 @@ static float g_spawn_first_t[ECS_MAX_ENTITIES];
 static uint8_t g_spawn_first_t_set[ECS_MAX_ENTITIES];
 #define SPAWN_IN_DURATION 0.15f
 
+/* B49: how far an enraged straggler is pushed toward red by
+ * sprite_hit_tint(). Deliberately below the hit flash's own range so being
+ * shot still reads as a distinct, brighter event on an already-red zombie. */
+#define ENRAGE_TINT 0.55f
+
 /* P3: muzzle flash from relayed/shoot events (procedural, no PNG). */
 #define MUZZLE_MAX 32
-__attribute__((unused)) static struct { float x,y,ang,life,ttl; } g_muzzle[MUZZLE_MAX];
+ZW_UNUSED static struct { float x,y,ang,life,ttl; } g_muzzle[MUZZLE_MAX];
 
 /* P5: sword trail history (render-only). */
 #define SWORD_TRAIL_LEN 8
-__attribute__((unused)) static struct { Entity sword; float ang[SWORD_TRAIL_LEN]; int count; int idx; float len[SWORD_TRAIL_LEN]; float w[SWORD_TRAIL_LEN]; float ox[SWORD_TRAIL_LEN]; float oy[SWORD_TRAIL_LEN]; } g_trail[SWORD_TRAIL_LEN];
+ZW_UNUSED static struct { Entity sword; float ang[SWORD_TRAIL_LEN]; int count; int idx; float len[SWORD_TRAIL_LEN]; float w[SWORD_TRAIL_LEN]; float ox[SWORD_TRAIL_LEN]; float oy[SWORD_TRAIL_LEN]; } g_trail[SWORD_TRAIL_LEN];
 static float now_seconds(void) {
     return (float)(SDL_GetTicks()) / 1000.0f;
 }
-__attribute__((unused)) static float entity_spawn_age_host(uint32_t idx) {
+ZW_UNUSED static float entity_spawn_age_host(uint32_t idx) {
     if (idx >= ECS_MAX_ENTITIES) return 1e9f;
     if (!g_spawn_first_t_set[idx]) {
         g_spawn_first_t[idx] = now_seconds();
@@ -127,9 +134,19 @@ void system_render(World *ecs, SDL_Renderer *renderer, Camera *cam) {
         Sprite hit_sprite;
         const Sprite *draw_sprite = &spr->sprite;
         if (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG)) {
+            /* B49: an enraged straggler is permanently red-tinted, so the
+             * wave timeout reads as "these ones came for you" rather than as
+             * zombies silently vanishing. Applied before the hit flash so a
+             * hit on an enraged zombie still flashes brighter than its
+             * baseline and stays readable. */
+            if (ecs_get_zombie_tag(ecs, i)->enraged) {
+                hit_sprite = spr->sprite;
+                hit_sprite.color = sprite_hit_tint(hit_sprite.color, ENRAGE_TINT);
+                draw_sprite = &hit_sprite;
+            }
             float flash = damage_feedback_hit_flash(i);
             if (flash > 0.0f) {
-                hit_sprite = spr->sprite;
+                hit_sprite = *draw_sprite;
                 hit_sprite.color = sprite_hit_tint(hit_sprite.color, flash);
                 draw_sprite = &hit_sprite;
             }
@@ -222,9 +239,9 @@ void system_render_mirror(SDL_Renderer *renderer, Camera *cam,
          * saw dots while the host saw sprites. Now that the snapshot carries
          * art/size_q/tint, this function only reproduces them.
          *
-         * Note what is deliberately NOT here: no rand(), no per-kind size table,
+         * Note what is deliberately NOT here: no zw_rand(), no per-kind size table,
          * no theme lookup. Zombie size and colour variant and pickup subtype
-         * are all things the client cannot know (they are rand()'d or live in
+         * are all things the client cannot know (they are zw_rand()'d or live in
          * an unreplicated component), so they must come from the host. */
         float diameter = (float)e.size_q * 0.5f;
         if (diameter <= 0.0f) {
@@ -383,7 +400,7 @@ void system_cleanup(World *ecs, WaveSystem *waves, Player *players, int player_c
             /* Drop a pickup at the kill site (near the action) so the heal
              * economy is actually reachable by the bot/player (B5). Gated by
              * the live-item cap so long survival runs stay bounded (B6). */
-            if ((rand() % 100) < 40 && items_count_alive(ecs) < MAX_ALIVE_ITEMS) {
+            if ((zw_rand() % 100) < 40 && items_count_alive(ecs) < MAX_ALIVE_ITEMS) {
                 items_spawn_random(ecs, pos->pos);
             }
 
@@ -396,16 +413,16 @@ void system_cleanup(World *ecs, WaveSystem *waves, Player *players, int player_c
                 ecs_add_component(ecs, particle, COMP_SPRITE);
                 ecs_add_component(ecs, particle, COMP_PARTICLE);
 
-                float angle = (float)p / 8.0f * 2.0f * M_PI;
+                float angle = (float)((float)p / 8.0f * 2.0f * M_PI);
                 *ecs_get_position(ecs, particle) = (CPosition){{pos->pos.x, pos->pos.y}};
                 *ecs_get_particle(ecs, particle) = (CParticle){
-                    .lifetime = 0.5f + (float)(rand() % 5) * 0.1f,
+                    .lifetime = 0.5f + (float)(zw_rand() % 5) * 0.1f,
                     .max_lifetime = 1.0f,
-                    .vel = vec2_from_angle(angle, 80.0f + (float)(rand() % 60)),
+                    .vel = vec2_from_angle(angle, 80.0f + (float)(zw_rand() % 60)),
                     .size_decay = 1.0f
                 };
                 *ecs_get_sprite(ecs, particle) = (CSprite){
-                    .sprite = sprite_circle(3.0f + (float)(rand() % 3), COLOR_DARK_RED),
+                    .sprite = sprite_circle(3.0f + (float)(zw_rand() % 3), COLOR_DARK_RED),
                     .scale = 1.0f,
                     .base_alpha = 1.0f
                 };

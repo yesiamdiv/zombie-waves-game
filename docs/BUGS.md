@@ -1110,3 +1110,366 @@ root cause identified as the art itself. **OPEN — art direction pending.**
   design A), so the issue is the source frames/sprites, not (yet) a wiring bug.
 - Owner has not yet chosen: improve the existing pixel art / walk frames, or
   bring in a different art source/style, and which subject to fix first.
+
+## B51. `gen_assets.py` dirties all 50 PNGs in git with no pixel change
+
+Found 2026-11-20 on `main` `80d153d` while establishing the Windows baseline
+(Sprint 7). **OPEN** — low severity, but it misleads every agent and reviewer.
+
+- **Symptom**: running `python tools/gen_assets.py` or
+  `python tools/gen_assets.py --verify` leaves all 50 texture PNGs listed as
+  modified by `git status`, on a tree with no source change whatsoever.
+- **Root cause**: the *art* is deterministic but the *PNG encoding* is not.
+  Pillow (12.0.0 here) picks different zlib settings/metadata than the Pillow
+  that produced the committed bytes, so every file re-encodes to a different
+  byte stream carrying identical pixels. Verified directly:
+  `assets/textures/entities/player.png` went 261 -> 247 bytes with
+  `PIXELS_IDENTICAL`, same for `zombie_walk3.png`.
+- **Why it matters**: `--verify` is the gate that guards the asset pipeline, and
+  running the gate is itself what dirties the tree. Any agent on a different
+  Pillow produces a 50-file diff that looks like an art change and reviews as
+  noise, which is a good way to hide a real art change inside it.
+- **Fix options** (not yet chosen): pin the PNG encoder settings explicitly in
+  `make()`/`render()` (`optimize`, `compress_level`) so output is byte-stable
+  across Pillow versions; or make `--verify` compare *pixels* and not touch the
+  files at all when they already match; or stop committing generated PNGs and
+  generate them at build time. The second is the smallest and matches what
+  `--verify` is for.
+- **Not a regression** and not caused by this sprint. It predates it; this is
+  the first time it has been written down.
+
+<!-- Id allocation note (2026-11-20, Sprint 7): the W lane's findings were
+     first filed as B53-B55, but the PM was concurrently filing its own B54
+     (player hitbox 1.75x the sprite) and B55 from the `main` worktree, which
+     collided. The W lane's three Windows build findings were moved to
+     B60-B62 to leave the contended range to the PM. B56-B59 are deliberately
+     unused; the gap is this collision, not a lost bug. -->
+
+## B60. ENet links `winmm`/`ws2_32` only under MinGW, so MSVC cannot link it
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W3) building
+`zombie_net_spike` with MSVC x64. **FIXED** — see commit below.
+
+- **Symptom**: every project target that links ENet failed at link time with
+  dozens of `LNK2019 unresolved external symbol`:
+  `__imp_timeGetTime`, `__imp_timeBeginPeriod`, `__imp_timeEndPeriod`,
+  `__WSAFDIsSet`, `__imp_socket`, `__imp_bind`, `__imp_sendto`, `__imp_htons`
+  and the rest of the Winsock surface. The compile was clean; only the link
+  failed.
+- **Root cause**: upstream. ENet 1.3.18's own `CMakeLists.txt` wraps its
+  Windows library dependencies in `if (MINGW)`:
+
+  ```cmake
+  if (MINGW)
+      target_link_libraries(enet winmm ws2_32)
+  endif()
+  ```
+
+  MinGW is the only Windows toolchain it considers, so an MSVC consumer of the
+  static `enet` target inherits no link libraries at all, even though
+  `win32.c` is compiled into it and calls straight into Winsock and the
+  multimedia timer.
+- **Not our bug, but ours to work around.** Fixed in our own
+  `CMakeLists.txt` immediately after `FetchContent_MakeAvailable(ENet)`:
+  `if(WIN32) target_link_libraries(enet winmm ws2_32) endif()`. Plain
+  signature, matching upstream's own call, which also propagates the
+  dependency to consumers of the static library. Guarded by `WIN32`, so it is
+  a no-op on Linux and the Linux link line does not move.
+- **Why it had never been seen**: this repository has never been linked with
+  MSVC since ENet was introduced. The last Windows build predates the
+  networking work entirely.
+
+## B61. No DLL staging on Windows: every SDL-linked binary died at process start
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
+**FIXED** — see commit below.
+
+- **Symptom**: `ctest -C Debug` reported `net_loopback` and `core_tests` as
+  `Exit code 0xc0000135` with no output whatsoever. `0xc0000135` is
+  `STATUS_DLL_NOT_FOUND`: the processes never reached `main()`. The game
+  binary was in the same state, so this also blocked W6.
+- **Root cause**: on Windows SDL3, SDL3_ttf and SDL3_image build as **shared**
+  libraries, and `CMakeLists.txt` had no DLL-staging step at all — the string
+  "dll" did not appear in the file. The existing POST_BUILD step copies
+  `assets/` and nothing else. On Linux the dependencies resolve through rpath,
+  so the gap was invisible and had simply never been written.
+- **Fix**: a POST_BUILD `copy_if_different $<TARGET_RUNTIME_DLLS:tgt>` for
+  each executable target, declared at the end of `CMakeLists.txt` so every
+  target already exists, inside `if(WIN32)`. `$<TARGET_RUNTIME_DLLS:...>` is
+  empty on Linux and `cmake -E copy_if_different` with no sources is an error,
+  so the guard is load-bearing, not cosmetic. `zombie_net_spike` links only
+  static ENet and so has an empty list even on Windows; the command mode is
+  switched to the no-op `cmake -E true` through a generator expression rather
+  than special-casing that target by name, which would rot the day a
+  dependency goes shared.
+- **Also fixed here**: `core_tests` runs with `WORKING_DIRECTORY` set to the
+  source tree so the suite can read `assets/` by relative path. The staged
+  DLLs live beside the `.exe` in the build tree and are not on `PATH`, so the
+  loader could not find them from there. ctest is now handed that directory
+  through the test's `ENVIRONMENT` property instead of copying DLLs into the
+  source tree.
+- **Scope**: Windows-only. Also a prerequisite for W8 — the release zip has to
+  ship these DLLs beside the exe, and this step is what puts them there.
+
+## B62. Windows' 1 MiB default stack overflows before `main()` in net_test
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W5), MSVC x64 Debug.
+**FIXED** — see commit below.
+
+- **Symptom**: with the DLLs staged (B61), `zombie_net_test` still failed —
+  ctest reported `***Exception: SegFault` after 0.07 s and the process emitted
+  **zero** output, not even the logger's "Logger initialized" line, which is
+  the first statement to produce any. Run by hand it exited without printing
+  anything. `zombie_tests` and `zombie_net_spike` both passed.
+- **Root cause**: Windows reserves **1 MiB** for the main thread's stack;
+  Linux reserves **8 MiB**. This codebase was written against the Linux figure
+  and puts large aggregates on the stack as a matter of habit. `main()` in
+  `tests/net_test.c` alone declares a `NetServer`, five `NetClient`s (`c[3]`,
+  `bad`, `oldart`), a `World`, a `Player[MAX_PLAYERS]` and two `NetSnapshot`s
+  as locals. The frame is built on function entry, so the guard page is hit
+  before the function runs a single statement — which is exactly why there was
+  no output to diagnose from, and why it presented as an instant segfault
+  rather than a crash partway through a named test.
+- **Fix**: `target_link_options(<exe> PRIVATE /STACK:8388608)` for the Windows
+  executables, so the Windows reserve matches the platform the code was written
+  against instead of the code being shrunk to fit Windows. It is a *reserve*:
+  pages are committed on use, so the cost is address space, not memory.
+  `/STACK` is MSVC-only and the block is inside `if(WIN32)`, so the Linux link
+  line does not move.
+- **Why not restructure the locals**: that would be a real change to shared
+  test code to satisfy a platform-specific limit, and it would have to be
+  redone every time someone adds a local. The stack reserve *is* the platform
+  difference, so that is where the fix belongs.
+- **Carry-forward risk**: this covers the main thread only. Any *new* thread
+  created on Windows gets the same 1 MiB default unless its creation call says
+  otherwise, so the same class of failure can return the first time this
+  project spawns a thread that holds a `World` or a `NetSnapshot`.
+- **After the fix**: `ctest -C Debug` 3/3 on Windows.
+
+## B52. The events log is opened in text mode, so Windows writes CRLF into a byte-compared artifact
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7); predicted by the PM
+and then measured. **FIXED** — see commit below.
+
+- **Symptom**: the single-player events log written on Windows was exactly one
+  byte per line larger than the same simulation's log written on Linux, so no
+  cross-platform byte comparison could ever succeed. Measured:
+  **144170 bytes / 1829 lines**, with CRLF on all 1829 lines.
+- **Root cause**: `src/events/event_bus.c:58` opened the recorder with
+  `fopen(path, "w")`. On Windows that is *text* mode and the CRT translates
+  every `'
+'` the recorder writes into `"
+"`. The events log is not prose:
+  the invariance gate diffs two runs of it byte for byte and
+  `docs/knowledge/gate-baseline.md` declares a byte count for it, so a
+  translation layer in the middle is a correctness problem, not a cosmetic one.
+- **Fix**: `fopen(path, "wb")`. On POSIX `"w"` and `"wb"` are identical — there
+  is no translation layer to turn off — so the Linux output cannot move, which
+  is exactly why the fix is safe. Measured after the fix:
+  **142341 bytes / 1829 lines**, zero CRLF, and two same-seed runs still
+  byte-identical to each other. The 1829-byte delta is accounted for exactly:
+  144170 − 1829 = 142341.
+- **Deliberately NOT changed**: `src/core/log.c:30` opens the human-readable
+  log the same way. That file is prose, is not part of any gate, is never
+  byte-compared, and CRLF is the friendlier choice for a Windows user opening
+  it in an editor. Left as text mode on purpose.
+- **What this does NOT fix**: the residual **+16403 bytes / +226 lines** gap
+  against the Linux reference. That is a genuine simulation divergence with a
+  different cause — see B63.
+
+## B63. Cross-platform determinism is structurally impossible: the simulation draws from libc `rand()`
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7). **FIXED on
+2026-11-20** by the project-owned PRNG the owner approved — see the fix note
+at the end of this entry. It was held OPEN until then because any fix
+re-baselines the Linux reference, which is an owner decision, not a lane one.
+
+- **Symptom**: after B52 removed line-ending translation, the seed-42
+  unlimited-ammo single-player events log still differs from the Linux
+  reference by **+16403 bytes / +226 lines** (Windows **142341 / 1829**, Linux
+  **125938 / 1603**). Two Windows runs remain byte-identical *to each other*,
+  so same-platform determinism is intact; it is the *cross-platform* identity
+  that cannot hold.
+- **Root cause**: `--seed=N` calls `srand()` (`src/main.c:1820,1822`) and the
+  simulation then draws from `rand()` at **34 sites across 13 files**,
+  including `src/ai/bot.c` (the bot's strafe cadence), `src/world/waves.c`
+  (spawn ring angle, radius, zombie variant and size, spawn-point choice) and
+  `src/items/items.c` (loot type). `rand()` and `srand()` are
+  **implementation-defined**: the standard fixes neither the algorithm nor
+  `RAND_MAX`. Measured directly on this machine with a standalone probe:
+
+  | | `RAND_MAX` | `srand(42)`, first values |
+  |---|---|---|
+  | MSVC CRT (x64) | `32767` | 175, 400, 17869, 30056, 16083, … |
+  | glibc | `2147483647` | 71876166, 708592740, 1483128881, … |
+
+  Different algorithm, different period, and a `RAND_MAX` four orders of
+  magnitude apart. `rand() % 360` therefore yields a different angle on the
+  very first zombie spawn, and the two simulations diverge from that spawn
+  onward. The observed +226 lines is the downstream consequence: a different
+  bot strafe cadence means a different number of `PLAYER_SHOT`s (68 on
+  Windows), each of which adds its own `ENTITY_SPAWN` and
+  `POSITION_SAMPLE` lines.
+- **Why this was never visible**: the project has only ever had one libc.
+  `src/items/items.c:13` already carries the comment "rand() order is
+  load-bearing for single-player determinism" — the *order* was understood to
+  matter, but the *values* being implementation-defined was not, because there
+  was nothing to compare against.
+- **Not a platform `#ifdef` matter.** There is no Windows-side fix: MSVC's
+  `rand()` is conforming. The only real fix is for the project to own its
+  generator — a small explicit PRNG (xorshift / PCG) seeded by `--seed`,
+  replacing `rand()` at the 34 sites — which would make the log identical on
+  every platform *and* **re-baseline both Linux references**
+  (125938/1603 unlimited, 129504/1648 limited). Per `AGENTS.md` that is a
+  deliberate, announced re-baseline, so the W lane recorded the finding and
+  did not ship it.
+- **Multiplayer impact: none today**, and this is worth stating because it
+  looks alarming. Per `docs/SYSTEM_DESIGN_RULES.md` the host is the single
+  source of truth and a client only consumes host state, so a Windows client
+  joining a Linux host never runs its own `rand()`-driven simulation. The risk
+  is latent, not live: it would become real the moment anything moves to
+  lockstep or client-side prediction of a `rand()`-driven system.
+- **Fix (2026-11-20, owner-approved)**: `src/core/rng.c` adds a project-owned
+  PCG32 generator and the 34 simulation sites now call `zw_rand()` /
+  `zw_srand()`. PCG32 was chosen for one reason above all others: it is
+  specified entirely in `uint64_t` arithmetic, which C defines to wrap modulo
+  2^64 on every conforming implementation, so no latitude is left for a
+  platform to differ. `NET_WORLD_GEN_VERSION` 2 → 3 in the same commit (spawn
+  rules changed). `tests.c:test_rng_stream_pinned` pins seed 42's first draws
+  against literals computed from the PCG32 spec *independently of this
+  implementation*, so the cross-platform promise is a red test rather than a
+  hope.
+- **The re-baseline this forced**, announced per `AGENTS.md`: both references
+  move to **111750 bytes / 1423 lines**. The unlimited and limited figures,
+  previously 125938/1603 and 129504/1648, are now the *same number* — not an
+  error. Measured: the bot fires 68 shots in the 25 s window and picks up one
+  ammo item at t=10.825 (`PISTOL_AMMO_START` 60 + `PISTOL_AMMO_PICKUP` 20 =
+  80), so the ammo cap never binds and the two scenarios coincide. Different
+  strafe draws from the new stream changed the bot's firing cadence; that is
+  the expected consequence of re-seeding the simulation, not a gameplay
+  change.
+- **Still unmeasured, deliberately**: the actual Linux-vs-Windows comparison.
+  There is no Linux toolchain on the machine this landed on, so what is proven
+  is (a) two Windows runs are byte-identical and (b) the stream reproduces
+  independently computed spec values. Those two together are a strong
+  argument, not a measurement. **Run the Linux gate and diff the log against
+  111750/1423 before claiming cross-platform identity** — that is the one
+  check that closes this bug completely.
+
+## B64. No text renders anywhere on Windows: the font chain is Linux-only absolute paths
+
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W6), reproduced on a real
+windowed run before any fix. **FIXED, screenshot-verified** — see commit below.
+
+- **Symptom**: the window opens and the themed backdrop draws, but the main
+  menu is otherwise **empty** — no title, no "Solo / Host Co-op / Join Co-op /
+  Quit", no controls hint. This is the 2026-10-06 owner report ("nothing
+  visible on the menu screen") reproduced exactly, now on current code. The
+  same defect also made the HUD, wave banner, damage numbers and every points
+  or pickup popup invisible in-game; the menu is simply where it is most
+  obvious, because the menu is *only* text.
+- **Root cause**: not the renderer. `src/main.c:472-479` hardcoded two
+  absolute **Linux** font paths —
+  `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` and a
+  `/usr/share/fonts/truetype/liberation/...` fallback. Neither exists on
+  Windows, `TTF_OpenFont` returned NULL for all three faces, and the game ran
+  on with no font at all. The warning was in the log the whole time —
+  `main.c:482: No font loaded, text will not render` — it had simply never
+  been read on Windows. No font is shipped in `assets/`, so there was nothing
+  to fall back to.
+- **Fix**: the candidate list is now a small platform-selected table of
+  regular/bold pairs. Windows gets Segoe UI, then Arial, then Tahoma, all
+  shipped with every supported Windows. The **Linux list is unchanged** —
+  same two families, same order, same files, same sizes — and selection is on
+  the regular face only, exactly as the old code's `!game.font` fallback gate
+  was, so Linux takes the branch it always took.
+- **Verified**: screenshot-verified, not owner-verified
+  (`docs/SYSTEM_DESIGN_RULES.md` §4). Before:
+  `build/logs/w6_menu.png`. After: `build/logs/w6_menu_fixed.png` (full menu,
+  title, all four options, the `>` selector and the controls line) and
+  `build/logs/w6_world_full.png` (world, sprites, road, both HUD panels
+  showing HP 200/200, Wave 2, Zombies 11, Kills 8, Score 1300, Points 120,
+  weapon and ammo). Log now reads `Font loaded: C:/Windows/Fonts/segoeui.ttf`.
+
+### Suspects from `docs/FUTURE_IDEAS.md` discarded by this investigation
+
+The 2026-10-06 note ranked four suspects. Measured on current code, three are
+**not** defects, and that is worth recording so nobody re-investigates them:
+
+- **Renderer creation flags** — not a defect. The backdrop, world tiles, road,
+  sprites and HUD panels all drew correctly even while no text rendered, which
+  is what proved the renderer was healthy and isolated the fault to the font.
+- **Colour channel order** — not a defect. Red title, yellow selection, green
+  HP bar, green grass, red health cross and the road's yellow markings all
+  appear in their intended colours. A BGR/RGB swap would be unmistakable.
+- **High-DPI** — not a defect. Measured rather than assumed: `GetClientRect`
+  on the running window reports a client area of exactly the configured
+  `WINDOW_W x WINDOW_H` once the DPI scale factor is accounted for, and the
+  HUD is laid out correctly against the window edges. SDL3 is DPI-aware on
+  Windows by default and needed no help. (An apparent right-HUD clip in the
+  first capture was an artifact of a DPI-unaware screen-capture process, not
+  the game; moving the window to the origin showed the panel complete.)
+- **Asset path separators and cwd** — half right. Textures, maps and audio all
+  load correctly through the asset manager with forward slashes, so the
+  general concern was unfounded; it was specifically the *font* paths, which
+  bypass the asset manager entirely, that were wrong.
+
+## B54. Player hitbox is 1.75x the player sprite; zombies match theirs exactly
+
+Found 2026-11-20 by the PM while reviewing the art lane's gameplay-scale crowd
+contact sheet, which showed the player as the smallest thing on screen.
+Confirmed in code, not from the picture. **OPEN**.
+
+- **Player**: `src/players.c:48` sets the collider to `{14.0f, false}` — radius
+  14, so a **28 px** hitbox diameter. `src/players.c:57-67` loads the 32 px
+  `player.png` at `.scale = 0.5f`, and `sprite_draw()`
+  (`src/graphics/sprite.c:217-221`) draws `src.w * scale` centred, so the
+  player is drawn **16 px** wide. The hitbox is **1.75x the sprite**.
+- **Zombie**: `src/world/waves.c:206` picks `size = 10..15`, sets the collider
+  radius to exactly `size` (`:243`) and the sprite scale to `size / 16.0f`
+  (`:223`) on the same 32 px art, drawing `32 * size/16 = 2 * size` — exactly
+  the collider diameter. Zombies are self-consistent; only the player is not.
+- **Impact**: zombies damage the player from ~6 px outside the player's visible
+  body on every side. In a game whose whole loop is dodging a melee swarm, the
+  player is hit by things that visibly miss. It also makes the protagonist the
+  smallest sprite in their own game, which is what made it visible at all.
+- **Two different fixes, with very different risk**:
+  1. *Render-only* — raise the player's sprite scale to `28/32 = 0.875` so the
+     drawing matches the hitbox it already has. Touches `CSprite.scale`, which
+     `render.c` reads and nothing in the simulation does, so the SP determinism
+     references cannot move. Does not change difficulty by one pixel.
+  2. *Simulation* — shrink the collider to match the 16 px art. This makes the
+     player strictly harder to hit, i.e. it **changes game balance**, and it
+     moves the seed-42 references, so it needs a deliberate re-baseline.
+  Fix 1 is the one taken (ticket G2): it removes the unfairness without
+  touching balance or determinism. If the owner would rather the player stayed
+  physically small, fix 2 is the alternative and the re-baseline is the cost.
+- **Not caused by this sprint.** The two sizing conventions were introduced
+  independently and neither is wrong on its own; they were simply never
+  compared.
+
+## B55. Snapshot flat-shape diameter ignores `CSprite.scale`
+
+Found 2026-11-20 by the PM while fixing B54. **OPEN** — not fixed with B54 on
+purpose; see below.
+
+- `src/net/net_snapshot.c:175-205` computes the wire diameter two different
+  ways. The **textured** branch is correct: `diam = cs->scale * base_px`, with
+  a comment explaining that scale is texture-relative while the diameter is
+  not. The **flat-shape** branch (`:198-203`) takes `rect.w` (or
+  `circle.radius * 2`) **raw, with no `* cs->scale`** — yet `sprite_draw()`
+  draws flat shapes at `rect.w * scale` (`src/graphics/sprite.c:147-148`).
+- **Consequence**: for any flat-shape entity whose `CSprite.scale != 1.0`, the
+  host draws one size and tells the client another. The player is exactly such
+  an entity whenever its texture is missing: the host draws
+  `16 * scale` px and puts `16` on the wire.
+- **Why it was not fixed alongside B54**: the flat branch is the fallback for
+  *every* entity type, so correcting it moves the wire `size_q` for bullets,
+  items and anything else untextured. That is a replication-surface change and
+  wants the two-instance `--host`/`--join` check that `AGENTS.md` requires,
+  which no one is staffed to run this sprint. It is also invisible in practice
+  today: the flat path is taken when assets fail to load, and headless draws
+  nothing at all.
+- **When fixed**: `tests/tests.c` pins `player_e.size_q == 32` from exactly
+  this path; that assertion becomes `2 * 16 * scale` and must move in the same
+  commit.

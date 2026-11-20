@@ -54,8 +54,15 @@
 /* R13 merge: bumped 1 -> 2. Worlds are no longer `world_init`-only; they come
  * from a map file plus a theme, and the map index now travels in the HELLO.
  * A peer that thinks the world is `world_init()`-shaped would agree on tiles
- * while disagreeing on everything the map contributes. */
-#define NET_WORLD_GEN_VERSION 2         /* map-file-driven world; guards */
+ * while disagreeing on everything the map contributes.
+ *
+ * B63: bumped 2 -> 3. Spawn rules changed. The simulation's random draws now
+ * come from the project's own PCG32 stream (src/core/rng.c) instead of libc
+ * rand(), so the spawn angle, ring radius, zombie variant, zombie size and
+ * spawn-point jitter are all different numbers for the same seed. A v2 peer
+ * and a v3 peer agree on the map and disagree on every zombie in it -- the
+ * precise class of silent divergence this version exists to refuse. */
+#define NET_WORLD_GEN_VERSION 3         /* map-file-driven world + zw_rng; guards */
 
 /* N2. Two peers must ship the same ART, not merely the same protocol. Without
  * this, a client built from a different asset tree renders different pictures
@@ -128,7 +135,7 @@ typedef struct {
  *
  * This comment used to read "client reconstructs visuals from `kind`
  * deterministically - no sprite data crosses the wire". That was the R13-I5
- * bug: it was never deterministic, because zombie size is rand()'d and the
+ * bug: it was never deterministic, because zombie size is zw_rand()'d and the
  * colour variant is a local in waves.c that never reaches the ECS. Appearance
  * now travels explicitly as `art`/`size_q`/`tint` in NetEntitySnap. `kind`
  * carries SEMANTICS (what this entity is) and no longer appearance. */

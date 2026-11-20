@@ -238,7 +238,7 @@ void world_draw(SDL_Renderer *renderer, GameWorld *world, Camera *cam) {
                     break;
             }
 
-            Vec2 screen = camera_world_to_screen(cam, vec2(x * WORLD_GRID_SIZE, y * WORLD_GRID_SIZE));
+            Vec2 screen = camera_world_to_screen(cam, vec2((float)(x * WORLD_GRID_SIZE), (float)(y * WORLD_GRID_SIZE)));
             SDL_FRect rect = {screen.x, screen.y, gs + 1, gs + 1};
 
             if (tex) {
@@ -255,7 +255,7 @@ void world_draw(SDL_Renderer *renderer, GameWorld *world, Camera *cam) {
                                 theme->grid_color.b, 0.35f);
     for (int y = start_y; y <= end_y; y++) {
         for (int x = start_x; x <= end_x; x++) {
-            Vec2 screen = camera_world_to_screen(cam, vec2(x * WORLD_GRID_SIZE, y * WORLD_GRID_SIZE));
+            Vec2 screen = camera_world_to_screen(cam, vec2((float)(x * WORLD_GRID_SIZE), (float)(y * WORLD_GRID_SIZE)));
             SDL_FRect rect = {screen.x, screen.y, gs + 1, gs + 1};
             SDL_RenderRect(renderer, &rect);
         }
@@ -297,8 +297,8 @@ Vec2 world_get_spawn_point(GameWorld *world) {
             for (int dx = -r; dx <= r; dx++) {
                 int tx = cx + dx;
                 int ty = cy + dy;
-                if (world_is_walkable(world, tx * WORLD_GRID_SIZE + 32,
-                                              ty * WORLD_GRID_SIZE + 32)) {
+                if (world_is_walkable(world, (float)(tx * WORLD_GRID_SIZE + 32),
+                                              (float)(ty * WORLD_GRID_SIZE + 32))) {
                     return vec2(tx * WORLD_GRID_SIZE + WORLD_GRID_SIZE * 0.5f,
                                 ty * WORLD_GRID_SIZE + WORLD_GRID_SIZE * 0.5f);
                 }

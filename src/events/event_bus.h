@@ -32,6 +32,12 @@ typedef enum {
      * type is already a u8, so no NET_WIRE_VERSION bump. See
      * docs/knowledge/relayed-events.md. */
     GE_EXPLOSION,
+    /* B49: a wave outlived WAVE_MAX_DURATION and its surviving zombies were
+     * enraged instead of force-destroyed. ia = how many were enraged,
+     * ib = wave number, a = wave_elapsed at the moment it fired. Appended
+     * before GE_COUNT so no existing enum value moves, exactly as
+     * GE_EXPLOSION was; not relayed, so no NET_WIRE_VERSION bump. */
+    GE_WAVE_ENRAGE,
     GE_COUNT
 } GameEventType;
 

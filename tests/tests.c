@@ -1,9 +1,19 @@
+#include "core/rng.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <math.h>
+/* W4: creating the scratch directory is spelled differently per platform.
+ * POSIX takes mkdir(path, mode) from <sys/stat.h>; MSVC has no <sys/stat.h>
+ * mkdir at all, only _mkdir(path) from <direct.h>, with no mode argument. */
+#if defined(_WIN32)
+#include <direct.h>
+#define ZW_MKDIR(path) _mkdir(path)
+#else
 #include <sys/stat.h>
+#define ZW_MKDIR(path) mkdir((path), 0755)
+#endif
 
 #include "core/log.h"
 #include "ecs/ecs.h"
@@ -47,7 +57,7 @@ static int tests_failed = 0;
  * TEST_TMP_DIR to ${CMAKE_BINARY_DIR}/test-tmp; the fallback keeps a direct
  * build usable. */
 static void test_tmp_init(void) {
-    (void)mkdir(TEST_TMP_DIR, 0755);
+    (void)ZW_MKDIR(TEST_TMP_DIR);
 }
 
 static const char *test_tmp_path(const char *name) {
@@ -342,8 +352,8 @@ static void test_world_valid(void) {
     int walkable = 0;
     for (int y = 1; y < world.height - 1; y++) {
         for (int x = 1; x < world.width - 1; x++) {
-            if (world_is_walkable(&world, x * WORLD_GRID_SIZE + 32,
-                                           y * WORLD_GRID_SIZE + 32)) {
+            if (world_is_walkable(&world, (float)(x * WORLD_GRID_SIZE + 32),
+                                           (float)(y * WORLD_GRID_SIZE + 32))) {
                 walkable++;
             }
         }
@@ -779,6 +789,92 @@ static void test_wave_completion(void) {
     CHECK(waves.wave_active == false);
 }
 
+/* B49: a wave that outlives WAVE_MAX_DURATION (60s) used to force-destroy every
+ * surviving zombie with no feedback, so from the player's seat the zombies
+ * simply vanished and the next wave began -- which is how the owner reported it
+ * after the 2026-11-19 playtest. They are now enraged instead: faster, hunting
+ * from anywhere, red-tinted.
+ *
+ * This test pins the three things that can regress: the stragglers must still
+ * be ALIVE after the timeout (the old code deleted them), they must actually be
+ * enraged (flag + speed + detection range), and the enrage must be applied
+ * exactly once per wave rather than every frame -- a per-frame re-apply would
+ * multiply max_speed without bound and fling zombies across the map. */
+static void test_wave_timeout_enrages(void) {
+    LOG_INFO("--- Test: B49 wave timeout enrages stragglers ---");
+    World ecs;
+    GameWorld world = {0};
+    WaveSystem waves;
+
+    ecs_init(&ecs);
+    world_init(&world);
+    waves_init(&waves, &world);
+
+    Entity player = spawn_player(&ecs, vec2(world.world_pixel_w * 0.5f,
+                                            world.world_pixel_h * 0.5f));
+    CHECK(player != ECS_NULL_ENTITY);
+
+    /* A wave whose spawns are all done, with survivors left alive, which is
+     * exactly the precondition the timeout branch tests for. */
+    waves_start_next_wave(&waves, 1);
+    waves.zombies_to_spawn = 2;
+    waves.zombies_spawned = 2;
+    waves.zombies_alive = 2;
+
+    Entity z1 = waves_spawn_zombie(&ecs, vec2(300, 300), THEME_GRASSLAND);
+    Entity z2 = waves_spawn_zombie(&ecs, vec2(400, 400), THEME_GRASSLAND);
+    CHECK(z1 != ECS_NULL_ENTITY);
+    CHECK(z2 != ECS_NULL_ENTITY);
+
+    float base_speed = ecs_get_velocity(&ecs, z1)->max_speed;
+    CHECK(base_speed > 0.0f);
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->enraged == false);
+
+    /* Just short of the timeout: nothing may have happened yet. */
+    waves.wave_elapsed = 59.0f;
+    waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->enraged == false);
+    CHECK(waves.enrage_applied == false);
+
+    /* Cross the timeout. */
+    waves.wave_elapsed = 60.0f;
+    waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+
+    /* The regression that matters: they are still here. */
+    CHECK(ecs.alive[ecs_get_entity_index(&ecs, z1)]);
+    CHECK(ecs.alive[ecs_get_entity_index(&ecs, z2)]);
+    CHECK(waves.zombies_alive == 2);
+
+    CHECK(waves.enrage_applied);
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->enraged);
+    CHECK(ecs_get_zombie_tag(&ecs, z2)->enraged);
+
+    float enraged_speed = ecs_get_velocity(&ecs, z1)->max_speed;
+    CHECK(enraged_speed > base_speed);
+    /* Detection range must exceed any plausible map diagonal, otherwise an
+     * enraged zombie can still fall into zombie_ai.c's wander branch. */
+    CHECK(ecs_get_zombie_tag(&ecs, z1)->detection_range >
+          (world.world_pixel_w + world.world_pixel_h));
+
+    /* Idempotence: 120 more frames past the timeout must not compound it. */
+    for (int i = 0; i < 120; i++) {
+        waves.wave_elapsed = 61.0f;
+        waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+    }
+    CHECK(ecs_get_velocity(&ecs, z1)->max_speed == enraged_speed);
+    CHECK(ecs.alive[ecs_get_entity_index(&ecs, z1)]);
+
+    /* The B1 soft-lock guarantee must survive: past the hard backstop, a wave
+     * the enrage failed to resolve is still force-ended. */
+    waves.wave_elapsed = 121.0f;
+    waves_update(&waves, &ecs, &world, NULL, 0, 1.0f / 120.0f);
+    CHECK(waves.zombies_alive == 0);
+
+    /* And a fresh wave starts un-enraged. */
+    waves_start_next_wave(&waves, 1);
+    CHECK(waves.enrage_applied == false);
+}
+
 static void test_script_aim_shot(void) {
     LOG_INFO("--- Test: Scripted AI aim/shoot ---");
     const char *path = test_tmp_path("script_test_shoot.script");
@@ -843,27 +939,50 @@ static void test_wave_timeout(void) {
                                             world.world_pixel_h * 0.5f));
     CHECK(player != ECS_NULL_ENTITY);
 
-    /* A single zombie that is never killed (no collision/cleanup run) must
-     * not stall the wave forever: the 60s WAVE_MAX_DURATION safety net
-     * force-ends it (playtest B1). */
+    /* A single zombie that is never killed (no collision/cleanup run) must not
+     * stall the wave forever. That is playtest B1's guarantee and it still
+     * holds -- but B49 changed WHEN and HOW it is honoured, so this test was
+     * rewritten rather than deleted.
+     *
+     * Before B49: WAVE_MAX_DURATION (60s) force-destroyed the zombie and the
+     * wave ended there. After B49 the owner's chosen behaviour is to ENRAGE
+     * the straggler at 60s and let the wave resolve through gameplay; the
+     * force-destroy survives only as the WAVE_HARD_TIMEOUT (120s) backstop.
+     *
+     * This test drives the pathological case the backstop exists for: nothing
+     * ever kills the zombie, so the enrage cannot possibly resolve the wave
+     * and the hard timeout MUST fire. The old 75s budget was below the new
+     * deadline, which is why the unmodified test failed - the contract moved,
+     * not the safety property. */
     waves_start_next_wave(&waves, 1);
     waves.zombies_to_spawn = 1;
     waves.spawn_interval = 0.01f;
 
     float dt = 1.0f / 120.0f;
     int frames_ran = 0;
-    int max_frames = (int)(75.0f / dt);
+    int max_frames = (int)(135.0f / dt);
+    bool saw_enrage = false;
     while (!waves.between_waves && frames_ran < max_frames) {
         waves_update(&waves, &ecs, &world, NULL, 0, dt);
         frames_ran++;
+        /* The wave must still be running, with the zombie alive, immediately
+         * after the 60s mark: the enrage replaced the deletion, it did not
+         * merely postpone it. */
+        if (!saw_enrage && waves.enrage_applied) {
+            saw_enrage = true;
+            CHECK(waves.wave_elapsed >= 60.0f);
+            CHECK(waves.zombies_alive == 1);
+            CHECK(waves.between_waves == false);
+        }
     }
 
+    CHECK(saw_enrage);                      /* B49: enraged, not deleted, at 60s */
     CHECK(waves.between_waves);
     CHECK(waves.wave_active == false);
     CHECK(waves.zombies_alive == 0);
     CHECK(waves.total_kills == 0);          /* nothing was actually killed */
-    CHECK(frames_ran < max_frames);         /* ended before the hard cap */
-    CHECK(waves.wave_elapsed > 59.0f);      /* took ~the 60s timeout */
+    CHECK(frames_ran < max_frames);         /* B1 still holds: it cannot stall */
+    CHECK(waves.wave_elapsed > 119.0f);     /* ended at the 120s hard backstop */
 }
 
 static void test_event_stream(void) {
@@ -946,10 +1065,96 @@ static void test_event_stream(void) {
     remove(path);
 }
 
+/* B63: the simulation's RNG stream is a cross-platform contract.
+ *
+ * This is the test the whole PRNG change exists for. Before it, the project
+ * had no way to notice that MSVC and glibc hand out different numbers for the
+ * same seed -- the gate compared two runs on ONE machine, which libc rand()
+ * passes happily while being useless across machines.
+ *
+ * The constants below are not "whatever the code produced". They were computed
+ * from the PCG32 specification independently of this implementation, so if the
+ * two disagree it is this implementation that is wrong. Any platform where
+ * these literals do not reproduce cannot play multiplayer with any other
+ * platform, and this test says so out loud instead of letting zombies quietly
+ * spawn somewhere else. */
+static void test_rng_stream_pinned(void) {
+    static const uint32_t expect[8] = {
+        0xc2f57bd6u, 0x6b07c4a9u, 0x72b7b29bu, 0x44215383u,
+        0xf5af5eadu, 0x68beb632u, 0xcbc7312cu, 0xd5efc7d7u
+    };
+
+    zw_srand(42);
+    bool pinned = true;
+    for (int i = 0; i < 8; i++) {
+        if (zw_rand_u32() != expect[i]) pinned = false;
+    }
+    CHECK(pinned);
+
+    /* Same seed, same sequence -- the property the gate leans on. */
+    zw_srand(42);
+    uint32_t first_pass[16];
+    for (int i = 0; i < 16; i++) first_pass[i] = zw_rand_u32();
+    zw_srand(42);
+    bool repeatable = true;
+    for (int i = 0; i < 16; i++) {
+        if (zw_rand_u32() != first_pass[i]) repeatable = false;
+    }
+    CHECK(repeatable);
+
+    /* Nearby seeds must not give nearby streams. A bare `state = seed` LCG
+     * fails this, and the gate's seed is 42, so seed 43 producing a
+     * near-identical first wave would be an easy mistake to ship. */
+    zw_srand(43);
+    CHECK(zw_rand_u32() == 0xccca5e5fu);
+
+    /* zw_rand() is the rand() drop-in: non-negative, within ZW_RAND_MAX. */
+    zw_srand(7);
+    bool in_range = true;
+    for (int i = 0; i < 4096; i++) {
+        int v = zw_rand();
+        if (v < 0 || v > ZW_RAND_MAX) in_range = false;
+    }
+    CHECK(in_range);
+
+    /* zw_rand_below: inside the half-open range, and total coverage of a small
+     * one. A rotation bug that pinned the low bits would show up here as a
+     * bucket that never fills. */
+    bool below_ok = true;
+    bool seen[6] = {false, false, false, false, false, false};
+    for (int i = 0; i < 4096; i++) {
+        int v = zw_rand_below(6);
+        if (v < 0 || v >= 6) below_ok = false;
+        else seen[v] = true;
+    }
+    for (int i = 0; i < 6; i++) {
+        if (!seen[i]) below_ok = false;
+    }
+    CHECK(below_ok);
+
+    /* n <= 0 must not divide by zero. */
+    CHECK(zw_rand_below(0) == 0);
+    CHECK(zw_rand_below(-5) == 0);
+    CHECK(zw_rand_below(1) == 0);
+
+    /* zw_randf is half-open [0,1): 1.0f exactly would break every caller that
+     * indexes an array by it. */
+    bool unit_ok = true;
+    for (int i = 0; i < 4096; i++) {
+        float f = zw_randf();
+        if (!(f >= 0.0f && f < 1.0f)) unit_ok = false;
+    }
+    CHECK(unit_ok);
+
+    /* Restore the seed main() started the suite with, so adding this test
+     * cannot shift any later test's draws. */
+    zw_srand(42);
+}
+
 #define DET_MAX_SPAWNS 64
 
 static int run_spawn_sim(Vec2 *out, int max_out) {
-    srand(2026);
+    zw_srand(2026);
     World ecs;
     GameWorld world = {0};
     WaveSystem waves;
@@ -1373,8 +1578,8 @@ static void test_map_registry_loads(void) {
         for (int y = 0; y < w.height; y++) {
             for (int x = 0; x < w.width; x++) {
                 total++;
-                if (world_is_walkable(&w, x * WORLD_GRID_SIZE + 32,
-                                             y * WORLD_GRID_SIZE + 32)) {
+                if (world_is_walkable(&w, (float)(x * WORLD_GRID_SIZE + 32),
+                                             (float)(y * WORLD_GRID_SIZE + 32))) {
                     walkable++;
                 }
             }
@@ -2735,7 +2940,13 @@ static void test_net_snapshot_build(void) {
     /* size_q is a world diameter in half units: 2*size. */
     CHECK(zombie_e.size_q > 0);
     CHECK(zombie_e.size_q / 4.0f >= 10.0f && zombie_e.size_q / 4.0f <= 15.0f);
-    /* The player is drawn as a 16-unit square at scale 0.5 -> diameter 16. */
+    /* The player here is UNTEXTURED: this test runs headless, where the asset
+     * manager never loads, so the sprite stays the flat 16x16 fallback rect
+     * and net_snapshot takes its flat-shape branch -- which reports rect.w
+     * directly and, unlike the textured branch, does NOT multiply by
+     * CSprite.scale (see B55). So this value is 32 and is deliberately
+     * unaffected by the B54/G2 scale fix, which only moves the TEXTURED draw
+     * size. If B55 is ever fixed this becomes 2 * 16 * scale. */
     CHECK(player_e.size_q == 32);
     /* Headless has no asset manager, so nothing is textured and the host must
      * faithfully report NET_ART_NONE (a flat shape) rather than claim art it
@@ -3636,13 +3847,13 @@ static void test_audio_sfx_2d(void) {
     CHECK(!audio_sfx_is_2d(AUDIO_SFX_NONE));
 }
 
-/* E1: the popup system must not touch the global rand() stream.
+/* E1: the popup system must not touch the global zw_rand() stream.
  *
  * This is the test that matters most in the effects lane, and the one whose
  * failure is hardest to recognise from its symptom. waves.c draws the spawn
  * angle, ring radius, zombie variant, zombie size, spawn-point index and
- * spawn jitter from global rand(); items.c draws the item type; bot.c draws
- * the strafe. One cosmetic rand() call in a popup therefore shifts every
+ * spawn jitter from global zw_rand(); items.c draws the item type; bot.c draws
+ * the strafe. One cosmetic zw_rand() call in a popup therefore shifts every
  * later sim draw, and the single-player byte-identity gate fails with a diff
  * in zombie positions that looks completely unrelated to floating text.
  *
@@ -3652,11 +3863,11 @@ static void test_audio_sfx_2d(void) {
 static void test_text_popup_no_global_rand(void) {
     text_popup_init();
 
-    srand(12345);
+    zw_srand(12345);
     int expect[8];
-    for (int i = 0; i < 8; i++) expect[i] = rand();
+    for (int i = 0; i < 8; i++) expect[i] = zw_rand();
 
-    srand(12345);
+    zw_srand(12345);
     for (int i = 0; i < 64; i++) {
         text_popup_spawn_damage(100.0f + (float)i, 200.0f, 7 + i);
     }
@@ -3664,7 +3875,7 @@ static void test_text_popup_no_global_rand(void) {
 
     bool stream_intact = true;
     for (int i = 0; i < 8; i++) {
-        if (rand() != expect[i]) stream_intact = false;
+        if (zw_rand() != expect[i]) stream_intact = false;
     }
     CHECK(stream_intact);
 
@@ -4061,6 +4272,7 @@ int tests_run_all(void) {
     test_camera_clamp_world();
     test_entity_limit();
     test_wave_completion();
+    test_wave_timeout_enrages();
     test_script_aim_shot();
     test_event_stream();
     test_deterministic_seed();
@@ -4113,6 +4325,7 @@ int tests_run_all(void) {
     test_audio_trigger_table();
     test_audio_health_hurt_vs_heal();
     test_audio_sfx_2d();
+    test_rng_stream_pinned();
     test_text_popup_no_global_rand();
     test_text_popup_lifecycle();
     test_damage_feedback_events();
@@ -4121,7 +4334,7 @@ int tests_run_all(void) {
     test_damage_feedback_hit_flash();
     test_wave_banner();
     /* Last on purpose: it installs a fake asset manager and spawns a zombie,
-     * so it must not perturb rand() or the global for any other test. */
+     * so it must not perturb zw_rand() or the global for any other test. */
     test_net_client_animation_phase_d();
 
     LOG_INFO("========================================");
@@ -4134,7 +4347,7 @@ int tests_run_all(void) {
 int main(void) {
     test_tmp_init();
     log_init(NULL, LOG_DEBUG, LOG_TRACE);
-    srand(42);
+    zw_srand(42);
     int result = tests_run_all();
     log_shutdown();
     return result;

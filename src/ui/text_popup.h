@@ -19,8 +19,8 @@
  * docs/EFFECTS_PLAN.md, docs/SYSTEM_DESIGN_RULES.md):
  *
  *   - It reads simulation state and never writes it.
- *   - It never draws from the global rand() stream. waves.c, items.c and
- *     bot.c all draw from that stream, so a single cosmetic rand() call here
+ *   - It never draws from the global zw_rand() stream. waves.c, items.c and
+ *     bot.c all draw from that stream, so a single cosmetic zw_rand() call here
  *     would shift every later sim draw and break single-player byte-identity.
  *     The spread angle for TEXT_POPUP_RANDOM comes from a private LCG owned by
  *     this module, reset by text_popup_init().

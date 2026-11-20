@@ -1,4 +1,5 @@
 #include "world/waves.h"
+#include "core/rng.h"
 #include "events/event_bus.h"
 #include "config.h"
 #include "core/log.h"
@@ -14,9 +15,29 @@
  * soft-locks (playtest finding B1). */
 #define ZOMBIE_DETECTION_RANGE (SPAWN_RING_MAX + 100.0f)
 
-/* Safety net: if a wave is still "in progress" after this many seconds it is
- * force-completed so a stuck/unkillable zombie can never soft-lock the game. */
+/* B49 (owner decision 2026-11-20). A wave that outlives this many seconds used
+ * to have every surviving zombie force-destroyed on the spot. That was the B1
+ * soft-lock safety net, but with no feedback at the moment it fired, so from
+ * the player's seat the zombies simply vanished and the next wave started --
+ * which is exactly how the owner reported it after the 2026-11-19 playtest.
+ *
+ * Instead the stragglers now ENRAGE: they hunt the player from anywhere on the
+ * map, move much faster and render with a red tint, so the wave resolves
+ * through gameplay. Deleting entities was replaced, not merely delayed. */
 #define WAVE_MAX_DURATION 60.0f
+
+/* ...but the soft-lock guarantee B1 bought us cannot be given up: an enraged
+ * zombie that is genuinely stuck (wedged in geometry, unreachable, invincible)
+ * would stall the game forever. So the force-destroy survives as a last-resort
+ * backstop at a later deadline. Reaching it means the enrage failed to resolve
+ * the wave, which is a bug worth seeing in the log, not normal play. */
+#define WAVE_HARD_TIMEOUT 120.0f
+
+/* Enrage tuning. The speed multiplier is what makes a straggler close the
+ * distance; the detection range is set beyond any map diagonal so an enraged
+ * zombie can never fall back to the wander branch in zombie_ai.c. */
+#define ENRAGE_SPEED_MULT 2.5f
+#define ENRAGE_DETECTION_RANGE 100000.0f
 
 /* R13/D3: difficulty scales with player count (tune later). Each extra
  * player above the 1st adds a few more zombies to the wave budget and a
@@ -78,6 +99,7 @@ void waves_start_next_wave(WaveSystem *ws, int player_count) {
     ws->between_waves = false;
     ws->difficulty_multiplier = 1.0f + (ws->wave_number - 1) * 0.15f;
     ws->wave_elapsed = 0;
+    ws->enrage_applied = false;  /* B49: per-wave, not per-run */
 
     LOG_INFO("=== WAVE %d STARTED === (%d zombies, interval: %.2fs, difficulty: %.2f)",
              ws->wave_number, ws->zombies_to_spawn, ws->spawn_interval, ws->difficulty_multiplier);
@@ -136,9 +158,9 @@ static bool spawn_point_near_player(World *ecs, GameWorld *world,
     if (!player_found) return false;
 
     for (int attempt = 0; attempt < 10; attempt++) {
-        float angle = (float)(rand() % 360) * M_PI / 180.0f;
+        float angle = (float)((float)(zw_rand() % 360) * M_PI / 180.0f);
         float radius = SPAWN_RING_MIN +
-                       (float)(rand() % (int)(SPAWN_RING_MAX - SPAWN_RING_MIN));
+                       (float)(zw_rand() % (int)(SPAWN_RING_MAX - SPAWN_RING_MIN));
         Vec2 candidate = vec2_add(player_pos, vec2_from_angle(angle, radius));
 
         candidate.x = clampf(candidate.x, 32.0f, world->world_pixel_w - 32.0f);
@@ -179,10 +201,10 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
     };
 
     /* Vary zombie colors/sizes; tints resolve through the map's theme. */
-    int variant = rand() % 3;
+    int variant = zw_rand() % 3;
     SDL_FColor color = theme_get(theme)->zombie_tints[variant];
 
-    float size = 10.0f + (float)(rand() % 6);
+    float size = 10.0f + (float)(zw_rand() % 6);
     /* R13 merge fix (B15): the merge dropped the zombie texture, leaving a flat
      * circle. Restore it; the theme tint keeps the per-variant palette. */
     Sprite zs = sprite_circle(size, color);
@@ -207,7 +229,7 @@ Entity waves_spawn_zombie(World *ecs, Vec2 pos, ThemeID theme) {
      * strongest "this is fake" tell in the game. The STARTING FRAME is hashed
      * from the entity's slot; the period is unchanged, so the offset lasts for
      * the zombie's whole life. Display-only: the frame is what the snapshot
-     * names, so a client inherits the stagger without a wire field. No rand() -
+     * names, so a client inherits the stagger without a wire field. No zw_rand() -
      * the seed sequence is load-bearing for single-player determinism. */
     uint32_t phase = e * 2654435761u;
     phase ^= phase >> 15;
@@ -237,13 +259,45 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
 
     ws->wave_elapsed += dt;
 
-    /* Soft-lock safety net: if all zombies are spawned but some are still
-     * alive well past the expected clear time, force-end the wave so a
-     * stuck/unkillable zombie can never stall the game forever (B1). */
-    if (ws->wave_elapsed >= WAVE_MAX_DURATION &&
+    /* B49: a wave that drags on past WAVE_MAX_DURATION enrages its survivors
+     * rather than deleting them. Only once per wave, and only once every
+     * zombie the wave owed has actually spawned -- enraging mid-spawn would
+     * turn a slow wave into an unwinnable one. */
+    if (!ws->enrage_applied && ws->wave_elapsed >= WAVE_MAX_DURATION &&
         ws->zombies_spawned >= ws->zombies_to_spawn && ws->zombies_alive > 0) {
-        LOG_WARN("Wave %d timed out after %.0fs; force-ending (%d zombies)",
-                 ws->wave_number, ws->wave_elapsed, ws->zombies_alive);
+        ws->enrage_applied = true;
+        int enraged = 0;
+        for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
+            if (!ecs->alive[i]) continue;
+            if (!(ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG))) continue;
+            CZombieTag *zt = ecs_get_zombie_tag(ecs, i);
+            zt->enraged = true;
+            /* Hunt from anywhere: zombie_ai.c only chases while
+             * dist < detection_range, and wanders otherwise. */
+            zt->detection_range = ENRAGE_DETECTION_RANGE;
+            if (ecs->component_masks[i] & (1u << COMP_VELOCITY)) {
+                ecs_get_velocity(ecs, i)->max_speed *= ENRAGE_SPEED_MULT;
+            }
+            enraged++;
+        }
+        LOG_WARN("Wave %d outlived %.0fs; ENRAGING %d straggler(s) instead of "
+                 "force-destroying them (B49)",
+                 ws->wave_number, ws->wave_elapsed, enraged);
+        /* Appended to the event stream so the behaviour is verifiable
+         * headlessly: ia = how many zombies were enraged. */
+        event_emit(g_events, GE_WAVE_ENRAGE, ECS_NULL_ENTITY, GEK_ZOMBIE,
+                   0.0f, 0.0f, ws->wave_elapsed, 0.0f, enraged, ws->wave_number);
+    }
+
+    /* Last-resort backstop: the enrage is supposed to end the wave through
+     * gameplay. If it has not by WAVE_HARD_TIMEOUT, something is genuinely
+     * stuck and the original B1 force-destroy applies so the game cannot
+     * soft-lock. This path firing is a bug signal, hence LOG_ERROR. */
+    if (ws->wave_elapsed >= WAVE_HARD_TIMEOUT &&
+        ws->zombies_spawned >= ws->zombies_to_spawn && ws->zombies_alive > 0) {
+        LOG_ERROR("Wave %d still alive %.0fs after the enrage; force-ending "
+                  "(%d zombies) - the enrage failed to resolve the wave",
+                  ws->wave_number, ws->wave_elapsed, ws->zombies_alive);
         for (uint32_t i = 0; i < ECS_MAX_ENTITIES; i++) {
             if (ecs->alive[i] && (ecs->component_masks[i] & (1u << COMP_ZOMBIE_TAG))) {
                 ecs_destroy_entity(ecs, i);
@@ -262,10 +316,10 @@ void waves_update(WaveSystem *ws, World *ecs, GameWorld *world,
             Vec2 spawn_pos;
             if (!spawn_point_near_player(ecs, world, players, player_count, &spawn_pos)) {
                 /* fallback: fixed edge point */
-                int idx = rand() % ws->spawn_point_count;
+                int idx = zw_rand() % ws->spawn_point_count;
                 spawn_pos = ws->spawn_points[idx];
-                spawn_pos.x += (float)(rand() % 100 - 50);
-                spawn_pos.y += (float)(rand() % 100 - 50);
+                spawn_pos.x += (float)(zw_rand() % 100 - 50);
+                spawn_pos.y += (float)(zw_rand() % 100 - 50);
             }
 
             Entity z = waves_spawn_zombie(ecs, spawn_pos, world->theme);

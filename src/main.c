@@ -1,3 +1,4 @@
+#include "core/rng.h"
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <stdbool.h>
@@ -370,7 +371,7 @@ static bool begin_net_session(void) {
     }
 
     if (game.net_host_mode) {
-        uint32_t seed = game.net_seed != 0 ? game.net_seed : (uint32_t)rand();
+        uint32_t seed = game.net_seed != 0 ? game.net_seed : (uint32_t)zw_rand();
         /* Advertise the chosen map so every client builds this exact world
          * (CROSS_BRANCH_CONFLICTS.md 5). */
         uint8_t map_index = (uint8_t)game.map_select.selected_option;
@@ -469,14 +470,44 @@ static bool init(void) {
                      SDL_GetError());
         }
 
-        game.font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18);
-        game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22);
-        game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36);
-        if (!game.font) {
-            LOG_WARN("Failed to load DejaVu font, trying fallback...");
-            game.font = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 18);
-            game.font_medium = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 22);
-            game.font_large = TTF_OpenFont("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 36);
+        /* W6: the font search list is platform-specific because the paths
+         * are. Both entries here used to be absolute Linux paths, so on
+         * Windows neither existed, TTF_OpenFont returned NULL three times and
+         * the game ran with no font at all - which is why the menu came up as
+         * a bare backdrop with no title, no buttons and no text anywhere, and
+         * why the HUD, wave banner and damage numbers were invisible too.
+         * There is no font shipped in assets/, so the only portable answer is
+         * to look where each platform actually keeps its fonts.
+         *
+         * The Linux list is unchanged: same two families, same order, same
+         * files, same sizes - DejaVu first, Liberation second. Selection is
+         * on the regular face only, exactly as the old code was (its fallback
+         * was gated on !game.font), so Linux takes the same branch it always
+         * did. */
+        static const struct { const char *regular; const char *bold; } font_candidates[] = {
+#if defined(_WIN32)
+            /* Shipped with every supported Windows; Segoe UI is the system
+             * UI face, Arial and Tahoma are the belt-and-braces fallbacks. */
+            { "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/segoeuib.ttf" },
+            { "C:/Windows/Fonts/arial.ttf",   "C:/Windows/Fonts/arialbd.ttf"  },
+            { "C:/Windows/Fonts/tahoma.ttf",  "C:/Windows/Fonts/tahomabd.ttf" },
+#else
+            { "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" },
+            { "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" },
+#endif
+        };
+        for (size_t fi = 0; fi < sizeof(font_candidates) / sizeof(font_candidates[0]); fi++) {
+            game.font = TTF_OpenFont(font_candidates[fi].regular, 18);
+            if (!game.font) {
+                LOG_WARN("Font '%s' unavailable, trying next...", font_candidates[fi].regular);
+                continue;
+            }
+            game.font_medium = TTF_OpenFont(font_candidates[fi].regular, 22);
+            game.font_large = TTF_OpenFont(font_candidates[fi].bold, 36);
+            LOG_INFO("Font loaded: %s", font_candidates[fi].regular);
+            break;
         }
         if (!game.font) {
             LOG_WARN("No font loaded, text will not render");
@@ -890,8 +921,8 @@ static void update(float dt) {
                 items_count_alive(&game.ecs) < MAX_ALIVE_ITEMS) {
                 game.item_spawn_timer = 0;
                 Vec2 item_pos;
-                item_pos.x = 200.0f + (float)(rand() % (int)(game.world.world_pixel_w - 400));
-                item_pos.y = 200.0f + (float)(rand() % (int)(game.world.world_pixel_h - 400));
+                item_pos.x = 200.0f + (float)(zw_rand() % (int)(game.world.world_pixel_w - 400));
+                item_pos.y = 200.0f + (float)(zw_rand() % (int)(game.world.world_pixel_h - 400));
                 if (world_is_walkable(&game.world, item_pos.x, item_pos.y)) {
                     items_spawn_random(&game.ecs, item_pos);
                 }
@@ -1817,9 +1848,9 @@ static void parse_args(int argc, char *argv[]) {
         } else if (strncmp(arg, "--events=", 9) == 0) {
             game.event_log_path = arg + 9;
         } else if (strncmp(arg, "--seed=", 7) == 0) {
-            srand((unsigned int)atoi(arg + 7));
+            zw_srand((unsigned int)atoi(arg + 7));
         } else if (strcmp(arg, "--seed") == 0 && i + 1 < argc) {
-            srand((unsigned int)atoi(argv[++i]));
+            zw_srand((unsigned int)atoi(argv[++i]));
         } else if (strncmp(arg, "--mode=", 7) == 0) {
             const char *m = arg + 7;
             if (strcmp(m, "single") == 0) {
@@ -1930,7 +1961,7 @@ static void parse_args(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-    srand((unsigned int)time(NULL));
+    zw_srand((unsigned int)time(NULL));
 
     log_init("game.log", LOG_DEBUG, LOG_TRACE);
     LOG_INFO("========================================");

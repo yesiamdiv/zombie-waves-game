@@ -15,6 +15,7 @@
  * ========================================================================== */
 
 #include <enet/enet.h>
+#include "portable_time.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -47,16 +48,12 @@ static int g_failed = 0;
         }                                                                \
     } while (0)
 
-static double now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
-}
+static double now_ms(void) { return zw_now_ms(); }
 
 static void service(NetServer *server, NetClient *clients, int nclients) {
     net_server_update(server);
     for (int i = 0; i < nclients; i++) net_client_update(&clients[i]);
-    nanosleep(&(struct timespec){0, 500000L}, NULL); /* pace the handshake */
+    zw_sleep_ns(500000L); /* pace the handshake */
 }
 
 static bool all_connected(NetClient *clients, int nclients) {
@@ -301,7 +298,7 @@ int main(void) {
          * cares about per-slot player state, not wave counters. */
         World ecs;
         Player hplayers[MAX_PLAYERS];
-        NetSnapshot snap;
+        NetSnapshot hsnap;
 
         ecs_init(&ecs);
         players_reset(hplayers, MAX_PLAYERS);
@@ -323,14 +320,14 @@ int main(void) {
         /* (Wave state is set after the build below: net_snapshot_build starts
          * from a zeroed struct, and it was handed waves == NULL.) */
         CHECK(net_snapshot_build(&ecs, hplayers, MAX_PLAYERS, 1.0f, NULL,
-                                 &snap) >= 0);
+                                 &hsnap) >= 0);
         /* Wave state the client HUD needs (B26). Set after the build because
          * net_snapshot_build zeroes its output and got waves == NULL. */
-        snap.wave_number = 5;
-        snap.wave_active = 1;
-        snap.zombies_alive = 9;
-        snap.total_kills = 21;
-        net_server_broadcast_snapshot(&server, &snap);
+        hsnap.wave_number = 5;
+        hsnap.wave_active = 1;
+        hsnap.zombies_alive = 9;
+        hsnap.total_kills = 21;
+        net_server_broadcast_snapshot(&server, &hsnap);
 
         /* Only clients still connected at this point in the test: earlier
          * sections deliberately disconnect one. */
@@ -349,7 +346,7 @@ int main(void) {
                 if (!c[i].snap_valid) all_have = false;
             }
             if (all_have) break;
-            nanosleep(&(struct timespec){0, 500000L}, NULL);
+            zw_sleep_ns(500000L);
         }
         for (int i = 0; i < 3; i++) {
             if (c[i].state != NET_CLIENT_CONNECTED) continue;

@@ -1,4 +1,5 @@
 #include "ai/bot.h"
+#include "core/rng.h"
 #include "core/log.h"
 #include <stdlib.h>
 
@@ -22,8 +23,8 @@ void bot_update(BotState *bot, const GameView *view, double dt, AIControls *out)
     bot->fire_cooldown -= (float)dt;
     bot->strafe_timer -= (float)dt;
     if (bot->strafe_timer <= 0.0f) {
-        bot->strafe_dir = (rand() % 2) ? 1.0f : -1.0f;
-        bot->strafe_timer = 1.5f + (float)(rand() % 100) / 50.0f;
+        bot->strafe_dir = (zw_rand() % 2) ? 1.0f : -1.0f;
+        bot->strafe_timer = 1.5f + (float)(zw_rand() % 100) / 50.0f;
     }
 
     bool heal_seek = view->player_health < view->player_max_health * 0.75f &&
