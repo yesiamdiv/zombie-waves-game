@@ -1279,9 +1279,10 @@ and then measured. **FIXED** — see commit below.
 
 ## B63. Cross-platform determinism is structurally impossible: the simulation draws from libc `rand()`
 
-Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7). **OPEN** — not
-fixable in this lane; it needs an owner/PM design decision because any fix
-re-baselines the Linux reference.
+Found 2026-11-20 on `feature/windows-port` (Sprint 7 W7). **FIXED on
+2026-11-20** by the project-owned PRNG the owner approved — see the fix note
+at the end of this entry. It was held OPEN until then because any fix
+re-baselines the Linux reference, which is an owner decision, not a lane one.
 
 - **Symptom**: after B52 removed line-ending translation, the seed-42
   unlimited-ammo single-player events log still differs from the Linux
@@ -1328,6 +1329,32 @@ re-baselines the Linux reference.
   joining a Linux host never runs its own `rand()`-driven simulation. The risk
   is latent, not live: it would become real the moment anything moves to
   lockstep or client-side prediction of a `rand()`-driven system.
+- **Fix (2026-11-20, owner-approved)**: `src/core/rng.c` adds a project-owned
+  PCG32 generator and the 34 simulation sites now call `zw_rand()` /
+  `zw_srand()`. PCG32 was chosen for one reason above all others: it is
+  specified entirely in `uint64_t` arithmetic, which C defines to wrap modulo
+  2^64 on every conforming implementation, so no latitude is left for a
+  platform to differ. `NET_WORLD_GEN_VERSION` 2 → 3 in the same commit (spawn
+  rules changed). `tests.c:test_rng_stream_pinned` pins seed 42's first draws
+  against literals computed from the PCG32 spec *independently of this
+  implementation*, so the cross-platform promise is a red test rather than a
+  hope.
+- **The re-baseline this forced**, announced per `AGENTS.md`: both references
+  move to **111750 bytes / 1423 lines**. The unlimited and limited figures,
+  previously 125938/1603 and 129504/1648, are now the *same number* — not an
+  error. Measured: the bot fires 68 shots in the 25 s window and picks up one
+  ammo item at t=10.825 (`PISTOL_AMMO_START` 60 + `PISTOL_AMMO_PICKUP` 20 =
+  80), so the ammo cap never binds and the two scenarios coincide. Different
+  strafe draws from the new stream changed the bot's firing cadence; that is
+  the expected consequence of re-seeding the simulation, not a gameplay
+  change.
+- **Still unmeasured, deliberately**: the actual Linux-vs-Windows comparison.
+  There is no Linux toolchain on the machine this landed on, so what is proven
+  is (a) two Windows runs are byte-identical and (b) the stream reproduces
+  independently computed spec values. Those two together are a strong
+  argument, not a measurement. **Run the Linux gate and diff the log against
+  111750/1423 before claiming cross-platform identity** — that is the one
+  check that closes this bug completely.
 
 ## B64. No text renders anywhere on Windows: the font chain is Linux-only absolute paths
 

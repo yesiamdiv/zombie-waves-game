@@ -221,3 +221,26 @@ Lane Q (QA automation, Q1-Q5) was **never started** — dropped on owner
 instruction to limit token spend. W8's release-zip CI is **untested**: the YAML
 is validated locally but has never executed, and the Linux zip ships no font,
 which is the mirror image of B64 and a licensing decision.
+
+## 2026-11-20 - REOPENED AND CLOSED: G4 (B63, the project-owned PRNG)
+
+Sprint 7 was closed with B63 recorded as "needs an owner decision". The owner
+gave it on 2026-11-20: **go ahead with the project-owned PRNG**, re-baseline
+included.
+
+- **G4** Replace libc `rand()` in the simulation with a project-owned
+  generator. **DONE** - `src/core/rng.c` (PCG32), 34 call sites across 13
+  files, `NET_WORLD_GEN_VERSION` 2 -> 3, `test_rng_stream_pinned` pinning the
+  stream against independently computed spec values. Commits 87f6a1c
+  (decision), 96ef7b2 (implementation).
+- Gate on the result: build clean under `/W4 /WX`, `zombie_tests` 2123/0,
+  `ctest` 3/3, two `--seed=42` runs byte-identical. New reference
+  **111750 bytes / 1423 lines** for both the unlimited and the limited
+  scenario - see [gate-baseline] for why those two now coincide.
+- **Still open, and it is the one that matters**: nobody has run this on
+  Linux. See `docs/PENDING_VERIFICATION.md`. Cross-platform identity is the
+  entire purpose of the change and remains predicted rather than measured.
+
+Everything in Sprint 7 is on branch `sprint7/windows-port-and-determinism`,
+proposed to `main` as a pull request for review rather than pushed to `main`
+directly.

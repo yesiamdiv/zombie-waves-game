@@ -571,3 +571,43 @@ Nothing else moves: no `.c`/`.h` file is touched by this lane, no existing PNG
 changes size, every `base_px` still matches, so the single-player seed-42
 references (unlimited **125938 / 1603**, limited **129504 / 1648**) and the
 test counts are unaffected.
+
+## 2026-11-20 - note by G: DELIBERATE RE-BASELINE - the simulation's PRNG is now project-owned (B63)
+
+The owner approved replacing libc `rand()` in the simulation on 2026-11-20.
+The sim now draws from the project's own PCG32 stream (`src/core/rng.c`), so
+the spawn angles, ring radii, zombie variants and sizes, item types and bot
+strafe directions are all different numbers for the same seed. **This moves
+the byte/line reference, deliberately and announced**, per the AGENTS.md rule.
+
+Measured on `sprint7/windows-port-and-determinism` at 96ef7b2, Windows,
+MSVC x64 Debug:
+
+- `zombie_tests.exe` -> `Tests passed: 2123  Failed: 0` (2114 + 9 new CHECKs
+  in `test_rng_stream_pinned`)
+- `ctest -C Debug` -> 3/3: `net_spike`, `net_loopback`, `core_tests`
+- Build clean: 0 errors, 0 warnings in project sources under `/W4 /WX`
+- Two `--seed=42` single-player runs (25 s, `--ai=bot`, `--unlimited-ammo`)
+  -> byte-identical, **111750 bytes / 1423 lines** (was 125938 / 1603)
+- Two `--seed=42` runs with default limited ammo -> byte-identical,
+  **111750 bytes / 1423 lines** (was 129504 / 1648)
+- Wave 1 -> still exactly `8 zombies, interval: 1.90s, difficulty: 1.00`
+  (wave composition is arithmetic, not a random draw)
+
+**The two references are now the same number, and that is not a mistake.**
+Measured, not assumed: the bot fires 68 shots in the 25 s window and collects
+one ammo pickup at t=10.825, and `PISTOL_AMMO_START` 60 + `PISTOL_AMMO_PICKUP`
+20 = 80 > 68, so the ammo cap never binds inside the gate window. The new
+strafe draws changed the bot's firing cadence enough to drop it under the cap.
+If the gate's duration or the bot ever changes, expect these two to separate
+again.
+
+NOT YET MEASURED: the Linux figure. This machine has no Linux toolchain, so
+111750/1423 is the **Windows** measurement. The whole point of B63 is that
+Linux should now produce the same number - but that is a prediction until
+someone runs it. The first Linux run is the real verification; if it disagrees,
+the bug is in the PRNG port, not in the baseline.
+
+Texture count unchanged at 68 - no asset was touched, and `gen_assets.py
+--verify` was deliberately NOT run, because running it dirties every PNG
+(B51).
