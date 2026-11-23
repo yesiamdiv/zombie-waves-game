@@ -110,15 +110,14 @@ instruction to rebuild.** Lanes that already rebuilt before the broadcast need
 no slot; lanes sharing a checkout (QA uses the main checkout) can be re-gated
 once by whoever built it, rather than each rebuilding.
 
-### Better fix, not yet done
+### The durable fix: opt-in per-lane cache
 
-Serialization is a process workaround for a layout problem. The durable fix is
-to stop sharing mutable build state: give each worktree its own dep cache
-(per-lane `FETCHCONTENT_BASE_DIR` / cache dir), so lanes cannot collide at all
-and builds can run in parallel again. Costs disk and re-fetch time per lane.
-Not implemented — raised here so it is not lost. Note that a per-lane `TMPDIR`
-(as animation sets) fixes compiler *temp* files but **not** this, because the
-PCH lives in the shared cache, not in `TMPDIR`.
+Serialization is a process workaround for a layout problem. The real fix is to
+stop sharing mutable build state. Approved by pm on 2026-11-23 and implemented
+as an **opt-in CMake option** (see the next entry below).
+
+Note that a per-lane `TMPDIR` (as animation sets) fixes compiler *temp* files
+but **not** this, because the PCH lives in the shared cache, not in `TMPDIR`.
 
 ### Incident record
 
@@ -128,3 +127,63 @@ broadcast "sync to new main baseline now". `effects`, `audio`, `animation` and
 serialized queue (effects -> assets -> net; animation/audio/qa exempt, already
 green). Every lane that retried serially passed the gate at the re-baselined
 numbers — see [[gate-baseline]].
+
+### Prior art: this project already knew this failure mode
+
+`CMakeLists.txt` has carried a private-cache carve-out for sanitizer builds for
+some time, and its comment says ASan/UBSan flag-flipping the shared cache "has
+corrupted the SDL3 precompiled header". **Same cache, same PCH, same corruption
+— different trigger** (differing compile flags rather than concurrent writers).
+The 2026-11-23 incident was therefore the second visit to one root cause: one
+mutable cache shared by writers that disagree about its contents. The per-lane
+option below deliberately reuses that existing carve-out's shape instead of
+inventing a parallel mechanism.
+
+## 2026-11-23 - decision by effects (approved by pm): opt-in per-lane dep cache, default OFF
+
+`ZW_PER_LANE_DEP_CACHE` in `CMakeLists.txt` gives one source tree its own
+FetchContent cache, so lanes can build **at the same time** without touching
+each other's PCH.
+
+```sh
+# one-time per lane, from the worktree root
+cmake -S . -B build -G Ninja -DZW_PER_LANE_DEP_CACHE=ON
+cmake --build build
+```
+
+The cache lands in `$HOME/.cache/cmake-deps-lanes/<lane>`, where `<lane>` is
+the source directory's name (`worktrees/effects` -> `effects`), so it is
+distinct per worktree and stable across reconfigures.
+
+**Default is OFF, and that is deliberate.** Leaving it off changes nothing: the
+main checkout and every existing build dir keep using
+`$HOME/.cache/cmake-deps` on exactly the path they used before. A lane opts in
+for itself; no lane can change another lane's cache path.
+
+**COST — the reason this is opt-in and not the default:** a populated cache is
+~1.6 GB, and opting in means a full dependency fetch and build for that lane
+rather than reusing the machine-wide one. Six lanes is roughly 10 GB and six
+first-time dep builds. The first configure after opting in is slow. That is the
+price of parallel builds; pay it per lane, deliberately.
+
+Precedence, highest first:
+1. `BUILD_ASAN`/`BUILD_UBSAN` -> private `_deps` in the build tree (unchanged).
+2. An explicit `-D FETCHCONTENT_BASE_DIR=...` -> always wins.
+3. `ZW_PER_LANE_DEP_CACHE=ON` -> the per-lane dir.
+4. Otherwise -> the shared `$HOME/.cache/cmake-deps`.
+
+**Gotcha — opting back out needs an explicit `-D`.** CMake caches
+`FETCHCONTENT_BASE_DIR`, so merely setting the option back to `OFF` leaves the
+lane pointed at its private cache. To return a lane to the shared cache:
+
+```sh
+cmake -S . -B build -G Ninja -DZW_PER_LANE_DEP_CACHE=OFF \
+      -DFETCHCONTENT_BASE_DIR="$HOME/.cache/cmake-deps"
+```
+
+Delete `$HOME/.cache/cmake-deps-lanes/<lane>` afterwards to reclaim the 1.6 GB.
+
+**The serialization rule above stays in force.** It is NOT lifted by this
+option existing. A lane that has not opted in still shares the cache and still
+needs a slot, and two non-opted-in lanes still collide exactly as before.
+Parallel builds are only safe between lanes that have each opted in.

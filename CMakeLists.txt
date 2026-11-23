@@ -17,6 +17,28 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # configure with -G Ninja unless you point at a cache populated by another one.
 option(BUILD_ASAN "Build with AddressSanitizer" OFF)
 option(BUILD_UBSAN "Build with UndefinedBehaviorSanitizer" OFF)
+# Opt-in private cache for one agent lane, so several worktrees can build at
+# the SAME TIME. Default OFF: leaving it off keeps the shared cache above
+# exactly as it was, so the main checkout and any existing build dir are
+# unaffected by this option existing.
+#
+# Why you would turn it on: concurrent `cmake --build` runs across worktrees
+# share one SDL3 precompiled header, and a second lane rewriting it while
+# another cc1 has it mmapped kills that compiler with SIGBUS, reported as
+# `cc1: internal compiler error: Bus error`. Note the sanitizer block below
+# already carves out a private dir for the very same reason -- this is that
+# same fix, applied per lane instead of per sanitizer config.
+#
+# COST: a populated cache is ~1.6 GB, and turning this on means one full fetch
+# and dependency build per lane instead of one for the whole machine. With six
+# lanes that is ~10 GB and six first-time dep builds. Disk and first-build time
+# are the price of parallel lane builds; decide deliberately.
+#
+# See docs/knowledge/shared-dep-cache-build-serialization.md. The
+# one-lane-at-a-time rule stays in force for lanes that have NOT opted in.
+option(ZW_PER_LANE_DEP_CACHE
+    "Give this source tree its own FetchContent cache so lanes can build in parallel (~1.6G per lane)"
+    OFF)
 # Sanitizer configurations must NOT share the dependency cache: ASan/UBSan
 # recompile the FetchContent deps with different flags, which flag-flips that
 # cache for every other worktree until a normal rebuild heals it (and has
@@ -27,6 +49,23 @@ if(BUILD_ASAN OR BUILD_UBSAN)
        FETCHCONTENT_BASE_DIR STREQUAL "$ENV{HOME}/.cache/cmake-deps")
         set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH
             "Private FetchContent tree for sanitizer builds" FORCE)
+    endif()
+elseif(ZW_PER_LANE_DEP_CACHE AND DEFINED ENV{HOME})
+    # Same guard as the sanitizer branch: an explicit -D FETCHCONTENT_BASE_DIR
+    # still wins, so this only redirects the default (or the shared default a
+    # previous configure already wrote into this cache).
+    if(NOT FETCHCONTENT_BASE_DIR OR
+       FETCHCONTENT_BASE_DIR STREQUAL "$ENV{HOME}/.cache/cmake-deps")
+        # Named after the source dir, which is the lane: worktrees/effects ->
+        # "effects". Distinct per worktree, and stable across reconfigures, so
+        # no two lanes can collide and a lane keeps its own populated cache.
+        get_filename_component(ZW_LANE_NAME "${CMAKE_SOURCE_DIR}" NAME)
+        set(FETCHCONTENT_BASE_DIR
+            "$ENV{HOME}/.cache/cmake-deps-lanes/${ZW_LANE_NAME}" CACHE PATH
+            "Per-lane FetchContent cache, private to this worktree" FORCE)
+        message(STATUS
+            "ZW: per-lane dep cache for '${ZW_LANE_NAME}' -> ${FETCHCONTENT_BASE_DIR}"
+            " (~1.6G; first configure refetches dependencies)")
     endif()
 elseif(NOT FETCHCONTENT_BASE_DIR AND DEFINED ENV{HOME})
     set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/cmake-deps" CACHE PATH
