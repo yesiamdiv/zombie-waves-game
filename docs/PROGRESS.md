@@ -1264,3 +1264,15 @@ value.
 
 ### Blocked
 - Nothing; lane rebuilds are serialized until further notice.
+
+### Lane sync status after PR #1 (2026-11-23, in progress)
+- audio: FF 9b26d50 -> 1267656, re-gate green (13 sounds, 68 textures,
+  2123/0, ctest 3/3, SP 111750/1423 both modes); rebuild started before the
+  queue broadcast, transient SIGBUS resolved by serial retry. Standby.
+- animation: FF 0 ahead/105 behind -> 1267656, reconfigure + rebuild cleared a
+  transient PCH error, re-gate green (same numbers, 36 B51 PNGs restored).
+  Standby; B49/B50 on-screen checks pending.
+- qa: main checkout already at 1267656; verified PM-built binaries green.
+  Exempted from a rebuild slot to avoid contention. Standby.
+- Queue trimmed to effects -> assets -> net; effects owns the shared-PCH
+  knowledge topic. Awaiting their reports.
