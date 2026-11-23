@@ -41,6 +41,7 @@ topic rather than copying its contents into another doc.
 | `knowledge/i5-unverified-on-screen.md` | what is fixed in code but **unproven visually** |
 | `knowledge/client-cannot-double-fire-events.md` | why a client cannot double-emit a relayed event |
 | `knowledge/build-shared-dep-cache.md` | the shared dep cache, and why a feature branch re-downloads 1.5G |
+| `knowledge/shared-dep-cache-build-serialization.md` | **one lane builds at a time** — why concurrent builds SIGBUS the shared SDL3 PCH, and never clear the cache to fix it |
 | `knowledge/open-decisions-awaiting-pm.md` | **what is blocked, and on whom** |
 | `knowledge/agent-rules.md` | how two agents build in parallel — file ownership, shared files, version contention, frame windows, merge order |
 | `knowledge/animation-polish.md` | what anim polish was approved, in what shape (P1 display-only), and where effects live |

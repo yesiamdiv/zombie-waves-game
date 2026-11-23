@@ -31,3 +31,12 @@ main at `CMakeLists.txt:18`. The branch lag is the whole cause.
 Both `worktrees/assets/build` and `worktrees/multiplayer/build` were deleted and
 reconfigured on 2026-10-09 (CMake had cached the pre-move absolute paths) and
 both came back green: build clean, ctest 3/3, zombie_tests 1186/0.
+
+## 2026-11-23 - note by effects: sharing the cache also means lanes cannot build concurrently
+
+The flip side of this cache being shared: two lanes building at the same time
+rewrite the same SDL3 precompiled header while another `cc1` has it mmapped,
+which kills the compiler with `Bus error` / an "internal compiler error". Build
+slots must be serialized, and the cache must **never** be deleted to clear a
+build fault. Root cause, recovery, and the `pgrep -f` self-match foot-gun are
+in [[shared-dep-cache-build-serialization]].
