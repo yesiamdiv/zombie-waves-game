@@ -1238,3 +1238,28 @@ value.
 ### Blocked
 - Sprint 7 scope is blocked on those three owner answers. Other weapons remain
   untested by the owner.
+
+---
+
+## Session 2026-11-23 — net lane sync to PR #1 baseline
+
+### PM — planned
+- All lanes sync to the post-PR #1 `main` before any new work; re-gate against
+  the B63 re-baseline (new SP references).
+
+### DEV (net) — planned / done / next / blocked
+- Planned: fast-forward `feature/net-protocol` to `origin/main`, rebuild, verify
+  the new gate, and keep the N3 relay code/wire untouched.
+- Done: lane was already fully contained in the PR #1 history, so the sync was a
+  clean fast-forward to `1267656` (zero conflicts). Rebuilt (first parallel
+  attempt hit a compiler ICE while other lanes were compiling the shared SDL3
+  PCH; a serial `-j 2` retry succeeded). Gate: `zombie_tests` **2123/0**,
+  ctest 3/3 (one transient first-run failure, clean rerun), `gen_assets.py
+  --verify` 68 textures, `gen_audio.py --verify` 13 sounds, SP seed-42 unlimited
+  and limited both byte-identical at the new declared reference, `net_coop_check.py`
+  PASS. Restored the B51 PNG byte churn after verify. Existing untracked QA
+  findings left untouched.
+- Next: no net work assigned; on call for owner findings. N3's old SP numbers
+  marked obsolete in `docs/knowledge/relay-overflow-visibility.md`.
+- Blocked: nothing. Note for pm: the worktree `AGENTS.md` gate section still
+  cites the old pre-B63 SP reference; it should point at `gate-baseline.md`.

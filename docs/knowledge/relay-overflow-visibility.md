@@ -64,3 +64,13 @@ VERIFIED on the merged Sprint-6 tree (2075/0 baseline):
   Clearing earlier waves with grenades shrinks the pack and misses the cap.
 - Remaining `unproven`: the HUD text on a real display. It is queued in the same
   branch as the log line (`src/main.c:1536-1547`), so only rendering is unseen.
+
+## 2026-11-23 - note by net: post-PR #1 sync
+
+The SP numbers in the verification list above are the pre-B63 references and
+are **obsolete**. B63 (project-owned PCG32) re-baselined both SP modes; current
+values are declared once in `knowledge/gate-baseline.md`. Re-synced this lane to
+`origin/main` (`1267656`) and re-ran the gate against the new baseline: 2123/0,
+ctest 3/3, 68 textures, 13 sounds, both SP modes byte-identical to the new
+reference, `net_coop_check.py` PASS. This feature needs no version bump:
+`NET_WIRE_VERSION` is still 10 and the relay cap/filter/counter are unchanged.
