@@ -1329,3 +1329,13 @@ value.
   `FETCHCONTENT_BASE_DIR` from `build/CMakeCache.txt` in a separate CI commit;
   effects reports the SHA, PM integrates and re-runs the rehearsal. Broader
   single-source cache-path refactor deferred. Rehearsal result stands for now.
+
+### 2026-11-23 — derived cache-path rehearsal + remote branch warning
+- Integrated effects' LOCAL `4640e50` into main by fast-forward (from 1de1f74);
+  it derives `FETCHCONTENT_BASE_DIR` from `build/CMakeCache.txt` with guards for
+  empty/non-directory values. CI rehearsal `45139861619`: Linux + Windows all
+  green; zips downloaded to `build/logs/release-rehearsal-derived/`.
+- Warning: `origin/feature/effects` points at old `f9202f5` (Oct 27), which
+  deletes `release.yml` and many assets. main at `4640e50` is source of truth.
+  Broadcast a no-push/no-reset warning and asked net + effects to report push
+  history. Do not trust or push that remote branch until repaired.

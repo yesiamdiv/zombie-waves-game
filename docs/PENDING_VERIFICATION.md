@@ -575,12 +575,14 @@ the deliberate re-baseline history live in `docs/knowledge/gate-baseline.md`;
 
 - `workflow_dispatch` run `45138370084` on `main`: Linux and Windows configure,
   build, test, stage, payload-verify, archive and artifact-upload all PASS.
-- Artifacts downloaded to `build/logs/release-rehearsal/`:
-  `open-world-zombie-waves-linux-x86_64.zip` (7.2 MB) and
-  `open-world-zombie-waves-windows-x64.zip` (2.7 MB).
-- Two earlier rehearsals found real defects, both fixed: missing `libxtst-dev`
-  for SDL3 XTEST, and staging SDL shared libs only from `build/` when
-  FetchContent puts them in the external dep cache.
+- Re-run `45139861619` after `4640e50`: also green on both platforms. The Linux
+  Stage step now derives the dep-cache path from `build/CMakeCache.txt`, so the
+  per-lane cache option cannot silently stage an empty `lib/`.
+- Artifacts from both green runs are under `build/logs/release-rehearsal*/`.
+- Three earlier rehearsals found real defects, all fixed: missing `libxtst-dev`
+  for SDL3 XTEST, staging SDL shared libs only from `build/` when FetchContent
+  puts them in the external dep cache, and hardcoding that cache path in the
+  workflow.
 - Still **unproven**: the tag-push publish step (`gh release create`) has not run,
   no tag has been cut, and the Windows zip has only been built/verified by CI —
   it has not been launched on a Windows machine.
