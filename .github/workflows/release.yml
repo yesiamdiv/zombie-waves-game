@@ -3,10 +3,12 @@
 # Builds the game on Linux and Windows and attaches one zip per platform to a
 # tag's GitHub Release, so people can play it without a toolchain.
 #
-# UNTESTED CI: this workflow has never been executed. It was written and
-# YAML-validated on a developer machine; GitHub Actions cannot be run from
-# there. Treat the first tagged run as the real test, and expect to iterate on
-# the Linux system-dependency list in particular.
+# Rehearsed on 2026-11-23 with workflow_dispatch (run 45138370084): both
+# platform builds, tests, staging and zip artifacts passed. Two fixes came out
+# of the earlier failed rehearsals: libxtst-dev for SDL3 XTEST, and staging the
+# shared libs from the external FetchContent dep cache as well as build/.
+# A tagged run still attaches the zips to a GitHub Release; that publish step
+# has not been exercised.
 #
 # Trigger: push a tag like v0.1.0, or run it by hand from the Actions tab
 # (workflow_dispatch) to exercise the build and collect the zips as artifacts

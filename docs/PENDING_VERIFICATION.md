@@ -570,3 +570,17 @@ independent second Linux build (effects' worktree) both reproduce the declared
 Windows references, byte-for-byte in both ammo modes. The declared numbers and
 the deliberate re-baseline history live in `docs/knowledge/gate-baseline.md`;
 `tests.c:test_rng_stream_pinned` still checks the PCG32 literals. B63 is closed.
+
+## Release workflow - build/zip rehearsal PASS, publish untested (2026-11-23)
+
+- `workflow_dispatch` run `45138370084` on `main`: Linux and Windows configure,
+  build, test, stage, payload-verify, archive and artifact-upload all PASS.
+- Artifacts downloaded to `build/logs/release-rehearsal/`:
+  `open-world-zombie-waves-linux-x86_64.zip` (7.2 MB) and
+  `open-world-zombie-waves-windows-x64.zip` (2.7 MB).
+- Two earlier rehearsals found real defects, both fixed: missing `libxtst-dev`
+  for SDL3 XTEST, and staging SDL shared libs only from `build/` when
+  FetchContent puts them in the external dep cache.
+- Still **unproven**: the tag-push publish step (`gh release create`) has not run,
+  no tag has been cut, and the Windows zip has only been built/verified by CI —
+  it has not been launched on a Windows machine.

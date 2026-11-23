@@ -1310,3 +1310,15 @@ value.
   instead of hardcoding a stale SP byte/line reference.
 - Queue now: assets slot 2, then empty; effects may only rebuild with its own
   lane cache after assets reports done.
+
+### 2026-11-23 — release workflow rehearsal
+- Triggered `.github/workflows/release.yml` via `workflow_dispatch` (no tag cut).
+- Run 45137134013: Windows PASS; Linux configure failed on missing XTEST headers
+  -> `build(ci): install libxtst-dev for SDL3 XTEST` (bf3a61d).
+- Run 45137681233: both builds/tests passed; Linux payload verify failed because
+  FetchContent puts SDL .so files in the external dep cache, not `build/`
+  -> `build(ci): stage SDL libs from external dep cache` (second CI fix).
+- Run 45138370084: Linux + Windows configure/build/test/stage/verify/archive/
+  upload all PASS. Zips downloaded to `build/logs/release-rehearsal/`.
+- Tag-push publish step remains unexercised; no tag cut. B63 PENDING section
+  closed because both Linux confirmations are now measured.
