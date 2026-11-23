@@ -1238,3 +1238,94 @@ value.
 ### Blocked
 - Sprint 7 scope is blocked on those three owner answers. Other weapons remain
   untested by the owner.
+
+---
+
+## 2026-11-23 — PM process note: serialized rebuilds after shared-PCH SIGBUS
+
+### Planned
+- Get every lane synced to the merged PR #1 baseline and rebuilding safely.
+
+### Done
+- My first sync broadcast told all six lanes to rebuild at once. effects flagged
+  that this corrupts the shared `~/.cache/cmake-deps/sdl3-build/` PCH: concurrent
+  ninja builds rewrite `cmake_pch.h` while cc1 has it mmapped, giving SIGBUS /
+  "internal compiler error: Bus error". PM process error, not a PR defect — main's
+  gate was already green.
+- Broadcast a strict one-lane-at-a-time rebuild queue (effects, animation, audio,
+  assets, net, qa) and warned against clearing the shared cache. Corrected the
+  wait-loop advice to use `pgrep -f '[c]make-deps/sdl3-build'`; the plain pattern
+  self-matches the waiting shell and hangs forever.
+- effects accepted ownership of `docs/knowledge/shared-dep-cache-build-serialization.md`.
+
+### Next
+- Collect each lane's sync/rebuild/gate report in queue order; verify the knowledge
+  topic lands before closing this note.
+
+### Blocked
+- Nothing; lane rebuilds are serialized until further notice.
+
+### Lane sync status after PR #1 (2026-11-23, in progress)
+- audio: FF 9b26d50 -> 1267656, re-gate green (13 sounds, 68 textures,
+  2123/0, ctest 3/3, SP 111750/1423 both modes); rebuild started before the
+  queue broadcast, transient SIGBUS resolved by serial retry. Standby.
+- animation: FF 0 ahead/105 behind -> 1267656, reconfigure + rebuild cleared a
+  transient PCH error, re-gate green (same numbers, 36 B51 PNGs restored).
+  Standby; B49/B50 on-screen checks pending.
+- qa: main checkout already at 1267656; verified PM-built binaries green.
+  Exempted from a rebuild slot to avoid contention. Standby.
+- Queue trimmed to effects -> assets -> net; effects owns the shared-PCH
+  knowledge topic. Awaiting their reports.
+
+## Session 2026-11-23 — net lane sync to PR #1 baseline
+
+### PM — planned
+- All lanes sync to the post-PR #1 `main` before any new work; re-gate against
+  the B63 re-baseline (new SP references).
+
+### DEV (net) — planned / done / next / blocked
+- Planned: fast-forward `feature/net-protocol` to `origin/main`, rebuild, verify
+  the new gate, and keep the N3 relay code/wire untouched.
+- Done: lane was already fully contained in the PR #1 history, so the sync was a
+  clean fast-forward to `1267656` (zero conflicts). Rebuilt (first parallel
+  attempt hit a compiler ICE while other lanes were compiling the shared SDL3
+  PCH; a serial `-j 2` retry succeeded). Gate: `zombie_tests` **2123/0**,
+  ctest 3/3 (one transient first-run failure, clean rerun), `gen_assets.py
+  --verify` 68 textures, `gen_audio.py --verify` 13 sounds, SP seed-42 unlimited
+  and limited both byte-identical at the new declared reference, `net_coop_check.py`
+  PASS. Restored the B51 PNG byte churn after verify. Existing untracked QA
+  findings left untouched.
+- Next: no net work assigned; on call for owner findings. N3's old SP numbers
+  marked obsolete in `docs/knowledge/relay-overflow-visibility.md`.
+- Blocked: nothing. Note for pm: the worktree `AGENTS.md` gate section still
+  cites the old pre-B63 SP reference; it should point at `gate-baseline.md`.
+- net: FF to 1267656, re-gate green including `net_coop_check PASS`; transient
+  compiler ICE/first-run ctest blip were PCH-race effects. Exempt from further
+  rebuild. Docs `3b5bd7e`, `db58695`; lane owns no further main FF (PM rule).
+- effects: slot 1 rebuild + full gate green, independent second Linux
+  confirmation; owned `docs/knowledge/shared-dep-cache-build-serialization.md`
+  (`6a02e37`). Per-lane dep cache approved as task_01a20776edd0373ecc118c5f,
+  sequenced after assets. B49/E5 tint layering verified, no defect.
+- AGENTS.md gate paragraph de-duplicated: it now points at gate-baseline.md
+  instead of hardcoding a stale SP byte/line reference.
+- Queue now: assets slot 2, then empty; effects may only rebuild with its own
+  lane cache after assets reports done.
+
+### 2026-11-23 — release workflow rehearsal
+- Triggered `.github/workflows/release.yml` via `workflow_dispatch` (no tag cut).
+- Run 45137134013: Windows PASS; Linux configure failed on missing XTEST headers
+  -> `build(ci): install libxtst-dev for SDL3 XTEST` (bf3a61d).
+- Run 45137681233: both builds/tests passed; Linux payload verify failed because
+  FetchContent puts SDL .so files in the external dep cache, not `build/`
+  -> `build(ci): stage SDL libs from external dep cache` (second CI fix).
+- Run 45138370084: Linux + Windows configure/build/test/stage/verify/archive/
+  upload all PASS. Zips downloaded to `build/logs/release-rehearsal/`.
+- Tag-push publish step remains unexercised; no tag cut. B63 PENDING section
+  closed because both Linux confirmations are now measured.
+
+- effects flagged a latent clash (6f62152): `release.yml` still hardcodes the
+  shared dep cache, so a future `ZW_PER_LANE_DEP_CACHE=ON` release would stage an
+  empty `lib/`. Approved as part of task_01a20776edd0373ecc118c5f: derive
+  `FETCHCONTENT_BASE_DIR` from `build/CMakeCache.txt` in a separate CI commit;
+  effects reports the SHA, PM integrates and re-runs the rehearsal. Broader
+  single-source cache-path refactor deferred. Rehearsal result stands for now.
