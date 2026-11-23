@@ -187,3 +187,33 @@ Delete `$HOME/.cache/cmake-deps-lanes/<lane>` afterwards to reclaim the 1.6 GB.
 option existing. A lane that has not opted in still shares the cache and still
 needs a slot, and two non-opted-in lanes still collide exactly as before.
 Parallel builds are only safe between lanes that have each opted in.
+
+### KNOWN INTERACTION: release staging hardcodes the shared cache path
+
+`.github/workflows/release.yml` (Linux "Stage" step, as fixed by `b5378d3`)
+gathers the bundled SDL libraries with the shared cache path written in
+literally:
+
+```sh
+find build "$HOME/.cache/cmake-deps" \( -name 'libSDL3*.so*' \) \
+  -exec cp -P {} "$stage/lib/" \;
+```
+
+**If that staging ever runs in a tree with `ZW_PER_LANE_DEP_CACHE=ON`, it
+stages zero SDL libraries** and the payload-verify step fails with
+`missing libSDL3.so.0`. The `.so` files are in
+`~/.cache/cmake-deps-lanes/<lane>`, which that `find` never looks at.
+
+Harmless as things stand — the option defaults OFF and CI does not pass it —
+which is precisely why it is written down: nothing fails today, so the next
+person to turn the option on in a release context would be debugging an empty
+`lib/` with no clue why. Do not switch a release build to a per-lane cache
+without fixing that `find` first.
+
+The clean fix is to stop hardcoding either path and ask CMake where the cache
+actually is, e.g. read `FETCHCONTENT_BASE_DIR` out of `build/CMakeCache.txt`
+and search that. Adding a second literal path is the cheap fix but needs care:
+`find` on a non-existent directory returns non-zero and the step runs under
+`set -euo pipefail`, so an unconditional extra path would break the release
+when the lanes dir is absent. Not changed here — the release rehearsal is
+green and re-cutting it is the release owner's call, not an effects-lane edit.
