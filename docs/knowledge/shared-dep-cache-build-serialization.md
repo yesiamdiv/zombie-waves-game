@@ -188,7 +188,7 @@ option existing. A lane that has not opted in still shares the cache and still
 needs a slot, and two non-opted-in lanes still collide exactly as before.
 Parallel builds are only safe between lanes that have each opted in.
 
-### KNOWN INTERACTION: release staging hardcodes the shared cache path
+### FIXED: release staging used to hardcode the shared cache path
 
 `.github/workflows/release.yml` (Linux "Stage" step, as fixed by `b5378d3`)
 gathers the bundled SDL libraries with the shared cache path written in
@@ -210,10 +210,22 @@ person to turn the option on in a release context would be debugging an empty
 `lib/` with no clue why. Do not switch a release build to a per-lane cache
 without fixing that `find` first.
 
-The clean fix is to stop hardcoding either path and ask CMake where the cache
-actually is, e.g. read `FETCHCONTENT_BASE_DIR` out of `build/CMakeCache.txt`
-and search that. Adding a second literal path is the cheap fix but needs care:
-`find` on a non-existent directory returns non-zero and the step runs under
-`set -euo pipefail`, so an unconditional extra path would break the release
-when the lanes dir is absent. Not changed here — the release rehearsal is
-green and re-cutting it is the release owner's call, not an effects-lane edit.
+**Fixed in `4640e50`** (approved by pm): the step now reads
+`FETCHCONTENT_BASE_DIR` out of `build/CMakeCache.txt` and searches that, so
+staging follows wherever the build actually put its dependencies and no cache
+path is hardcoded in the workflow at all. It fails early and explicitly if the
+value is missing/empty or does not name a directory — necessary, because `find`
+on a non-existent directory exits non-zero under `set -euo pipefail` and would
+otherwise fail the release with `find`'s message instead of the cause.
+
+**Proven, not just parsed:** `workflow_dispatch` rehearsal run `45139861619`
+is green on Linux and Windows with the derived path.
+
+Measured while fixing it, and worth keeping: `find build -name 'libSDL3*.so*'`
+matches **nothing**. Not one SDL library is under `build/` — they all live in
+the dep cache. So this path is fully load-bearing: a wrong path does not
+produce a degraded payload, it produces an **empty `lib/`**.
+
+A cheap alternative fix (bolting a second literal path onto the `find`) was
+rejected: it reintroduces hardcoding and trips the same `set -e` trap whenever
+the lanes dir is absent.
