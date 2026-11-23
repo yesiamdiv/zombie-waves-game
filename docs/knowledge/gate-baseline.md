@@ -611,3 +611,15 @@ the bug is in the PRNG port, not in the baseline.
 Texture count unchanged at 68 - no asset was touched, and `gen_assets.py
 --verify` was deliberately NOT run, because running it dirties every PNG
 (B51).
+
+## 2026-11-23 - PR #1 integrated on main; Linux gate confirms the Windows numbers
+
+PR #1 (`sprint7/windows-port-and-determinism`, 42 commits) was fast-forwarded
+onto `main` at `7c49874` after owner approval. I re-ran the full gate on merged
+`main` (not just the PR branch): build clean, 0 project warnings, `zombie_tests`
+**2123 passed / 0 failed**, ctest 3/3, `gen_assets.py --verify` **68 textures**.
+Two seed-42 runs in each ammo mode are byte-identical at **111750 bytes /
+1423 lines**, and the unlimited and limited logs are identical to each other —
+so the Linux figure now *matches* the Windows measurement instead of merely
+being predicted. `gen_assets --verify` dirtied the PNG bytes as documented in
+B51; they were restored with `git checkout -- assets/textures` after the check.

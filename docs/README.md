@@ -71,6 +71,7 @@ decisions table above: `knowledge/agent-rules.md`,
 | `MULTIPLAYER_PROGRESS.md` | multiplayer status log |
 | `DEV_PLAN.md` | developer-facing plan |
 | `SPRINT_PLAN.md` | assets/maps sprint 3 (closed) |
+| `TICKETS.md` | Sprint 7 board — Windows port, art overhaul, QA automation; owner decisions and final state |
 | `EFFECTS_PLAN.md` | effects E1–E6 scope, and **why cosmetic randomness may not touch `rand()`** |
 | `ASSET_MAP_PLAN.md` | asset and map plan |
 | `FUTURE_IDEAS.md` | backlog, including the zombie speed/size variants |

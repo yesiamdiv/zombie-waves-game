@@ -65,13 +65,15 @@ unproven, so their checklists below still stand.
 - **VERIFIED on screen**: owner reports "effects and all are good" — a broad
   visual confirmation of the E1-E6 effects work and overall presentation. Not
   itemised per effect; do not claim any individual effect was checked in detail.
-- **OPEN (B49)**: the 60s wave timeout force-destroys leftover zombies with no
-  on-screen feedback, so it reads as zombies vanishing and the next wave
-  starting. The code path is intentional (B1 soft-lock safety net); the owner's
-  decision on keeping/changing it is pending.
-- **OPEN (B50)**: player/zombie walk animation and art read as static/weak; the
-  owner identifies the art itself as the root cause. This supersedes the earlier
-  headless-only conditional sign-off for animation P1-P5. Art direction pending.
+- **B49 — implemented, UNPROVEN on screen**: the 60s wave timeout no longer
+  silently deletes stragglers; they are enraged and hunt the player (2.5x speed,
+  unlimited detection, `WAVE_ENRAGE` event), with a 120s destroy backstop.
+  Owner chose this in Sprint 7 (`docs/TICKETS.md`). Nobody has watched the
+  enrage in a live window yet.
+- **B50 — implemented, UNPROVEN on screen**: player/zombie art and walk cycles
+  were re-authored (richer pixel art in the same style, owner's choice). Contact
+  sheets were reviewed, but no human has watched the motion in-game yet. This
+  supersedes the earlier headless-only conditional sign-off for animation P1-P5.
 - **NOT TESTED by the owner**: the other weapons (only the starter kit was
   used), so their on-screen feel remains unverified.
 
