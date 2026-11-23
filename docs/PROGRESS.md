@@ -1241,6 +1241,42 @@ value.
 
 ---
 
+## 2026-11-23 — PM process note: serialized rebuilds after shared-PCH SIGBUS
+
+### Planned
+- Get every lane synced to the merged PR #1 baseline and rebuilding safely.
+
+### Done
+- My first sync broadcast told all six lanes to rebuild at once. effects flagged
+  that this corrupts the shared `~/.cache/cmake-deps/sdl3-build/` PCH: concurrent
+  ninja builds rewrite `cmake_pch.h` while cc1 has it mmapped, giving SIGBUS /
+  "internal compiler error: Bus error". PM process error, not a PR defect — main's
+  gate was already green.
+- Broadcast a strict one-lane-at-a-time rebuild queue (effects, animation, audio,
+  assets, net, qa) and warned against clearing the shared cache. Corrected the
+  wait-loop advice to use `pgrep -f '[c]make-deps/sdl3-build'`; the plain pattern
+  self-matches the waiting shell and hangs forever.
+- effects accepted ownership of `docs/knowledge/shared-dep-cache-build-serialization.md`.
+
+### Next
+- Collect each lane's sync/rebuild/gate report in queue order; verify the knowledge
+  topic lands before closing this note.
+
+### Blocked
+- Nothing; lane rebuilds are serialized until further notice.
+
+### Lane sync status after PR #1 (2026-11-23, in progress)
+- audio: FF 9b26d50 -> 1267656, re-gate green (13 sounds, 68 textures,
+  2123/0, ctest 3/3, SP 111750/1423 both modes); rebuild started before the
+  queue broadcast, transient SIGBUS resolved by serial retry. Standby.
+- animation: FF 0 ahead/105 behind -> 1267656, reconfigure + rebuild cleared a
+  transient PCH error, re-gate green (same numbers, 36 B51 PNGs restored).
+  Standby; B49/B50 on-screen checks pending.
+- qa: main checkout already at 1267656; verified PM-built binaries green.
+  Exempted from a rebuild slot to avoid contention. Standby.
+- Queue trimmed to effects -> assets -> net; effects owns the shared-PCH
+  knowledge topic. Awaiting their reports.
+
 ## Session 2026-11-23 — net lane sync to PR #1 baseline
 
 ### PM — planned
