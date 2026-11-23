@@ -562,22 +562,11 @@ wave 5 (20) or 6 (23) fully packed.
 
 Script and timings: `playtesting_prompts/qa_recheck/findings/QA_S6_Q6_H5_N3_2026-11-18.md`.
 
-## B63 / project-owned PRNG - cross-platform identity is predicted, not measured (2026-11-20)
+## B63 / project-owned PRNG - cross-platform identity MEASURED (2026-11-23)
 
 `src/core/rng.c` exists so that two platforms produce the same simulation from
-the same seed. On Windows this is **measured**: two `--seed=42` runs are
-byte-identical at 111750 bytes / 1423 lines, and
-`tests.c:test_rng_stream_pinned` reproduces PCG32 values computed from the
-specification independently of this implementation.
-
-What is **not** measured is the thing the change is for: a Linux run producing
-that same 111750/1423. There is no Linux toolchain on the machine this landed
-on. The argument is strong (PCG32 is pure `uint64_t` arithmetic, which C
-defines identically everywhere, and the pinned literals would fail loudly if
-the implementation drifted) but an argument is not a measurement.
-
-**To close**: build on Linux, run
-`./build/open_world_zombie_waves --headless --ai=bot --run-seconds=25 --events=a.log --seed=42 --unlimited-ammo`
-and `cmp` the log against the Windows one. Same bytes = B63 closed. Different
-bytes = the port is wrong somewhere, and the pinned test on Linux will say
-where.
+the same seed. Linux is no longer a prediction: the merged-main gate and an
+independent second Linux build (effects' worktree) both reproduce the declared
+Windows references, byte-for-byte in both ammo modes. The declared numbers and
+the deliberate re-baseline history live in `docs/knowledge/gate-baseline.md`;
+`tests.c:test_rng_stream_pinned` still checks the PCG32 literals. B63 is closed.
