@@ -1339,3 +1339,8 @@ value.
   deletes `release.yml` and many assets. main at `4640e50` is source of truth.
   Broadcast a no-push/no-reset warning and asked net + effects to report push
   history. Do not trust or push that remote branch until repaired.
+- Follow-up: the effects-ref alarm was a false positive. `f9202f5` is a strict
+  ancestor of `4640e50` (Oct 27 branch state, 151 commits stale), not a bad push;
+  net/audio/qa/effects all confirmed no push today. effects approved to
+  fast-forward `origin/feature/effects` to `4640e50` (no force) and report.
+  main was never at risk; rehearsal green stands.
