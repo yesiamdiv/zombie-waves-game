@@ -121,10 +121,9 @@ python3 tools/gen_assets.py --verify  # when assets were touched
 ```
 
 `--unlimited-ammo` is part of the gate on purpose: gameplay defaults to
-**limited** pistol ammo, and the canonical reference (125938 bytes / 1603 lines)
-is the unlimited-mode run, so it still proves nothing else perturbed the sim.
-Run the default (limited) form as the separate gameplay reference recorded in
-`docs/knowledge/gate-baseline.md`.
+**limited** pistol ammo, so both modes must be run and diffed separately. Their
+current byte/line references — and the history of deliberate re-baselines — are
+declared once in `docs/knowledge/gate-baseline.md`; never copy them here.
 
 Plus: multiplayer-only behaviour stays behind `player_count > 1`, and
 single-player wave 1 is unchanged.

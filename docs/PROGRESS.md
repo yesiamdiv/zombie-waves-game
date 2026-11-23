@@ -1299,3 +1299,14 @@ value.
   marked obsolete in `docs/knowledge/relay-overflow-visibility.md`.
 - Blocked: nothing. Note for pm: the worktree `AGENTS.md` gate section still
   cites the old pre-B63 SP reference; it should point at `gate-baseline.md`.
+- net: FF to 1267656, re-gate green including `net_coop_check PASS`; transient
+  compiler ICE/first-run ctest blip were PCH-race effects. Exempt from further
+  rebuild. Docs `3b5bd7e`, `db58695`; lane owns no further main FF (PM rule).
+- effects: slot 1 rebuild + full gate green, independent second Linux
+  confirmation; owned `docs/knowledge/shared-dep-cache-build-serialization.md`
+  (`6a02e37`). Per-lane dep cache approved as task_01a20776edd0373ecc118c5f,
+  sequenced after assets. B49/E5 tint layering verified, no defect.
+- AGENTS.md gate paragraph de-duplicated: it now points at gate-baseline.md
+  instead of hardcoding a stale SP byte/line reference.
+- Queue now: assets slot 2, then empty; effects may only rebuild with its own
+  lane cache after assets reports done.

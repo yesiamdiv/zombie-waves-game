@@ -623,3 +623,9 @@ Two seed-42 runs in each ammo mode are byte-identical at **111750 bytes /
 so the Linux figure now *matches* the Windows measurement instead of merely
 being predicted. `gen_assets --verify` dirtied the PNG bytes as documented in
 B51; they were restored with `git checkout -- assets/textures` after the check.
+
+Effects independently re-ran the same Linux gate from its own worktree/binary
+after PR #1 (slot 1 of the serialized rebuild queue, incident topic
+`shared-dep-cache-build-serialization.md` in `6a02e37`). Same declared numbers,
+diff-empty in both ammo modes — so the B63 PRNG port is corroborated by a second
+Linux build, not merely predicted from Windows.
