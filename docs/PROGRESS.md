@@ -1344,3 +1344,8 @@ value.
   net/audio/qa/effects all confirmed no push today. effects approved to
   fast-forward `origin/feature/effects` to `4640e50` (no force) and report.
   main was never at risk; rehearsal green stands.
+- effects fast-forwarded `origin/feature/effects` f9202f5 -> 4640e50 with an
+  explicit refspec, no force; stale-ref hazard cleared. Cherry-picked effects'
+  follow-up docs commit `bf08f83` onto main as `ede4b3c` (knowledge topic now
+  marks the release-staging clash fixed/proven by run 45139861619). Merged only
+  that one file so newer main docs were not rewound.
