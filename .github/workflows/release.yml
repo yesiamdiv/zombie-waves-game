@@ -91,10 +91,32 @@ jobs:
           mkdir -p "$stage/lib"
           cp build/open_world_zombie_waves "$stage/"
           cp -r assets "$stage/assets"
-          # FetchContent puts the SDL build trees in the shared dep cache,
-          # not under build/, so search both places. cp -P keeps the SONAME
-          # symlinks intact alongside their versioned targets.
-          find build "$HOME/.cache/cmake-deps" \( -name 'libSDL3*.so*' \) \
+          # FetchContent puts the SDL build trees in the dep cache, not under
+          # build/, so both places have to be searched. Ask CMake where that
+          # cache actually is rather than hardcoding a path: the location is
+          # configurable (ZW_PER_LANE_DEP_CACHE gives a tree its own cache, and
+          # -D FETCHCONTENT_BASE_DIR overrides it outright), and a hardcoded
+          # path that no longer matches stages an EMPTY lib/ -- which only
+          # surfaces as "missing libSDL3.so.0" in the verify step below, with
+          # nothing pointing at the cause.
+          dep_cache=$(sed -n 's/^FETCHCONTENT_BASE_DIR:PATH=//p' \
+            build/CMakeCache.txt)
+          if [ -z "$dep_cache" ]; then
+            echo "could not read FETCHCONTENT_BASE_DIR from build/CMakeCache.txt;" \
+                 "cannot locate the SDL shared libraries to stage" >&2
+            exit 1
+          fi
+          if [ ! -d "$dep_cache" ]; then
+            echo "dep cache '$dep_cache' (from build/CMakeCache.txt) is not a" \
+                 "directory; cannot locate the SDL shared libraries to stage" >&2
+            exit 1
+          fi
+          # Both paths are known to exist by here, which matters under
+          # `set -e`: find exits non-zero on a missing directory and would
+          # fail the release rather than report anything useful.
+          # cp -P keeps the SONAME symlinks intact alongside their versioned
+          # targets.
+          find build "$dep_cache" \( -name 'libSDL3*.so*' \) \
             -exec cp -P {} "$stage/lib/" \;
           printf '%s\n' \
             '#!/bin/sh' \
