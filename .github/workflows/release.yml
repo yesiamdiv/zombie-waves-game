@@ -89,7 +89,11 @@ jobs:
           mkdir -p "$stage/lib"
           cp build/open_world_zombie_waves "$stage/"
           cp -r assets "$stage/assets"
-          find build \( -name 'libSDL3*.so*' \) -exec cp -P {} "$stage/lib/" \;
+          # FetchContent puts the SDL build trees in the shared dep cache,
+          # not under build/, so search both places. cp -P keeps the SONAME
+          # symlinks intact alongside their versioned targets.
+          find build "$HOME/.cache/cmake-deps" \( -name 'libSDL3*.so*' \) \
+            -exec cp -P {} "$stage/lib/" \;
           printf '%s\n' \
             '#!/bin/sh' \
             '# Run the game with the bundled SDL libraries, from any directory.' \
@@ -152,7 +156,9 @@ jobs:
             done
           else
             test -f "$stage/open_world_zombie_waves" || { echo "missing binary"; exit 1; }
-            ls "$stage/lib/"libSDL3.so* >/dev/null || { echo "missing libSDL3"; exit 1; }
+            for f in libSDL3.so.0 libSDL3_ttf.so.0 libSDL3_image.so.0; do
+              test -f "$stage/lib/$f" || { echo "missing $f"; exit 1; }
+            done
           fi
           echo "staged payload OK:"
           find "$stage" -maxdepth 1
