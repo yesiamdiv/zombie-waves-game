@@ -1238,3 +1238,29 @@ value.
 ### Blocked
 - Sprint 7 scope is blocked on those three owner answers. Other weapons remain
   untested by the owner.
+
+---
+
+## 2026-11-23 — PM process note: serialized rebuilds after shared-PCH SIGBUS
+
+### Planned
+- Get every lane synced to the merged PR #1 baseline and rebuilding safely.
+
+### Done
+- My first sync broadcast told all six lanes to rebuild at once. effects flagged
+  that this corrupts the shared `~/.cache/cmake-deps/sdl3-build/` PCH: concurrent
+  ninja builds rewrite `cmake_pch.h` while cc1 has it mmapped, giving SIGBUS /
+  "internal compiler error: Bus error". PM process error, not a PR defect — main's
+  gate was already green.
+- Broadcast a strict one-lane-at-a-time rebuild queue (effects, animation, audio,
+  assets, net, qa) and warned against clearing the shared cache. Corrected the
+  wait-loop advice to use `pgrep -f '[c]make-deps/sdl3-build'`; the plain pattern
+  self-matches the waiting shell and hangs forever.
+- effects accepted ownership of `docs/knowledge/shared-dep-cache-build-serialization.md`.
+
+### Next
+- Collect each lane's sync/rebuild/gate report in queue order; verify the knowledge
+  topic lands before closing this note.
+
+### Blocked
+- Nothing; lane rebuilds are serialized until further notice.
