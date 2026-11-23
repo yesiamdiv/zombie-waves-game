@@ -1322,3 +1322,10 @@ value.
   upload all PASS. Zips downloaded to `build/logs/release-rehearsal/`.
 - Tag-push publish step remains unexercised; no tag cut. B63 PENDING section
   closed because both Linux confirmations are now measured.
+
+- effects flagged a latent clash (6f62152): `release.yml` still hardcodes the
+  shared dep cache, so a future `ZW_PER_LANE_DEP_CACHE=ON` release would stage an
+  empty `lib/`. Approved as part of task_01a20776edd0373ecc118c5f: derive
+  `FETCHCONTENT_BASE_DIR` from `build/CMakeCache.txt` in a separate CI commit;
+  effects reports the SHA, PM integrates and re-runs the rehearsal. Broader
+  single-source cache-path refactor deferred. Rehearsal result stands for now.
